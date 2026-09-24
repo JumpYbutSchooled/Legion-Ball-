@@ -34,9 +34,17 @@ if (Test-Path $pck) { Remove-Item $pck }
 if (-not (Test-Path $pck)) { throw "Export failed: build\game.pck was not created" }
 Write-Host ("Exported game.pck ({0:N1} MB)" -f ((Get-Item $pck).Length / 1MB))
 
+# Git and gh print progress on stderr, which "Stop" mode treats as fatal; check exit
+# codes instead.
+$ErrorActionPreference = "Continue"
+function Check($what) { if ($LASTEXITCODE -ne 0) { Write-Error "$what failed (exit $LASTEXITCODE)"; exit 1 } }
+
 git add -A
-git commit -m "Release v$Version" | Out-Null
-git tag "v$Version"
-git push --follow-tags
-& $Gh release create "v$Version" $pck --title "v$Version" --notes $Notes
+git diff --cached --quiet
+if ($LASTEXITCODE -ne 0) {
+    git commit -q -m "Release v$Version"; Check "git commit"
+}
+git tag "v$Version"; Check "git tag"
+git push -q origin HEAD "v$Version" 2>&1 | Out-Null; Check "git push"
+& $Gh release create "v$Version" $pck --title "v$Version" --notes $Notes; Check "gh release create"
 Write-Host "Published v$Version - players get it on their next launch."
