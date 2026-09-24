@@ -10,7 +10,7 @@ extends Control
 ## Offline, rate-limited or broken downloads just fall through to step 3.
 
 ## "owner/repo" of the public GitHub repository that holds the releases.
-const REPO := ""
+const REPO := "JumpYbutSchooled/Legion-Ball-"
 const ASSET_NAME := "game.pck"
 const PATCH_DIR := "user://patch/"
 const CURRENT_FILE := "user://patch/current.txt"
