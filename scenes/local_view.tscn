@@ -1,0 +1,67 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/local_view.gd" id="1_view"]
+[ext_resource type="Script" path="res://scripts/camera_rig.gd" id="2_cam"]
+[ext_resource type="Shader" path="res://shaders/warp.gdshader" id="3_warp"]
+[ext_resource type="Script" path="res://scripts/crosshair.gd" id="4_crosshair"]
+[ext_resource type="Script" path="res://scripts/motion_blur.gd" id="5_blur"]
+[ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="6_pause"]
+[ext_resource type="Script" path="res://scripts/ui/weapon_selector.gd" id="7_selector"]
+[ext_resource type="Script" path="res://scripts/ui/impact_frames.gd" id="8_impact"]
+
+[sub_resource type="ShaderMaterial" id="WarpMat"]
+shader = ExtResource("3_warp")
+
+[node name="LocalView" type="Node"]
+script = ExtResource("1_view")
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("2_cam")
+
+[node name="Pitch" type="Node3D" parent="CameraRig"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+rotation_degrees = Vector3(-15, 0, 0)
+
+[node name="SpringArm3D" type="SpringArm3D" parent="CameraRig/Pitch"]
+spring_length = 9.0
+margin = 0.2
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig/Pitch/SpringArm3D"]
+current = true
+fov = 70.0
+
+[node name="MotionBlur" type="MeshInstance3D" parent="CameraRig/Pitch/SpringArm3D/Camera3D"]
+script = ExtResource("5_blur")
+
+[node name="WarpLayer" type="CanvasLayer" parent="."]
+
+[node name="Warp" type="ColorRect" parent="WarpLayer"]
+visible = false
+material = SubResource("WarpMat")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 2
+
+[node name="Crosshair" type="Control" parent="HUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("4_crosshair")
+
+[node name="WeaponSelector" type="CanvasLayer" parent="."]
+script = ExtResource("7_selector")
+
+[node name="ImpactFrames" type="CanvasLayer" parent="."]
+script = ExtResource("8_impact")
+
+[node name="PauseMenu" type="CanvasLayer" parent="."]
+script = ExtResource("6_pause")

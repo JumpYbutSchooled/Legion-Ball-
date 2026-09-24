@@ -1,0 +1,248 @@
+[gd_scene format=3]
+
+[ext_resource type="Shader" path="res://shaders/checker.gdshader" id="3_checker"]
+[ext_resource type="Script" path="res://scripts/spark_colliders.gd" id="7_colliders"]
+[ext_resource type="Script" path="res://scripts/cube_stacks.gd" id="10_cubes"]
+[ext_resource type="Script" path="res://scripts/lock_targets.gd" id="12_targets"]
+[ext_resource type="Script" path="res://scripts/arena.gd" id="16_arena"]
+
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
+sky_top_color = Color(0.32, 0.5, 0.78, 1)
+sky_horizon_color = Color(0.7, 0.76, 0.85, 1)
+ground_bottom_color = Color(0.15, 0.16, 0.2, 1)
+ground_horizon_color = Color(0.7, 0.76, 0.85, 1)
+
+[sub_resource type="Sky" id="Sky"]
+sky_material = SubResource("SkyMat")
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 2
+sky = SubResource("Sky")
+ambient_light_source = 3
+tonemap_mode = 2
+ssao_enabled = true
+glow_enabled = true
+
+[sub_resource type="ShaderMaterial" id="FloorMat"]
+render_priority = 0
+shader = ExtResource("3_checker")
+shader_parameter/color_a = Color(0.5, 0.5, 0.5, 1)
+shader_parameter/color_b = Color(0.46, 0.46, 0.46, 1)
+shader_parameter/cell_size = 4.0
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+material = SubResource("FloorMat")
+size = Vector3(400, 1, 400)
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(400, 1, 400)
+
+[sub_resource type="PhysicsMaterial" id="FloorPhys"]
+friction = 1.0
+
+[sub_resource type="StandardMaterial3D" id="GreyMat"]
+albedo_color = Color(0.5, 0.5, 0.5, 1)
+roughness = 0.8
+
+[node name="Arena" type="Node3D"]
+script = ExtResource("16_arena")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, 35, 0)
+shadow_enabled = true
+directional_shadow_max_distance = 200.0
+
+[node name="Map" type="Node3D" parent="."]
+script = ExtResource("7_colliders")
+
+[node name="Floor" type="StaticBody3D" parent="Map"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+physics_material_override = SubResource("FloorPhys")
+
+[node name="Mesh" type="MeshInstance3D" parent="Map/Floor"]
+mesh = SubResource("FloorMesh")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Floor"]
+shape = SubResource("FloorShape")
+
+[node name="OuterWalls" type="Node3D" parent="Map"]
+
+[node name="North" type="CSGBox3D" parent="Map/OuterWalls"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, -200.5)
+use_collision = true
+size = Vector3(402, 8, 1)
+material = SubResource("GreyMat")
+
+[node name="South" type="CSGBox3D" parent="Map/OuterWalls"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 200.5)
+use_collision = true
+size = Vector3(402, 8, 1)
+material = SubResource("GreyMat")
+
+[node name="East" type="CSGBox3D" parent="Map/OuterWalls"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 200.5, 4, 0)
+use_collision = true
+size = Vector3(1, 8, 400)
+material = SubResource("GreyMat")
+
+[node name="West" type="CSGBox3D" parent="Map/OuterWalls"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -200.5, 4, 0)
+use_collision = true
+size = Vector3(1, 8, 400)
+material = SubResource("GreyMat")
+
+[node name="CenterPlatform" type="Node3D" parent="Map"]
+
+[node name="Block" type="CSGBox3D" parent="Map/CenterPlatform"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+use_collision = true
+size = Vector3(30, 3, 30)
+material = SubResource("GreyMat")
+
+[node name="RampSouth" type="CSGBox3D" parent="Map/CenterPlatform"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.253, 23.96)
+rotation_degrees = Vector3(9.46, 0, 0)
+use_collision = true
+size = Vector3(10, 0.5, 18.25)
+material = SubResource("GreyMat")
+
+[node name="RampNorth" type="CSGBox3D" parent="Map/CenterPlatform"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.253, -23.96)
+rotation_degrees = Vector3(-9.46, 0, 0)
+use_collision = true
+size = Vector3(10, 0.5, 18.25)
+material = SubResource("GreyMat")
+
+[node name="RampEast" type="CSGBox3D" parent="Map/CenterPlatform"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 23.96, 1.253, 0)
+rotation_degrees = Vector3(0, 0, -9.46)
+use_collision = true
+size = Vector3(18.25, 0.5, 10)
+material = SubResource("GreyMat")
+
+[node name="RampWest" type="CSGBox3D" parent="Map/CenterPlatform"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.96, 1.253, 0)
+rotation_degrees = Vector3(0, 0, 9.46)
+use_collision = true
+size = Vector3(18.25, 0.5, 10)
+material = SubResource("GreyMat")
+
+[node name="Kickers" type="Node3D" parent="Map"]
+
+[node name="Kicker1" type="CSGBox3D" parent="Map/Kickers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 1.26, 70)
+rotation_degrees = Vector3(16.7, 0, 0)
+use_collision = true
+size = Vector3(8, 0.5, 10.44)
+material = SubResource("GreyMat")
+
+[node name="Kicker2" type="CSGBox3D" parent="Map/Kickers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 1.26, -50)
+rotation_degrees = Vector3(16.7, 90, 0)
+use_collision = true
+size = Vector3(8, 0.5, 10.44)
+material = SubResource("GreyMat")
+
+[node name="Kicker3" type="CSGBox3D" parent="Map/Kickers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 90, 1.26, -90)
+rotation_degrees = Vector3(16.7, 180, 0)
+use_collision = true
+size = Vector3(8, 0.5, 10.44)
+material = SubResource("GreyMat")
+
+[node name="Kicker4" type="CSGBox3D" parent="Map/Kickers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -90, 1.26, 90)
+rotation_degrees = Vector3(16.7, -90, 0)
+use_collision = true
+size = Vector3(8, 0.5, 10.44)
+material = SubResource("GreyMat")
+
+[node name="Kicker5" type="CSGBox3D" parent="Map/Kickers"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.26, -100)
+rotation_degrees = Vector3(16.7, 0, 0)
+use_collision = true
+size = Vector3(8, 0.5, 10.44)
+material = SubResource("GreyMat")
+
+[node name="Plateaus" type="Node3D" parent="Map"]
+
+[node name="PlateauNW" type="CSGBox3D" parent="Map/Plateaus"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -140, 2, -140)
+use_collision = true
+size = Vector3(30, 4, 30)
+material = SubResource("GreyMat")
+
+[node name="RampNW" type="CSGBox3D" parent="Map/Plateaus"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -140, 1.753, -113.04)
+rotation_degrees = Vector3(9.46, 0, 0)
+use_collision = true
+size = Vector3(10, 0.5, 24.33)
+material = SubResource("GreyMat")
+
+[node name="PlateauSE" type="CSGBox3D" parent="Map/Plateaus"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 140, 2, 140)
+use_collision = true
+size = Vector3(30, 4, 30)
+material = SubResource("GreyMat")
+
+[node name="RampSE" type="CSGBox3D" parent="Map/Plateaus"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 140, 1.753, 113.04)
+rotation_degrees = Vector3(-9.46, 0, 0)
+use_collision = true
+size = Vector3(10, 0.5, 24.33)
+material = SubResource("GreyMat")
+
+[node name="Landmarks" type="Node3D" parent="Map"]
+
+[node name="TowerWest" type="CSGBox3D" parent="Map/Landmarks"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -120, 10, 40)
+use_collision = true
+size = Vector3(12, 20, 12)
+material = SubResource("GreyMat")
+
+[node name="TowerEast" type="CSGBox3D" parent="Map/Landmarks"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 130, 7.5, -30)
+use_collision = true
+size = Vector3(10, 15, 10)
+material = SubResource("GreyMat")
+
+[node name="LongWall" type="CSGBox3D" parent="Map/Landmarks"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, -160)
+use_collision = true
+size = Vector3(80, 6, 2)
+material = SubResource("GreyMat")
+
+[node name="Pillar1" type="CSGBox3D" parent="Map/Landmarks"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 3, -40)
+use_collision = true
+size = Vector3(3, 6, 3)
+material = SubResource("GreyMat")
+
+[node name="Pillar2" type="CSGBox3D" parent="Map/Landmarks"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 3, -52)
+use_collision = true
+size = Vector3(3, 6, 3)
+material = SubResource("GreyMat")
+
+[node name="Pillar3" type="CSGBox3D" parent="Map/Landmarks"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 34, 3, -60)
+use_collision = true
+size = Vector3(3, 6, 3)
+material = SubResource("GreyMat")
+
+[node name="Pillar4" type="CSGBox3D" parent="Map/Landmarks"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 3, -34)
+use_collision = true
+size = Vector3(3, 6, 3)
+material = SubResource("GreyMat")
+
+[node name="Targets" type="Node3D" parent="."]
+script = ExtResource("10_cubes")
+
+[node name="LockTargets" type="Node3D" parent="."]
+script = ExtResource("12_targets")
+
+[node name="Players" type="Node3D" parent="."]
