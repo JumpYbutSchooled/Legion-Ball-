@@ -1,9 +1,13 @@
 extends Node
 ## Moderation service (/root/Mod, created by scripts/services.gd).
-## Moderators type the moderator code into Settings. When they join an online server the
-## game sends it, and the server compares it with its MOD_CODE environment variable (set
-## on Render, never in the game files). If it matches, they can kick, ban and end the
-## match. The server checks every request, so a modified game can't fake being a mod.
+## Staff type their code into Settings. When they join an online server the game sends
+## it, and the server compares it with its OWNER_CODE, MOD_CODE and TESTER_CODE
+## environment variables (set on Render, never in the game files):
+##   owner  - moderator powers, the owner weapons (slots 7-8, also in offline practice
+##            once a server has confirmed the code: STAFF_FILE) and a gold OWNER title
+##   mod    - kick, ban and end the match, and a MOD title
+##   tester - a green TESTER title
+## The server checks every request, so a modified game can't fake being a mod.
 ## On a player-hosted game the host can moderate without a code.
 ## Bans live in the server's memory: they last until that server restarts or sleeps.
 ## Every player sends a random device id (user://device_id), so a ban survives a name
@@ -15,14 +19,31 @@ extends Node
 signal mod_changed
 
 const DEVICE_FILE := "user://device_id"
+## The last role a server confirmed, and a hash of the code that earned it, so the owner
+## weapons also work in offline practice (no server to ask). Only this PC trusts it, and
+## only for solo play: online, the server checks the code every time.
+const STAFF_FILE := "user://staff.cfg"
 ## Wrong codes allowed per connection before the server stops listening.
 const MAX_ATTEMPTS := 5
+## The same code box takes any staff code; the server checks each against its own
+## environment variable. Owners are also moderators, and get the owner weapons.
+const ROLE_CODES := [["owner", "OWNER_CODE"], ["mod", "MOD_CODE"], ["tester", "TESTER_CODE"]]
+## Title shown by each role's name: [text, colour].
+const TITLES := {
+	"owner": ["OWNER", Color(1.0, 0.78, 0.2)],
+	"mod": ["MOD", Color(0.35, 0.9, 1.0)],
+	"tester": ["TESTER", Color(0.35, 1.0, 0.35)],
+}
 
-## True once the server has accepted this player's moderator code.
+## True once the server has accepted this player's moderator (or owner) code.
 var is_mod := false
+## "owner", "mod", "tester" or "", as confirmed by the server.
+var role := ""
 
 var _net: Node
 var _device_id := ""
+var _saved_role := ""
+var _saved_hash := ""
 var _greeted := false
 # Server only, all keyed by peer id except the ban lists.
 var _mods := {}
@@ -34,10 +55,29 @@ var _banned_names := {}
 
 func _ready() -> void:
 	_device_id = _load_device_id()
+	var staff := ConfigFile.new()
+	if staff.load(STAFF_FILE) == OK:
+		_saved_role = staff.get_value("staff", "role", "")
+		_saved_hash = staff.get_value("staff", "code_hash", "")
 	_net = get_tree().root.get_node_or_null("Net")
 	if _net:
 		_net.connect("roster_changed", _on_roster_changed)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+
+
+## A roster entry's title as [text, colour], or [] for none. Older servers only send
+## the "mod" flag.
+static func title_of(entry: Dictionary) -> Array:
+	var r: String = entry.get("role", "mod" if entry.get("mod", false) else "")
+	return TITLES.get(r, [])
+
+
+## Online: what the server confirmed. Offline (practice): the role a server confirmed
+## before, as long as the same code is still in Settings.
+func is_owner() -> bool:
+	if _net != null and _net.get("online"):
+		return role == "owner"
+	return _saved_role == "owner" and _saved_hash != "" and _saved_hash == _code_hash()
 
 
 ## True if this player can use the moderation tools right now.
@@ -75,6 +115,7 @@ func end_match() -> void:
 func _on_roster_changed() -> void:
 	if not _net.get("online"):
 		_greeted = false
+		role = ""
 		_set_mod(false)
 		return
 	if multiplayer.is_server() or _greeted:
@@ -94,6 +135,37 @@ func _on_roster_changed() -> void:
 func _login_result(ok: bool) -> void:
 	_set_mod(ok)
 	_net.call("_set_status", "Moderator tools unlocked." if ok else "Wrong moderator code.")
+
+
+## Newer servers follow _login_result with the role itself. (Named to sort after the
+## existing RPCs, so their numbering is unchanged for older versions.)
+@rpc("authority", "reliable")
+func _role_result(new_role: String) -> void:
+	role = new_role
+	_remember_role(new_role)
+	var status := {
+		"owner": "Owner mode unlocked.",
+		"mod": "Moderator tools unlocked.",
+		"tester": "Tester title unlocked.",
+	}
+	_net.call("_set_status", status.get(new_role, "Wrong code."))
+	mod_changed.emit()
+
+
+## Saves (or, on a wrong code, forgets) the confirmed role for offline practice.
+func _remember_role(new_role: String) -> void:
+	_saved_role = new_role
+	_saved_hash = _code_hash() if new_role != "" else ""
+	var staff := ConfigFile.new()
+	staff.set_value("staff", "role", _saved_role)
+	staff.set_value("staff", "code_hash", _saved_hash)
+	staff.save(STAFF_FILE)
+
+
+func _code_hash() -> String:
+	var settings := get_tree().root.get_node_or_null("Settings") if is_inside_tree() else null
+	var code := String(settings.call("get_value", "mod_code")).strip_edges() if settings else ""
+	return code.sha256_text() if code != "" else ""
 
 
 func _set_mod(value: bool) -> void:
@@ -136,17 +208,28 @@ func _login(code: String) -> void:
 	if tries >= MAX_ATTEMPTS:
 		return
 	_attempts[peer] = tries + 1
-	var real := OS.get_environment("MOD_CODE").strip_edges()
 	# Compared as hashes so the check takes the same time whatever was typed.
-	var ok := real != "" and code.strip_edges().sha256_text() == real.sha256_text()
-	if ok:
-		_mods[peer] = true
+	var typed := code.strip_edges().sha256_text()
+	var new_role := ""
+	for entry in ROLE_CODES:
+		var real := OS.get_environment(entry[1]).strip_edges()
+		if real != "" and typed == real.sha256_text():
+			new_role = entry[0]
+			break
+	var moderates := new_role == "owner" or new_role == "mod"
+	if new_role != "":
+		if moderates:
+			_mods[peer] = true
 		var players: Dictionary = _net.get("players")
 		if players.has(peer):
-			players[peer]["mod"] = true
+			players[peer]["role"] = new_role
+			players[peer]["mod"] = moderates
 			_net.call("push_roster")
-		print("[server] %s is a moderator" % _player_name(peer))
-	_login_result.rpc_id(peer, ok)
+		print("[server] %s is %s" % [_player_name(peer), new_role])
+	# Testers aren't moderators: skip the older "moderator yes/no" reply for them.
+	if new_role != "tester":
+		_login_result.rpc_id(peer, moderates)
+	_role_result.rpc_id(peer, new_role)
 
 
 @rpc("any_peer", "reliable")

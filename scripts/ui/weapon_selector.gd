@@ -65,7 +65,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _browse(step: int) -> void:
-	var total := WeaponInfo.count()
+	var total := WeaponInfo.unlocked_count(get_tree())
 	if not _open:
 		_open = true
 		_candidate = weapon.get("current")
@@ -102,7 +102,10 @@ func _refresh() -> void:
 	_name.add_theme_color_override("font_color", color)
 	_tag.text = info["tag"]
 	var equipped: int = weapon.get("current")
+	var unlocked := WeaponInfo.unlocked_count(get_tree())
 	for i in _rows.size():
+		# Owner-only weapons stay hidden unless unlocked.
+		_rows[i].visible = i < unlocked
 		var row_info := WeaponInfo.get_entry(i)
 		var mark := ">" if i == _candidate else " "
 		var dot := "  •" if i == equipped else ""

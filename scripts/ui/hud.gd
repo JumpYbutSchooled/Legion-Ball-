@@ -4,6 +4,7 @@ extends CanvasLayer
 ## arena's signals and the Net roster. Added by the arena for the local player online.
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
+const ModScript := preload("res://scripts/net/moderation.gd")
 const FEED_TIME := 5.0
 const FEED_MAX := 5
 
@@ -189,10 +190,14 @@ func _rebuild_board() -> void:
 		swatch.color = _net.call("player_color", id)
 		swatch.custom_minimum_size = Vector2(8, 18)
 		row.add_child(swatch)
-		var tag := "  [MOD]" if roster[id].get("mod", false) else ""
-		var name_label := UIStyle.label("  " + String(roster[id]["name"]) + tag, 16, Color.WHITE if id == multiplayer.get_unique_id() else UIStyle.TEXT)
-		name_label.custom_minimum_size = Vector2(300, 0)
+		var name_label := UIStyle.label("  " + String(roster[id]["name"]), 16, Color.WHITE if id == multiplayer.get_unique_id() else UIStyle.TEXT)
+		name_label.custom_minimum_size = Vector2(210, 0)
 		row.add_child(name_label)
+		# Staff title in its own colour (gold OWNER, cyan MOD, green TESTER).
+		var title := ModScript.title_of(roster[id])
+		var title_label := UIStyle.label("[%s]" % title[0] if not title.is_empty() else "", 13, title[1] if not title.is_empty() else UIStyle.TEXT)
+		title_label.custom_minimum_size = Vector2(90, 0)
+		row.add_child(title_label)
 		row.add_child(UIStyle.label("%3d K   %3d D" % [int(roster[id]["kills"]), int(roster[id]["deaths"])], 16, UIStyle.TEXT))
 		_board_rows.add_child(row)
 

@@ -14,6 +14,7 @@ const UIStyle := preload("res://scripts/ui/ui_style.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const LobbyPanel := preload("res://scripts/ui/lobby_panel.gd")
 const NetScript := preload("res://scripts/net/net.gd")
+const ModScript := preload("res://scripts/net/moderation.gd")
 
 var pause_mode := false
 
@@ -203,7 +204,8 @@ func _build_armory(box: VBoxContainer) -> void:
 	detail.add_theme_constant_override("separation", 8)
 	split.add_child(detail)
 
-	for slot in WeaponInfo.count():
+	# Owner weapons only show for the owner.
+	for slot in WeaponInfo.unlocked_count(get_tree()):
 		var info := WeaponInfo.get_entry(slot)
 		var b := Button.new()
 		b.text = "%02d  %s" % [slot + 1, info["name"]]
@@ -323,9 +325,13 @@ func _build_moderation(box: VBoxContainer) -> void:
 		swatch.color = net.call("player_color", id)
 		swatch.custom_minimum_size = Vector2(10, 18)
 		row.add_child(swatch)
-		var name_label := UIStyle.label(String(players[id]["name"]) + ("  [MOD]" if is_mod else ""), 16, UIStyle.TEXT)
-		name_label.custom_minimum_size = Vector2(260, 0)
+		var name_label := UIStyle.label(String(players[id]["name"]), 16, UIStyle.TEXT)
+		name_label.custom_minimum_size = Vector2(200, 0)
 		row.add_child(name_label)
+		var title := ModScript.title_of(players[id])
+		var title_label := UIStyle.label("[%s]" % title[0] if not title.is_empty() else "", 14, title[1] if not title.is_empty() else UIStyle.TEXT)
+		title_label.custom_minimum_size = Vector2(90, 0)
+		row.add_child(title_label)
 		if not is_mod:
 			row.add_child(_small_button("KICK", func() -> void: mod.call("kick", id)))
 			row.add_child(_small_button("BAN", func() -> void: mod.call("ban", id)))
@@ -372,21 +378,22 @@ func _build_settings(box: VBoxContainer) -> void:
 	_toggle(grid, s, "FULLSCREEN", "fullscreen")
 	_toggle(grid, s, "V-SYNC", "vsync")
 
-	# Moderator code: only mods know it; online servers check it when you join.
+	# Staff code (owner, moderator or tester): online servers check it when you join.
 	var mod_row := HBoxContainer.new()
 	mod_row.add_theme_constant_override("separation", 24)
 	box.add_child(mod_row)
-	mod_row.add_child(UIStyle.label("MODERATOR CODE", 15, UIStyle.TEXT))
+	mod_row.add_child(UIStyle.label("STAFF CODE", 15, UIStyle.TEXT))
 	var code := LineEdit.new()
 	code.secret = true
 	code.text = s.call("get_value", "mod_code")
-	code.placeholder_text = "only for moderators"
-	code.custom_minimum_size = Vector2(240, 0)
+	code.placeholder_text = "owner, moderator or tester code"
+	code.custom_minimum_size = Vector2(260, 0)
 	code.text_changed.connect(func(t: String) -> void: s.call("set_value", "mod_code", t.strip_edges()))
 	mod_row.add_child(code)
 	var mod := _mod()
-	var active: bool = mod != null and mod.get("is_mod")
-	mod_row.add_child(UIStyle.label("MOD TOOLS ACTIVE" if active else "", 15, UIStyle.ACCENT))
+	var title: Array = ModScript.TITLES.get(mod.get("role"), []) if mod else []
+	if not title.is_empty():
+		mod_row.add_child(UIStyle.label(title[0] + " ACTIVE", 15, title[1]))
 	box.add_child(UIStyle.label("Checked by the server the next time you join an online server.", 12, UIStyle.TEXT_DIM))
 
 	var reset := Button.new()

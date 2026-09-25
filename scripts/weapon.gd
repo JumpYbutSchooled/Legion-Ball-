@@ -2,6 +2,7 @@ extends Node3D
 ## Weapon manager, mounted on the ball. Follows the ball (not its spin), turns every
 ## weapon toward the crosshair, and routes input to the equipped one:
 ##   1 Gatling  2 Railgun  3 Scatter  4 Tether  5 Nova  6 Swarm
+##   7 Rain of God  8 Pillars of God  (owner only: WeaponInfo.unlocked_count)
 ##   ` = holster/draw, left mouse = fire (mouse captured).
 ## Switching plays the old weapon's exit wave and the new weapon's enter wave together.
 ## Also provides the helpers the weapons share: beams, lights, warp bubbles, hits,
@@ -17,8 +18,10 @@ const Scatter := preload("res://scripts/weapons/scatter.gd")
 const Tether := preload("res://scripts/weapons/tether.gd")
 const Nova := preload("res://scripts/weapons/nova.gd")
 const Swarm := preload("res://scripts/weapons/swarm.gd")
+const RainOfGod := preload("res://scripts/weapons/rain_of_god.gd")
+const PillarsOfGod := preload("res://scripts/weapons/pillars_of_god.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
-const SLOT_ACTIONS := ["weapon_1", "weapon_2", "weapon_3", "weapon_4", "weapon_5", "weapon_6"]
+const SLOT_ACTIONS := ["weapon_1", "weapon_2", "weapon_3", "weapon_4", "weapon_5", "weapon_6", "weapon_7", "weapon_8"]
 const Beam := preload("res://scripts/dash_laser.gd")
 const MuzzleWarp := preload("res://scripts/muzzle_warp.gd")
 const FlashLight := preload("res://scripts/flash_light.gd")
@@ -56,7 +59,8 @@ var _has_aim_basis := false
 func _ready() -> void:
 	top_level = true
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	var scripts := [Gatling, Railgun, Scatter, Tether, Nova, Swarm]
+	# Every player has the owner weapons too, so an owner's shows up on their ball.
+	var scripts := [Gatling, Railgun, Scatter, Tether, Nova, Swarm, RainOfGod, PillarsOfGod]
 	for slot in scripts.size():
 		var w = scripts[slot].new()
 		w.manager = self
@@ -108,8 +112,12 @@ func _physics_process(delta: float) -> void:
 	if not ball or not camera or not is_multiplayer_authority():
 		return
 	var controls := _controls_enabled()
+	var unlocked := WeaponInfo.unlocked_count(get_tree())
+	if current >= unlocked:
+		# Lost owner status (left the server): back to the Gatling.
+		select(0)
 	if controls:
-		for slot in SLOT_ACTIONS.size():
+		for slot in mini(SLOT_ACTIONS.size(), unlocked):
 			if Input.is_action_just_pressed(SLOT_ACTIONS[slot]):
 				select(slot)
 				break

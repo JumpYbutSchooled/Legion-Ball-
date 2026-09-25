@@ -5,6 +5,7 @@ extends Node
 ## latest state, predicted forward by its velocity so it doesn't trail behind.
 ## Also places the floating name tag over other players' balls.
 
+const ModScript := preload("res://scripts/net/moderation.gd")
 const SEND_RATE := 30.0
 ## How quickly remote balls catch up to the received state.
 const SMOOTHING := 18.0
@@ -29,6 +30,9 @@ var _age := 0.0
 var _name := ""
 var _charge := 0.0
 var _locked_peer := 0
+## OWNER / MOD / TESTER label above the name tag (scripts/net/moderation.gd TITLES).
+var _title: Label3D
+var _title_text := ""
 
 
 func _ready() -> void:
@@ -40,9 +44,14 @@ func _ready() -> void:
 		var id := get_multiplayer_authority()
 		var net := get_tree().root.get_node_or_null("Net")
 		if net:
+			# The staff title floats just above the name, in its own colour.
+			_title = _tag.duplicate() as Label3D
+			_title.name = "TitleTag"
+			_title.visible = false
+			_ball.add_child.call_deferred(_title)
 			_refresh_name()
 			_tag.modulate = net.call("player_color", id)
-			# Picks up a [MOD] tag granted after this player spawned.
+			# Picks up a title granted after this player spawned.
 			net.connect("roster_changed", _refresh_name)
 		_tag.visible = true
 
@@ -52,9 +61,12 @@ func _refresh_name() -> void:
 	if not net:
 		return
 	var id := get_multiplayer_authority()
-	var is_mod: bool = net.get("players").get(id, {}).get("mod", false)
-	_name = ("[MOD] " if is_mod else "") + String(net.call("player_name", id))
+	_name = String(net.call("player_name", id))
 	_tag.text = _name
+	var title := ModScript.title_of(net.get("players").get(id, {}))
+	_title_text = "[%s]" % title[0] if not title.is_empty() else ""
+	if _title and not title.is_empty():
+		_title.modulate = title[1]
 
 
 func _physics_process(delta: float) -> void:
@@ -96,6 +108,14 @@ func _process(_delta: float) -> void:
 		_tag.text = _name
 		_tag.pixel_size = lerpf(0.0022, 0.0009, clampf(inverse_lerp(TAG_NEAR, TAG_DOT_DISTANCE, dist), 0.0, 1.0))
 		_tag.outline_size = 8
+	if _title and _title.is_inside_tree():
+		_title.visible = _title_text != "" and dist <= TAG_DOT_DISTANCE
+		if _title.visible:
+			# Same spot and size as the name, lifted one line up (offset is in pixels).
+			_title.text = _title_text
+			_title.global_position = _tag.global_position
+			_title.pixel_size = _tag.pixel_size * 0.85
+			_title.offset = Vector2(0.0, float(_tag.font_size) * 1.1)
 
 
 ## True if this (remote) player's railgun is locked onto player `peer` right now.

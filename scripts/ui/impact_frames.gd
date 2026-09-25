@@ -18,7 +18,8 @@ const FrameShader := preload("res://shaders/impact_frame.gdshader")
 const SettingsScript := preload("res://scripts/settings.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 
-## Per weapon slot (0 Gatling, 1 Railgun, 2 Scatter, 3 Tether, 4 Nova, 5 Swarm):
+## Per weapon slot (0 Gatling, 1 Railgun, 2 Scatter, 3 Tether, 4 Nova, 5 Swarm,
+## 6 Rain of God, 7 Pillars of God):
 ##   implode / explode: key frames each side of the crack (fewer = shorter)
 ##   speed: frame time multiplier    pull: implosion strength    blast: explosion strength
 ##   core: size of the crack flash   volume: blast sound (dB)     shake: camera shake
@@ -29,6 +30,9 @@ const PROFILES := {
 	3: {"implode": 8, "explode": 7, "speed": 1.0, "pull": 0.9, "blast": 0.6, "core": 0.8, "volume": -2.0, "shake": 0.7},
 	4: {"implode": 10, "explode": 14, "speed": 1.0, "pull": 0.9, "blast": 0.95, "core": 1.1, "volume": 4.0, "shake": 1.0},
 	5: {"implode": 5, "explode": 8, "speed": 0.9, "pull": 0.5, "blast": 0.65, "core": 0.7, "volume": -3.0, "shake": 0.6},
+	# Owner weapons: Rain of God plays the Railgun's; Pillars of God's is the biggest.
+	6: {"implode": 12, "explode": 16, "speed": 1.0, "pull": 1.0, "blast": 1.0, "core": 1.0, "volume": 6.0, "shake": 1.0},
+	7: {"implode": 20, "explode": 26, "speed": 1.15, "pull": 1.3, "blast": 1.45, "core": 1.7, "volume": 10.0, "shake": 1.6},
 }
 
 ## Receives add_shake().

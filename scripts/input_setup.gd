@@ -17,6 +17,9 @@ const KEYS := {
 	"weapon_4": [KEY_4],
 	"weapon_5": [KEY_5],
 	"weapon_6": [KEY_6],
+	# Owner-only weapons.
+	"weapon_7": [KEY_7],
+	"weapon_8": [KEY_8],
 	"toggle_weapon": [KEY_QUOTELEFT],
 	"reset_ball": [KEY_R],
 	"zoom_in": [KEY_I],

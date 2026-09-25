@@ -1,5 +1,6 @@
 extends RefCounted
-## Names, colours and briefings for the six weapons, in slot order.
+## Names, colours and briefings for the weapons, in slot order. The last ones are
+## "owner_only": hidden and unusable unless the server accepted the owner code.
 ## The single source for weapon colours (the weapon manager applies them) and for
 ## the text shown in the main menu's Armory and the in-game weapon selector.
 
@@ -93,6 +94,37 @@ const WEAPONS := [
 		],
 		"combo": "Mark a group, then switch to GATLING or RAILGUN.",
 	},
+	# Owner only (unlocked by the owner code; scripts/net/moderation.gd).
+	{
+		"name": "RAIN OF GOD",
+		"tag": "OWNER // FIFTY GUNS",
+		"color": Color(1.0, 0.9, 0.45),
+		"owner_only": true,
+		"summary": "The Gatling with fifty blades. A wall of fire that goes through walls.",
+		"usage": [
+			"HOLD LMB  fire ~50 shots/sec from fifty blades in turn",
+			"Locks like the RAILGUN, at any range, THROUGH WALLS",
+			"Locked shots hit the target directly, wherever it is",
+			"No lock: hitscan down the crosshair",
+			"Kills play the railgun's impact frames",
+		],
+		"combo": "Lock on and hold.",
+	},
+	{
+		"name": "PILLARS OF GOD",
+		"tag": "OWNER // ORBITAL STRIKE",
+		"color": Color(1.0, 0.97, 0.85),
+		"owner_only": true,
+		"summary": "Calls a pillar of light down from orbit onto whoever you're locked on to.",
+		"usage": [
+			"LMB  call the strike on the lock (or the crosshair point)",
+			"Locks like the RAILGUN, at any range, THROUGH WALLS",
+			"A targeting beam tracks them for 0.9s, then the pillar lands",
+			"Kills everyone in a 16m blast; 4s cooldown",
+			"The biggest impact frames in the game",
+		],
+		"combo": "There is no combo. There is only the pillar.",
+	},
 ]
 
 
@@ -102,3 +134,15 @@ static func count() -> int:
 
 static func get_entry(slot: int) -> Dictionary:
 	return WEAPONS[slot]
+
+
+## Slots this player may use: everything for the owner, otherwise the standard six.
+static func unlocked_count(tree: SceneTree) -> int:
+	var mod := tree.root.get_node_or_null("Mod") if tree else null
+	if mod and mod.call("is_owner"):
+		return WEAPONS.size()
+	var n := 0
+	for w in WEAPONS:
+		if not w.get("owner_only", false):
+			n += 1
+	return n
