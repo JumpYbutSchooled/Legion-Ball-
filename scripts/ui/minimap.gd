@@ -1,8 +1,9 @@
 extends CanvasLayer
-## Minimap, top-left. The level from above, turning with the camera so straight up is the
-## way you're looking; taller walls draw brighter. Other players only show while you can
-## actually see them (nothing in the way) or they're very close, then fade out where they
-## were last seen, so the map doesn't give everyone's position away.
+## Minimap, top-left. The whole level from above, north up, fitted into the box; taller
+## walls draw brighter. You're the arrow, pointing the way the camera looks. Other players
+## only show while you can actually see them (nothing in the way) or they're very close,
+## then fade out where they were last seen, so the map doesn't give everyone's position
+## away.
 ## Reads the level itself: every box collider under the arena's Map node, plus the map's
 ## outline() if it has one (sprawl_map.gd).
 
@@ -10,8 +11,8 @@ const UIStyle := preload("res://scripts/ui/ui_style.gd")
 
 const SIZE := 220.0
 const MARGIN := 20.0
-## Metres from the centre of the minimap to its edge.
-const RANGE := 130.0
+## Space round the map inside the box (the top has the "// MAP" header).
+const PAD := 20.0
 ## Players this close always show, wall or not.
 const CLOSE := 25.0
 ## Seconds a player's last-seen dot takes to fade.
@@ -27,6 +28,8 @@ var _font: Font
 var _outline := PackedVector2Array()
 var _floors: Array = []  # PackedVector2Array each
 var _shapes: Array = []  # [footprint, top height], lowest first
+## The whole level's extent (x, z), fitted into the box.
+var _bounds := Rect2()
 var _collected := false
 var _seen := {}  # peer id -> [last seen position (x, z), seconds since]
 var _check_timer := 0.0
@@ -93,6 +96,18 @@ func _collect_level() -> void:
 		_outline = layout.call("outline")
 	_collect(map)
 	_shapes.sort_custom(func(a: Array, b: Array) -> bool: return a[1] < b[1])
+	# The level's extent: its outline, else its floors, else everything.
+	var points := PackedVector2Array(_outline)
+	if points.is_empty():
+		for poly in _floors:
+			points.append_array(poly)
+	if points.is_empty():
+		for shape in _shapes:
+			points.append_array(shape[0])
+	if not points.is_empty():
+		_bounds = Rect2(points[0], Vector2.ZERO)
+		for p in points:
+			_bounds = _bounds.expand(p)
 
 
 func _collect(node: Node) -> void:
@@ -124,16 +139,10 @@ func _draw_map() -> void:
 		_collect_level()
 	var rect := Rect2(Vector2.ZERO, Vector2(SIZE, SIZE))
 	var center := rect.size / 2.0
-	# Turn the map so the camera's facing points straight up.
-	var fwd := -cam.global_basis.z
-	var facing := Vector2(fwd.x, fwd.z)
-	if facing.length_squared() < 0.0001:
-		var up := cam.global_basis.y
-		facing = Vector2(up.x, up.z)
-	var turn := -PI / 2.0 - facing.angle()
-	var me := Vector2(ball.global_position.x, ball.global_position.z)
-	var zoom := center.x / RANGE
-	var to_screen := Transform2D(turn, Vector2(zoom, zoom), 0.0, center) * Transform2D(0.0, -me)
+	# The whole level, north up, fitted inside the box.
+	var span := maxf(maxf(_bounds.size.x, _bounds.size.y), 1.0)
+	var zoom := (SIZE - PAD * 2.0) / span
+	var to_screen := Transform2D(0.0, Vector2(zoom, zoom), 0.0, center + Vector2(0.0, 4.0)) * Transform2D(0.0, -_bounds.get_center())
 
 	_panel.draw_rect(rect, Color(0.02, 0.05, 0.08, 0.62))
 	_panel.draw_set_transform_matrix(to_screen)
@@ -145,7 +154,19 @@ func _draw_map() -> void:
 			_panel.draw_colored_polygon(poly, ground)
 	for shape in _shapes:
 		var k := clampf(shape[1] / 40.0, 0.0, 1.0)
-		_panel.draw_colored_polygon(shape[0], Color(UIStyle.ACCENT, lerpf(0.16, 0.75, k)))
+		var col := Color(UIStyle.ACCENT, lerpf(0.16, 0.75, k))
+		_panel.draw_colored_polygon(shape[0], col)
+		# Zoomed out this far, thin walls are under a pixel wide: outline the tall ones.
+		if k > 0.5:
+			var loop := PackedVector2Array(shape[0])
+			loop.append(loop[0])
+			_panel.draw_polyline(loop, col, -1.0)
+	# The level's edge.
+	var edges: Array = [_outline] if _outline.size() >= 3 else _floors
+	for loop_points in edges:
+		var edge := PackedVector2Array(loop_points)
+		edge.append(edge[0])
+		_panel.draw_polyline(edge, Color(UIStyle.ACCENT, 0.8), -1.0)
 	_panel.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 	# Other players, where they were last seen; pinned to the edge if off the map.
@@ -165,14 +186,20 @@ func _draw_map() -> void:
 			_panel.draw_circle(pos, 5.5, Color(0, 0, 0, 0.6 * alpha))
 			_panel.draw_circle(pos, 4.0, Color(color, alpha))
 
-	# You: an arrow in the middle, always pointing up.
-	_panel.draw_colored_polygon(PackedVector2Array([
-		center + Vector2(0, -8), center + Vector2(6, 6), center + Vector2(0, 3), center + Vector2(-6, 6),
-	]), Color.WHITE)
+	# You: an arrow where you are, pointing the way the camera looks.
+	var fwd := -cam.global_basis.z
+	var facing := Vector2(fwd.x, fwd.z)
+	if facing.length_squared() < 0.0001:
+		var up := cam.global_basis.y
+		facing = Vector2(up.x, up.z)
+	var me: Vector2 = to_screen * Vector2(ball.global_position.x, ball.global_position.z)
+	_panel.draw_set_transform_matrix(Transform2D(facing.angle() + PI / 2.0, me))
+	var arrow := PackedVector2Array([Vector2(0, -7), Vector2(5, 5), Vector2(0, 2.5), Vector2(-5, 5)])
+	_panel.draw_colored_polygon(arrow, Color.WHITE)
+	_panel.draw_set_transform_matrix(Transform2D.IDENTITY)
 
-	# North marker on the rim.
-	var north := center + Vector2(0, -1).rotated(turn) * (center.x - 12.0)
-	_panel.draw_string(_font, north + Vector2(-4, 5), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIStyle.ACCENT)
+	# North is always up.
+	_panel.draw_string(_font, Vector2(SIZE - 18.0, 16.0), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UIStyle.ACCENT)
 
 	# Frame: hairline border, bright corner brackets and a header, like the speedometer.
 	_panel.draw_rect(rect, Color(UIStyle.ACCENT, 0.25), false, 1.0)
