@@ -165,6 +165,11 @@ func _escape(s: String) -> String:
 
 
 func _process(delta: float) -> void:
+	# Keep typing where you left off: a mouse click, or an impact frame hiding the HUD
+	# (dying, a kill), takes the keyboard focus away from the text box.
+	if _open and _input.is_visible_in_tree() and not _input.has_focus():
+		_input.grab_focus()
+		_input.caret_column = _input.text.length()
 	# Sit just above the health bar, growing upward.
 	var view := _panel.get_viewport_rect().size
 	_panel.position = Vector2(28.0, view.y - 96.0 - _panel.size.y)
