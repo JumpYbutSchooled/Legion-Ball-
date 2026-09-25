@@ -77,6 +77,8 @@ var _effects_scale := 1.0
 var _trauma := 0.0
 var _shake_time := 0.0
 var _noise := FastNoiseLite.new()
+## Rushing-air loop, louder and higher the faster the ball goes.
+var _wind: AudioStreamPlayer
 
 
 ## Adds a jolt of shake (0..1). Squared when applied, so small hits stay subtle.
@@ -175,6 +177,7 @@ func _update_warp(delta: float) -> void:
 	_update_shake(delta, speed)
 
 	var speed_amount := clampf(inverse_lerp(warp_start_speed, warp_full_speed, speed), 0.0, 1.0)
+	_update_wind(speed)
 	_dash_kick = move_toward(_dash_kick, 0.0, dash_kick_decay * delta)
 	_shock = minf(_shock + delta / shockwave_time, 1.0)
 
@@ -196,6 +199,22 @@ func _update_warp(delta: float) -> void:
 			mat.set_shader_parameter("strength", _warp)
 			mat.set_shader_parameter("shock_progress", _shock if _effects_scale > 0.0 else 1.0)
 		warp_rect.visible = _effects_scale > 0.0 and (_warp > 0.01 or _shock < 1.0)
+
+
+func _update_wind(speed: float) -> void:
+	if _wind == null:
+		var sfx := get_tree().root.get_node_or_null("Sfx")
+		if sfx:
+			_wind = sfx.call("make_flat_loop", "wind", self)
+		if _wind == null:
+			return
+	var k := clampf(inverse_lerp(8.0, 100.0, speed), 0.0, 1.0)
+	if k > 0.0 and not _wind.playing:
+		_wind.play()
+	elif k == 0.0 and _wind.playing:
+		_wind.stop()
+	_wind.volume_db = linear_to_db(k * 0.7 + 0.0001) + _dash_kick * 4.0
+	_wind.pitch_scale = lerpf(0.7, 1.8, k) + _dash_kick * 0.3
 
 
 func _unhandled_input(event: InputEvent) -> void:

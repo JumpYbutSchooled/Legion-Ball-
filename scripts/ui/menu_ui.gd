@@ -68,6 +68,30 @@ func _ready() -> void:
 	row.add_child(_page_holder)
 	# Back from a match (still connected): land on the lobby.
 	_show_page("multiplayer" if online and not pause_mode else "armory")
+	_intro.call_deferred()
+	visibility_changed.connect(func() -> void:
+		if is_visible_in_tree():
+			_intro())
+
+
+## Buttons sweep in one after another; the page panel unfolds.
+func _intro() -> void:
+	var i := 0
+	for id in _nav_buttons:
+		var b: Button = _nav_buttons[id]
+		b.pivot_offset = Vector2(0.0, b.size.y / 2.0)
+		b.modulate.a = 0.0
+		b.scale = Vector2(0.6, 1.0)
+		var tw := b.create_tween().set_parallel().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		tw.tween_property(b, "modulate:a", 1.0, 0.35).set_delay(i * 0.05)
+		tw.tween_property(b, "scale", Vector2.ONE, 0.45).set_delay(i * 0.05)
+		i += 1
+	_page_holder.pivot_offset = Vector2(0.0, 0.0)
+	_page_holder.modulate.a = 0.0
+	_page_holder.scale = Vector2(1.0, 0.92)
+	var tw := _page_holder.create_tween().set_parallel().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_page_holder, "modulate:a", 1.0, 0.4).set_delay(0.12)
+	tw.tween_property(_page_holder, "scale", Vector2.ONE, 0.5).set_delay(0.12)
 
 
 func _nav(parent: Control, id: String, text: String, action: Callable) -> void:
@@ -78,6 +102,36 @@ func _nav(parent: Control, id: String, text: String, action: Callable) -> void:
 	b.pressed.connect(action)
 	parent.add_child(b)
 	_nav_buttons[id] = b
+	_animate_button(b)
+
+
+## Hover: the button leans out a little; press: a quick squash.
+static func _animate_button(b: Button) -> void:
+	b.mouse_entered.connect(func() -> void:
+		b.pivot_offset = Vector2(0.0, b.size.y / 2.0)
+		b.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT) \
+			.tween_property(b, "scale", Vector2(1.04, 1.04), 0.18))
+	b.mouse_exited.connect(func() -> void:
+		b.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT) \
+			.tween_property(b, "scale", Vector2.ONE, 0.2))
+	b.button_down.connect(func() -> void:
+		b.pivot_offset = Vector2(0.0, b.size.y / 2.0)
+		var tw := b.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(b, "scale", Vector2(0.96, 0.92), 0.06)
+		tw.tween_property(b, "scale", Vector2(1.04, 1.04), 0.2))
+
+
+## Page contents cascade in, line by line.
+func _animate_page(box: Control) -> void:
+	var i := 0
+	for child in box.get_children():
+		var item := child as CanvasItem
+		if not item:
+			continue
+		item.modulate.a = 0.0
+		var tw := item.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw.tween_property(item, "modulate:a", 1.0, 0.25).set_delay(minf(i * 0.035, 0.4))
+		i += 1
 
 
 func _show_page(id: String) -> void:
@@ -102,6 +156,7 @@ func _show_page(id: String) -> void:
 			_build_controls(box)
 		"settings":
 			_build_settings(box)
+	_animate_page(box)
 	for key in _nav_buttons:
 		var b: Button = _nav_buttons[key]
 		b.add_theme_color_override("font_color", UIStyle.ACCENT if key == id else UIStyle.TEXT)
@@ -143,6 +198,7 @@ func _build_armory(box: VBoxContainer) -> void:
 		b.add_theme_color_override("font_hover_color", Color.WHITE)
 		b.pressed.connect(_show_weapon.bind(detail, slot))
 		list.add_child(b)
+		_animate_button(b)
 	_show_weapon(detail, 0)
 
 
@@ -167,6 +223,7 @@ func _show_weapon(detail: VBoxContainer, slot: int) -> void:
 	var combo := UIStyle.label("  + " + info["combo"], 15, color)
 	combo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail.add_child(combo)
+	_animate_page(detail)
 
 
 # --- CONTROLS -----------------------------------------------------------------
@@ -174,6 +231,7 @@ func _show_weapon(detail: VBoxContainer, slot: int) -> void:
 const CONTROLS := [
 	["W A S D / ARROWS", "Roll (relative to the camera)"],
 	["SPACE", "Jump (1s cooldown)"],
+	["Q", "Shield for 1s: blocks all damage; a hit on it launches you + explodes (10s cooldown)"],
 	["F", "Dash: redirect all speed where you steer, +40"],
 	["S (against motion)", "Skid: hard brake with sparks"],
 	["MOUSE", "Aim / orbit camera (click to lock the mouse)"],
@@ -183,7 +241,7 @@ const CONTROLS := [
 	["RMB", "Confirm the browsed weapon"],
 	["`", "Holster / draw weapon"],
 	["I / O", "Zoom camera in / out (or CTRL + WHEEL)"],
-	["Q / E", "Rotate camera"],
+	["E", "Rotate camera"],
 	["R", "Reset (ball, cubes and targets)"],
 	["ESC", "Pause menu"],
 ]
@@ -202,7 +260,7 @@ func _build_controls(box: VBoxContainer) -> void:
 	box.add_child(UIStyle.label("\nCOMBAT NOTES", 13, UIStyle.TEXT_DIM))
 	var notes := UIStyle.label(
 		"MARKED targets (Swarm) take 2x damage from everything.\n"
-		+ "STAGGERED targets (Nova) freeze in place for 2s.\n"
+		+ "STAGGERED targets and players (Nova) freeze in place for 2s.\n"
 		+ "Scatter and Nova launch you; Tether reels you back in.", 15, UIStyle.TEXT)
 	notes.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(notes)

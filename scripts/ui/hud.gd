@@ -106,8 +106,19 @@ func _on_health(id: int, hp: float) -> void:
 	if id != multiplayer.get_unique_id():
 		return
 	var k := clampf(hp / 100.0, 0.0, 1.0)
-	_health_fill.size.x = 260.0 * k
-	_health_fill.color = UIStyle.ACCENT.lerp(Color(1.0, 0.25, 0.2), 1.0 - k)
+	var goal_color := UIStyle.ACCENT.lerp(Color(1.0, 0.25, 0.2), 1.0 - k)
+	var hurt := 260.0 * k < _health_fill.size.x
+	# The bar slides to its new length; taking damage flashes it white first.
+	var tw := _health_fill.create_tween().set_parallel().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_health_fill, "size:x", 260.0 * k, 0.35)
+	if hurt:
+		_health_fill.color = Color.WHITE
+		tw.tween_property(_health_fill, "color", goal_color, 0.3)
+		_health_text.pivot_offset = Vector2(0, _health_text.size.y / 2.0)
+		_health_text.scale = Vector2(1.15, 1.15)
+		tw.tween_property(_health_text, "scale", Vector2.ONE, 0.3)
+	else:
+		tw.tween_property(_health_fill, "color", goal_color, 0.3)
 	_health_text.text = "INTEGRITY %d" % int(maxf(hp, 0.0))
 
 
@@ -119,6 +130,11 @@ func _on_killed(victim: int, attacker: int) -> void:
 		line.add_theme_color_override("font_color", UIStyle.ACCENT)
 	_feed.add_child(line)
 	_feed_items.append([line, FEED_TIME])
+	# Slides in from the right edge.
+	line.pivot_offset = Vector2(356, 0)
+	line.scale = Vector2(0.3, 1.0)
+	line.create_tween().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT) \
+		.tween_property(line, "scale", Vector2.ONE, 0.35)
 	while _feed_items.size() > FEED_MAX:
 		_feed_items[0][0].queue_free()
 		_feed_items.remove_at(0)
@@ -127,6 +143,17 @@ func _on_killed(victim: int, attacker: int) -> void:
 		_center.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
 		_center_sub.text = "BY " + _name(attacker)
 		_respawn_left = arena.call("get_rules")["respawn_time"]
+		_slam_in(_center)
+
+
+## Big text slams in: starts huge and see-through, snaps to size.
+func _slam_in(label: Label) -> void:
+	label.pivot_offset = label.size / 2.0
+	label.scale = Vector2(2.2, 2.2)
+	label.modulate.a = 0.0
+	var tw := label.create_tween().set_parallel().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw.tween_property(label, "scale", Vector2.ONE, 0.4)
+	tw.tween_property(label, "modulate:a", 1.0, 0.2)
 
 
 func _on_respawned(id: int) -> void:
@@ -142,6 +169,7 @@ func _on_match_over(winner: int) -> void:
 	_center.text = "VICTORY" if me else _name(winner) + " WINS"
 	_center.add_theme_color_override("font_color", UIStyle.ACCENT if me else Color.WHITE)
 	_center_sub.text = "RETURNING TO LOBBY..."
+	_slam_in(_center)
 	_board.visible = true
 	_rebuild_board()
 

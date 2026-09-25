@@ -128,4 +128,5 @@ func _launch() -> void:
 		manager.spawn_missile(props)
 		manager.spawn_beam(tip, launch, 0.8, 0.45, 0.06, 14.0, color)
 		manager.spawn_light(tip, 30.0, 6.0, 0.06, color)
+		manager.play_sound("missile", tip, -6.0)
 	manager.shake(0.35)

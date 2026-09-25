@@ -7,10 +7,12 @@
 [ext_resource type="Script" path="res://scripts/arena.gd" id="16_arena"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
-sky_top_color = Color(0.32, 0.5, 0.78, 1)
-sky_horizon_color = Color(0.7, 0.76, 0.85, 1)
-ground_bottom_color = Color(0.15, 0.16, 0.2, 1)
-ground_horizon_color = Color(0.7, 0.76, 0.85, 1)
+sky_top_color = Color(0.2, 0.14, 0.42, 1)
+sky_horizon_color = Color(0.92, 0.62, 0.52, 1)
+sky_curve = 0.12
+ground_bottom_color = Color(0.1, 0.05, 0.14, 1)
+ground_horizon_color = Color(0.85, 0.58, 0.52, 1)
+sun_angle_max = 40.0
 
 [sub_resource type="Sky" id="Sky"]
 sky_material = SubResource("SkyMat")
@@ -19,15 +21,28 @@ sky_material = SubResource("SkyMat")
 background_mode = 2
 sky = SubResource("Sky")
 ambient_light_source = 3
-tonemap_mode = 2
+ambient_light_energy = 0.85
+tonemap_mode = 3
+tonemap_white = 6.0
 ssao_enabled = true
 glow_enabled = true
+glow_intensity = 1.1
+glow_bloom = 0.08
+glow_blend_mode = 1
+fog_enabled = true
+fog_light_color = Color(0.5, 0.38, 0.7, 1)
+fog_light_energy = 0.9
+fog_sun_scatter = 0.35
+fog_density = 0.0012
+fog_sky_affect = 0.1
+adjustment_enabled = true
+adjustment_saturation = 1.05
 
 [sub_resource type="ShaderMaterial" id="FloorMat"]
 render_priority = 0
 shader = ExtResource("3_checker")
-shader_parameter/color_a = Color(0.5, 0.5, 0.5, 1)
-shader_parameter/color_b = Color(0.46, 0.46, 0.46, 1)
+shader_parameter/color_a = Color(0.5, 0.47, 0.5, 1)
+shader_parameter/color_b = Color(0.455, 0.43, 0.465, 1)
 shader_parameter/cell_size = 4.0
 
 [sub_resource type="BoxMesh" id="FloorMesh"]
@@ -41,7 +56,7 @@ size = Vector3(400, 1, 400)
 friction = 1.0
 
 [sub_resource type="StandardMaterial3D" id="GreyMat"]
-albedo_color = Color(0.5, 0.5, 0.5, 1)
+albedo_color = Color(0.52, 0.48, 0.54, 1)
 roughness = 0.8
 
 [node name="Arena" type="Node3D"]
@@ -51,9 +66,17 @@ script = ExtResource("16_arena")
 environment = SubResource("Env")
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
-rotation_degrees = Vector3(-55, 35, 0)
+rotation_degrees = Vector3(-32, 35, 0)
+light_color = Color(1, 0.72, 0.5, 1)
+light_energy = 1.35
 shadow_enabled = true
 directional_shadow_max_distance = 200.0
+
+[node name="Fill" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-40, -145, 0)
+light_color = Color(0.55, 0.35, 1, 1)
+light_energy = 0.45
+sky_mode = 1
 
 [node name="Map" type="Node3D" parent="."]
 script = ExtResource("7_colliders")

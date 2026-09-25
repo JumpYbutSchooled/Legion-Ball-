@@ -42,6 +42,9 @@ var match_done := false
 var _respawn_timers := {}
 var _protect := {}
 var _marks := {}
+## Shields up: {peer_id: time left}; and who has already parried with this shield.
+var _blocks := {}
+var _parried := {}
 var _end_timer := -1.0
 
 
@@ -157,6 +160,11 @@ func request_stagger(victim: int, duration: float) -> void:
 	_to_host("_host_stagger", [victim, duration])
 
 
+## The local player raised their shield for `duration` seconds.
+func request_block(duration: float) -> void:
+	_to_host("_host_block", [duration])
+
+
 func _to_host(method: StringName, args: Array) -> void:
 	if not is_online() or match_done:
 		return
@@ -181,6 +189,12 @@ func _host_hit(victim: int, amount: float) -> void:
 	var attacker := _sender()
 	if attacker == victim or not alive.get(victim, false) or _protect.get(victim, 0.0) > 0.0:
 		return
+	if _blocks.has(victim):
+		# Shielded: no damage. The first hit on this shield sets off the parry.
+		if not _parried.has(victim):
+			_parried[victim] = true
+			_to_peer(victim, "_apply_parry", [])
+		return
 	if _marks.get(victim, 0.0) > 0.0:
 		amount *= 2.0
 	var hp: float = health.get(victim, MAX_HEALTH) - amount
@@ -191,22 +205,31 @@ func _host_hit(victim: int, amount: float) -> void:
 
 @rpc("any_peer", "reliable")
 func _host_push(victim: int, impulse: Vector3) -> void:
-	if multiplayer.is_server() and alive.get(victim, false):
+	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim):
 		_to_peer(victim, "_apply_push", [impulse])
 
 
 @rpc("any_peer", "reliable")
 func _host_mark(victim: int, duration: float) -> void:
-	if multiplayer.is_server() and alive.get(victim, false):
+	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim):
 		_marks[victim] = maxf(_marks.get(victim, 0.0), duration)
 		_show_status.rpc(victim, "mark", duration)
 
 
 @rpc("any_peer", "reliable")
 func _host_stagger(victim: int, duration: float) -> void:
-	if multiplayer.is_server() and alive.get(victim, false):
+	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim):
 		_to_peer(victim, "_apply_stagger", [duration])
 		_show_status.rpc(victim, "stagger", duration)
+
+
+@rpc("any_peer", "reliable")
+func _host_block(duration: float) -> void:
+	var id := _sender()
+	if multiplayer.is_server() and alive.get(id, false):
+		# A little extra so shots already in flight when it drops still count.
+		_blocks[id] = duration + 0.15
+		_parried.erase(id)
 
 
 func _kill(victim: int, attacker: int) -> void:
@@ -228,11 +251,14 @@ func _kill(victim: int, attacker: int) -> void:
 func _physics_process(delta: float) -> void:
 	if not is_online() or not multiplayer.is_server():
 		return
-	for table in [_protect, _marks]:
+	for table in [_protect, _marks, _blocks]:
 		for id in table.keys():
 			table[id] -= delta
 			if table[id] <= 0.0:
 				table.erase(id)
+	for id in _parried.keys():
+		if not _blocks.has(id):
+			_parried.erase(id)
 	for id in _respawn_timers.keys():
 		_respawn_timers[id] -= delta
 		if _respawn_timers[id] <= 0.0:
@@ -324,6 +350,13 @@ func _apply_push(impulse: Vector3) -> void:
 	var ball: RigidBody3D = _players.get(multiplayer.get_unique_id())
 	if ball and not ball.get("dead"):
 		ball.apply_central_impulse(impulse)
+
+
+@rpc("authority", "reliable")
+func _apply_parry() -> void:
+	var ball: Node3D = _players.get(multiplayer.get_unique_id())
+	if ball and not ball.get("dead"):
+		ball.call("on_parried")
 
 
 @rpc("authority", "reliable")

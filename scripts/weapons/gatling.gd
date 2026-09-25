@@ -19,6 +19,8 @@ signal fired(blade_index: int)
 @export var recoil_impulse := 0.35
 ## Camera shake added per shot (0..1 trauma).
 @export var shot_shake := 0.3
+## Small lock-on circle (pixels): a target inside it gets every shot, like the railgun.
+@export var lock_radius_px := 30.0
 
 @export_group("Muzzle")
 @export var flash_energy := 40.0
@@ -32,6 +34,8 @@ signal fired(blade_index: int)
 
 var _next := 0
 var _cooldown := 0.0
+var lock_target: Node3D = null
+var lock_screen_pos := Vector2.ZERO
 
 
 func _build() -> void:
@@ -45,12 +49,23 @@ func _build() -> void:
 
 func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
 	_cooldown = maxf(_cooldown - delta, 0.0)
+	lock_target = null
+	if is_ready():
+		var found: Array = manager.targets_on_screen(lock_radius_px)
+		if not found.is_empty():
+			lock_target = found[0]["target"]
+			lock_screen_pos = found[0]["screen"]
 	if pressed and is_ready() and _cooldown == 0.0:
 		_fire(hit)
 
 
 func get_crosshair() -> Dictionary:
-	return {"kind": "gatling"}
+	return {
+		"kind": "gatling",
+		"radius": lock_radius_px,
+		"locked": lock_target != null and is_instance_valid(lock_target),
+		"lock_pos": lock_screen_pos,
+	}
 
 
 func _fire(hit: Dictionary) -> void:
@@ -63,6 +78,13 @@ func _fire(hit: Dictionary) -> void:
 	var blade := _blades[index]
 	var tip: Vector3 = blade.to_global(blade.call("get_tip"))
 	var aim: Vector3 = manager.aim_point
+	if lock_target and is_instance_valid(lock_target):
+		# Locked: aim straight at it; whatever is actually in the way takes the hit.
+		aim = lock_target.call("get_aim_point")
+		var to := (aim - tip).normalized()
+		hit = manager.raycast(tip, aim + to * 0.5)
+		if not hit.is_empty():
+			aim = hit["position"]
 	var shot_dir := (aim - tip).normalized()
 
 	# Tracer.
@@ -87,5 +109,8 @@ func _fire(hit: Dictionary) -> void:
 		manager.spawn_light(pos + normal * 0.2, impact_light_energy, 5.0, 0.07, color)
 		manager.hit_object(hit["collider"], damage, pos, shot_dir, hit_impulse)
 
-	manager.recoil(shot_dir, recoil_impulse)
+	# Recoil from the ball's middle: a blade tip can be past a spot on the floor right in
+	# front of you, and measuring from there pushed you forward.
+	manager.recoil(aim - manager.ball.global_position, recoil_impulse)
 	manager.shake(shot_shake)
+	manager.play_sound("zap", tip, -8.0)

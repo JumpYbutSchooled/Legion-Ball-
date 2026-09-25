@@ -7,13 +7,19 @@ extends CanvasLayer
 
 const FrameShader := preload("res://shaders/impact_frame.gdshader")
 const SettingsScript := preload("res://scripts/settings.gd")
+const Sfx := preload("res://scripts/sfx.gd")
 
 ## Receives add_shake().
 @export var camera_rig: Node
-## Seconds (real time) each frame is held: inverted, colour, inverted.
-@export var frame_times := PackedFloat32Array([0.045, 0.045, 0.035])
+## Seconds (real time) each frame is held, alternating inverted / colour.
+@export var frame_times := PackedFloat32Array([0.07, 0.06, 0.06, 0.05, 0.06, 0.05])
 ## Game speed during the hitstop.
-@export var hitstop_scale := 0.05
+@export var hitstop_scale := 0.02
+## How hard each frame punches in toward the kill (screen fraction), and jolts sideways.
+@export var zoom_punch := 0.12
+@export var jolt := 0.012
+
+var _frame := -1
 
 var _rect: ColorRect
 var _mat: ShaderMaterial
@@ -36,9 +42,11 @@ func _ready() -> void:
 
 func trigger(world_pos: Vector3, color: Color) -> void:
 	if camera_rig and camera_rig.has_method("add_shake"):
-		camera_rig.call("add_shake", 0.9)
+		camera_rig.call("add_shake", 1.0)
+	Sfx.play_flat(get_tree(), "kill", -2.0)
 	if not SettingsScript.read(get_tree(), "impact_frames"):
 		return
+	_frame = -1
 	var camera := get_viewport().get_camera_3d()
 	var center := Vector2(0.5, 0.5)
 	if camera and not camera.is_position_behind(world_pos):
@@ -57,10 +65,12 @@ func _process(_delta: float) -> void:
 	var t := (Time.get_ticks_usec() - _start_usec) / 1_000_000.0
 	var mode := 0
 	var edge := 0.0
+	var index := -1
 	for i in frame_times.size():
 		edge += frame_times[i]
 		if t < edge:
 			mode = 1 if i % 2 == 0 else 2
+			index = i
 			break
 	if mode == 0:
 		_rect.visible = false
@@ -69,3 +79,10 @@ func _process(_delta: float) -> void:
 		return
 	_rect.visible = true
 	_mat.set_shader_parameter("mode", mode)
+	if index != _frame:
+		# Each new frame: fresh lines, a punch in (weaker each time) and a jolt.
+		_frame = index
+		var k := 1.0 - float(index) / frame_times.size()
+		_mat.set_shader_parameter("seed", randf() * 100.0)
+		_mat.set_shader_parameter("zoom", zoom_punch * k)
+		_mat.set_shader_parameter("jolt", Vector2(randf_range(-1, 1), randf_range(-1, 1)) * jolt * k)

@@ -1,13 +1,12 @@
 extends "res://scripts/weapons/blade_weapon.gd"
 ## Slot 5: Nova, a charged blast around the ball. Four blades crossed in an X (the lower
-## pair shallower so they clear the floor). Hold fire to charge (rings of warp close in
-## round the ball and the blade tips spread); release to detonate. The blast grows with
-## charge: it damages and throws everything nearby, staggers targets (they freeze in
-## place), and launches the ball up.
-## Combos: stagger drones so the Railgun can't miss; launch up, then Scatter or Swarm
-## from the air.
-
-const WarpShader := preload("res://shaders/charge_warp.gdshader")
+## pair shallower so they clear the floor). Hold fire to charge: the blades spread open
+## wider and wider and glow; release to detonate. The blast grows with charge: it
+## damages and throws everything nearby and staggers targets (they freeze in place).
+## - On the ground it launches the ball high into the air.
+## - In the air it throws the ball straight down; hitting the ground sets off a much
+##   bigger blast (the slam).
+## Combos: stagger drones so the Railgun can't miss; launch up, then slam back down.
 
 @export var charge_time := 1.2
 @export var cooldown := 1.5
@@ -18,19 +17,35 @@ const WarpShader := preload("res://shaders/charge_warp.gdshader")
 @export var damage_max := 10.0
 @export var force_min := 10.0
 @export var force_max := 40.0
-@export var launch_min := 6.0
-@export var launch_max := 16.0
+@export var launch_min := 14.0
+@export var launch_max := 34.0
 @export var stagger_time := 2.0
-@export var charge_spread := 0.3
-@export var charge_warp_strength := 0.1
+## How far the blades open up at full charge.
+@export var charge_spread := 0.55
+@export var charge_open := 0.5
+
+@export_group("Air slam")
+## Downward speed when detonated in the air.
+@export var slam_speed_min := 30.0
+@export var slam_speed_max := 55.0
+@export var slam_radius_min := 12.0
+@export var slam_radius_max := 20.0
+@export var slam_damage_min := 10.0
+@export var slam_damage_max := 22.0
+## Height above the ground that counts as "in the air".
+@export var air_height := 1.6
 
 var charge := 0.0
 var _charging := false
 var _cooldown := 0.0
 var _was_pressed := false
-var _ring_phase := 0.0
-var _warp: MeshInstance3D
-var _warp_mat: ShaderMaterial
+## The blast pop: the blades fling wide open, then settle.
+var _burst := 0.0
+var _hum: AudioStreamPlayer3D
+# Air slam in progress (local player only).
+var _slamming := false
+var _slam_charge := 0.0
+var _slam_timer := 0.0
 
 
 func _build() -> void:
@@ -44,21 +59,6 @@ func _build() -> void:
 	for angle in [55.0, -28.0]:
 		for side in [1.0, -1.0]:
 			add_blade(side, angle, shape)
-	# Charge warp round the ball itself.
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.5
-	sphere.height = 1.0
-	sphere.radial_segments = 24
-	sphere.rings = 12
-	_warp_mat = ShaderMaterial.new()
-	_warp_mat.shader = WarpShader
-	_warp = MeshInstance3D.new()
-	_warp.mesh = sphere
-	_warp.material_override = _warp_mat
-	_warp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_warp.scale = Vector3.ONE * 4.0
-	_warp.visible = false
-	add_child(_warp)
 
 
 func handle_fire(pressed: bool, _hit: Dictionary, delta: float) -> void:
@@ -88,16 +88,56 @@ func get_crosshair() -> Dictionary:
 	}
 
 
+func get_net_charge() -> float:
+	return charge if _charging else 0.0
+
+
+func apply_net_charge(c: float) -> void:
+	charge = c
+
+
 func _update(delta: float) -> void:
-	if not _charging:
+	var local: bool = not manager or manager.is_multiplayer_authority()
+	if not _charging and local:
 		charge = move_toward(charge, 0.0, delta * 3.0)
+	_burst = move_toward(_burst, 0.0, delta * 2.5)
 	var c := charge * charge
-	_set_param("charge_spread", c * charge_spread)
-	_set_param("charge_glow", c * 1.5)
-	_warp.visible = visible and charge > 0.01
-	_ring_phase += delta * lerpf(0.6, 2.4, charge)
-	_warp_mat.set_shader_parameter("phase", _ring_phase)
-	_warp_mat.set_shader_parameter("strength", charge_warp_strength * c)
+	var pop := ease(_burst, 0.4)
+	# Open up like the other weapons do: facets spread, tips splay, glow builds.
+	_set_param("charge_spread", c * charge_spread + pop * 0.5)
+	_set_param("charge_glow", c * 1.5 + pop * 2.0)
+	tip_open = c * charge_open + pop * 0.6
+	_update_hum()
+
+
+func _update_hum() -> void:
+	if _hum == null and is_inside_tree():
+		var sfx := get_tree().root.get_node_or_null("Sfx")
+		if sfx:
+			_hum = sfx.call("make_loop", "charge", self)
+	if not _hum:
+		return
+	var on := visible and charge > 0.02
+	if on and not _hum.playing:
+		_hum.play()
+	elif not on and _hum.playing:
+		_hum.stop()
+	_hum.volume_db = lerpf(-26.0, -8.0, charge)
+	_hum.pitch_scale = lerpf(0.9, 2.6, charge)
+
+
+func _physics_process(delta: float) -> void:
+	if not _slamming or not manager or not manager.is_multiplayer_authority():
+		return
+	_slam_timer -= delta
+	var ball: RigidBody3D = manager.ball
+	if ball.get("dead") or _slam_timer <= 0.0:
+		_slamming = false
+		return
+	var ground: Dictionary = manager.raycast(ball.global_position, ball.global_position + Vector3.DOWN * 1.0)
+	if not ground.is_empty():
+		_slamming = false
+		_slam(ground["position"])
 
 
 func _detonate() -> void:
@@ -105,12 +145,15 @@ func _detonate() -> void:
 	_charging = false
 	charge = 0.0
 	_cooldown = cooldown
+	_burst = 1.0
 	for i in _blades.size():
 		kick(i)
 
 	var ball: RigidBody3D = manager.ball
+	var pos := ball.global_position
+	var in_air: bool = manager.raycast(pos, pos + Vector3.DOWN * air_height).is_empty()
 	manager.spawn_explosion({
-		"position": ball.global_position,
+		"position": pos,
 		"color": color,
 		"radius": lerpf(radius_min, radius_max, k),
 		"damage": lerpf(damage_min, damage_max, k),
@@ -121,8 +164,44 @@ func _detonate() -> void:
 		"chunk_count": int(lerpf(8.0, 24.0, k)),
 		"light_energy": lerpf(80.0, 260.0, k),
 		"warp_strength": lerpf(0.15, 0.4, k),
-		"flat_sparks": true,
+		"flat_sparks": not in_air,
+		"sound": "nova",
 	})
 
-	manager.push_ball(Vector3.UP * lerpf(launch_min, launch_max, k))
+	if in_air:
+		# Thrown straight down; the real blast comes when it hits the ground.
+		var v := ball.linear_velocity
+		manager.push_ball(Vector3(0.0, -maxf(v.y, 0.0) - lerpf(slam_speed_min, slam_speed_max, k), 0.0))
+		_slamming = true
+		_slam_charge = k
+		_slam_timer = 4.0
+	else:
+		manager.push_ball(Vector3.UP * lerpf(launch_min, launch_max, k))
 	manager.shake(lerpf(0.5, 1.0, k))
+
+
+func _slam(ground_pos: Vector3) -> void:
+	var k := _slam_charge
+	manager.spawn_explosion({
+		"position": ground_pos + Vector3.UP * 0.3,
+		"color": color,
+		"radius": lerpf(slam_radius_min, slam_radius_max, k),
+		"damage": lerpf(slam_damage_min, slam_damage_max, k),
+		"force": lerpf(45.0, 80.0, k),
+		"stagger_time": stagger_time,
+		"spark_count": int(lerpf(300.0, 550.0, k)),
+		"spark_speed": lerpf(30.0, 45.0, k),
+		"chunk_count": int(lerpf(30.0, 60.0, k)),
+		"light_energy": lerpf(300.0, 600.0, k),
+		"warp_strength": 0.5,
+		"shock_time": 0.5,
+		"flat_sparks": true,
+		"sound": "land_slam",
+	})
+	# Stop dead on impact (no rubber-ball rebound), then a small hop off the crater.
+	var ball: RigidBody3D = manager.ball
+	var v := ball.linear_velocity
+	ball.linear_velocity = Vector3(v.x, 0.0, v.z)
+	manager.push_ball(Vector3.UP * 6.0)
+	manager.shake(1.0)
+	_burst = 1.0

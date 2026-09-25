@@ -12,6 +12,9 @@ const SMOOTHING := 18.0
 const SNAP_DISTANCE := 8.0
 ## Never predict further ahead than this, in seconds.
 const MAX_PREDICT := 0.25
+## Name tags shrink from full size at TAG_NEAR metres; past TAG_DOT_DISTANCE they're a dot.
+const TAG_NEAR := 10.0
+const TAG_DOT_DISTANCE := 70.0
 
 @onready var _ball: RigidBody3D = get_parent()
 @onready var _weapon: Node = get_parent().get_node("Weapon")
@@ -23,6 +26,7 @@ var _pos := Vector3.ZERO
 var _rot := Quaternion.IDENTITY
 var _vel := Vector3.ZERO
 var _age := 0.0
+var _name := ""
 
 
 func _ready() -> void:
@@ -34,7 +38,8 @@ func _ready() -> void:
 		var id := get_multiplayer_authority()
 		var net := get_tree().root.get_node_or_null("Net")
 		if net:
-			_tag.text = net.call("player_name", id)
+			_name = net.call("player_name", id)
+			_tag.text = _name
 			_tag.modulate = net.call("player_color", id)
 		_tag.visible = true
 
@@ -49,7 +54,7 @@ func _physics_process(delta: float) -> void:
 			_send_timer = 0.0
 			var w: Array = _weapon.call("get_net_state")
 			_state.rpc(_ball.global_position, _ball.global_basis.get_rotation_quaternion(),
-				_ball.linear_velocity, w[0], w[1], w[2])
+				_ball.linear_velocity, w[0], w[1], w[2], w[3])
 	elif _has_state:
 		_age += delta
 		var predicted := _pos + _vel * minf(_age, MAX_PREDICT)
@@ -62,12 +67,26 @@ func _physics_process(delta: float) -> void:
 
 
 func _process(_delta: float) -> void:
-	if _tag.visible:
-		_tag.global_position = _ball.get_global_transform_interpolated().origin + Vector3.UP * 1.4
+	if not _tag.visible:
+		return
+	_tag.global_position = _ball.get_global_transform_interpolated().origin + Vector3.UP * 1.4
+	# Smaller the further away; far off it becomes a dot in the player's colour.
+	var camera := get_viewport().get_camera_3d()
+	if not camera:
+		return
+	var dist := camera.global_position.distance_to(_tag.global_position)
+	if dist > TAG_DOT_DISTANCE:
+		_tag.text = "●"
+		_tag.pixel_size = 0.0011
+		_tag.outline_size = 4
+	else:
+		_tag.text = _name
+		_tag.pixel_size = lerpf(0.0022, 0.0009, clampf(inverse_lerp(TAG_NEAR, TAG_DOT_DISTANCE, dist), 0.0, 1.0))
+		_tag.outline_size = 8
 
 
 @rpc("authority", "unreliable_ordered")
-func _state(pos: Vector3, rot: Quaternion, vel: Vector3, aim: Vector3, slot: int, armed: bool) -> void:
+func _state(pos: Vector3, rot: Quaternion, vel: Vector3, aim: Vector3, slot: int, armed: bool, charge: float) -> void:
 	_pos = pos
 	_rot = rot
 	_vel = vel
@@ -75,4 +94,4 @@ func _state(pos: Vector3, rot: Quaternion, vel: Vector3, aim: Vector3, slot: int
 	if not _has_state:
 		_has_state = true
 		_ball.global_transform = Transform3D(Basis(rot), pos)
-	_weapon.call("apply_net_state", aim, slot, armed)
+	_weapon.call("apply_net_state", aim, slot, armed, charge)

@@ -9,6 +9,7 @@ extends Node3D
 
 const ShardBurst := preload("res://scripts/shard_burst.gd")
 const ShockShader := preload("res://shaders/shockwave.gdshader")
+const Sfx := preload("res://scripts/sfx.gd")
 
 @export var radius := 7.0
 @export var damage := 12.0
@@ -27,6 +28,8 @@ const ShockShader := preload("res://shaders/shockwave.gdshader")
 @export var stagger_time := 0.0
 ## Keep sparks close to horizontal (a ring rather than a ball), for ground blasts.
 @export var flat_sparks := false
+## Sound to play (scripts/sfx.gd name). Louder the bigger the blast.
+@export var sound := "boom"
 
 ## The weapon manager, for the shared light/flare/warp helpers.
 var manager: Node
@@ -53,6 +56,9 @@ func _ready() -> void:
 		chunks.lifetime = 1.4
 		add_child(chunks)
 	_spawn_shock()
+	if sound != "":
+		# Every computer makes its own copy of the blast, so no need to send the sound.
+		Sfx.play_at(get_tree(), sound, global_position, lerpf(-6.0, 6.0, clampf(radius / 16.0, 0.0, 1.0)), clampf(8.0 / radius, 0.7, 1.3))
 	if manager:
 		if warp_strength > 0.0:
 			manager.spawn_warp(global_position, warp_strength, radius * 0.9)

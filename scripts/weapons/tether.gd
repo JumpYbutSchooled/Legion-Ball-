@@ -7,11 +7,15 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## the further you're stretched past that length the harder it pulls, while moving
 ## away from the hook is resisted, so you swing round it instead of drifting off.
 ## The beam thins, brightens and thrums as tension builds.
+## Holding fire while nothing's in range keeps trying: the moment something under the
+## crosshair comes into range, it hooks.
+## Slam: while hooked (or just after letting go), hit the ground coming down fast enough
+## and it detonates round you, bigger the faster you land.
 ## Combos: reel into a target and finish with Scatter; fling off a wall into a dash.
 
 const LaserShader := preload("res://shaders/dash_laser.gdshader")
 
-@export var max_range := 70.0
+@export var max_range := 120.0
 ## How fast the rope winds in, in m/s.
 @export var reel_speed := 22.0
 ## Constant pull toward the hook while reeling.
@@ -30,6 +34,13 @@ const LaserShader := preload("res://shaders/dash_laser.gdshader")
 @export var yank_force := 35.0
 @export var beam_width := 0.13
 
+@export_group("Slam")
+## Downward speed (m/s) needed to slam, and the speed where the slam is at full size.
+@export var slam_speed := 20.0
+@export var slam_full_speed := 60.0
+## Seconds after letting go that a landing still counts as a slam.
+@export var slam_grace := 1.0
+
 ## 0 slack .. 1 at max pull.
 var tension := 0.0
 var _rope_length := 0.0
@@ -42,6 +53,12 @@ var _on_body := false
 var _anchor_local := Vector3.ZERO
 var _attached := false
 var _was_pressed := false
+## While held without a hook, keep trying to hook. Off after reeling all the way in,
+## so it doesn't instantly re-hook the same spot; a fresh press turns it back on.
+var _auto_hook := false
+## Seconds left in which a hard landing slams.
+var _slam_window := 0.0
+var _fall_speed := 0.0
 var _line: MeshInstance3D
 var _line_mat: ShaderMaterial
 
@@ -79,15 +96,64 @@ func _build() -> void:
 func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
 	var just_pressed := pressed and not _was_pressed
 	_was_pressed = pressed
+	if just_pressed:
+		_auto_hook = true
 	if not is_ready():
 		_detach()
 		return
-	if just_pressed and not _attached:
+	if pressed and not _attached and _auto_hook:
 		_try_attach(hit)
 	elif not pressed and _attached:
 		_detach()
 	if _attached:
 		_reel(delta)
+
+
+func _physics_process(delta: float) -> void:
+	if not manager or not manager.is_multiplayer_authority():
+		return
+	_slam_window = maxf(_slam_window - delta, 0.0)
+	if _attached:
+		_slam_window = slam_grace
+	var ball: RigidBody3D = manager.ball
+	if _slam_window <= 0.0 or ball.get("dead"):
+		_fall_speed = 0.0
+		return
+	# Landing: fast downward last step, and now there's ground right under the ball.
+	var falling := -ball.linear_velocity.y
+	var ground: Dictionary = manager.raycast(ball.global_position, ball.global_position + Vector3.DOWN * 0.9)
+	if not ground.is_empty() and _fall_speed >= slam_speed:
+		_slam(ground["position"], _fall_speed)
+		_fall_speed = 0.0
+		return
+	_fall_speed = falling
+
+
+func _slam(pos: Vector3, speed: float) -> void:
+	var k := clampf(inverse_lerp(slam_speed, slam_full_speed, speed), 0.0, 1.0)
+	_detach()
+	_auto_hook = false
+	_slam_window = 0.0
+	manager.spawn_explosion({
+		"position": pos + Vector3.UP * 0.3,
+		"color": color,
+		"radius": lerpf(6.0, 14.0, k),
+		"damage": lerpf(4.0, 12.0, k),
+		"force": lerpf(25.0, 60.0, k),
+		"spark_count": int(lerpf(150.0, 400.0, k)),
+		"spark_speed": lerpf(20.0, 38.0, k),
+		"chunk_count": int(lerpf(15.0, 40.0, k)),
+		"light_energy": lerpf(150.0, 400.0, k),
+		"warp_strength": lerpf(0.2, 0.45, k),
+		"flat_sparks": true,
+		"sound": "land_slam",
+	})
+	# Stop dead on impact (no rubber-ball rebound), then a hop off the crater.
+	var ball: RigidBody3D = manager.ball
+	var v := ball.linear_velocity
+	ball.linear_velocity = Vector3(v.x, 0.0, v.z)
+	manager.push_ball(Vector3.UP * lerpf(5.0, 10.0, k))
+	manager.shake(lerpf(0.6, 1.0, k))
 
 
 func _on_exit() -> void:
@@ -153,6 +219,7 @@ func _try_attach(hit: Dictionary) -> void:
 	manager.spawn_beam(pos, normal, 0.8, 0.5, 0.1, 16.0, color)
 	manager.spawn_light(pos + normal * 0.2, 30.0, 6.0, 0.1, color)
 	manager.shake(0.4)
+	manager.play_sound("tether", global_position, -4.0)
 
 
 func _detach() -> void:
@@ -184,6 +251,7 @@ func _reel(delta: float) -> void:
 	var dist := to_anchor.length()
 	if dist < release_distance:
 		_detach()
+		_auto_hook = false
 		return
 	var dir := to_anchor / dist
 

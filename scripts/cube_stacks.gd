@@ -11,6 +11,9 @@ const STACKS := [
 	[Vector3(24, 0, 30), "tower"],
 ]
 
+## Render layer the cubes draw on, so the spark height map can see just them.
+const CUBE_LAYER := 4
+
 @export var ball: Node
 @export var cube_size := 1.0
 @export var cube_mass := 0.6
@@ -37,6 +40,21 @@ func _ready() -> void:
 	if ball and ball.has_signal("respawned"):
 		ball.connect("respawned", respawn)
 	respawn()
+	_add_spark_collider()
+
+
+## GPU sparks only bounce off particle colliders, and there are too many cubes to give
+## each its own box (Godot uses at most 32 at once). Instead one height map, redrawn
+## every frame from the cubes alone (their own render layer), catches sparks on them.
+func _add_spark_collider() -> void:
+	var field := GPUParticlesCollisionHeightField3D.new()
+	field.size = Vector3(120, 30, 120)
+	field.resolution = GPUParticlesCollisionHeightField3D.RESOLUTION_512
+	field.update_mode = GPUParticlesCollisionHeightField3D.UPDATE_MODE_ALWAYS
+	field.heightfield_mask = CUBE_LAYER
+	field.position = Vector3(0, 13, 45)
+	# Not a child of this node: respawn() clears all children.
+	get_parent().add_child.call_deferred(field)
 
 
 func respawn() -> void:
@@ -77,6 +95,7 @@ func _spawn_cube(pos: Vector3) -> void:
 	body.add_child(col)
 	var mesh := MeshInstance3D.new()
 	mesh.mesh = _mesh
+	mesh.layers = CUBE_LAYER
 	body.add_child(mesh)
 	add_child(body)
 	body.global_position = global_position + pos

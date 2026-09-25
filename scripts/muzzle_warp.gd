@@ -21,6 +21,9 @@ func _ready() -> void:
 	mesh = sphere
 	_mat = ShaderMaterial.new()
 	_mat.shader = WarpShader
+	# Drawn before the crystal blades: the warp re-draws a copy of the screen taken before
+	# any see-through objects, so drawn after them it would erase any blade inside it.
+	_mat.render_priority = Material.RENDER_PRIORITY_MIN + 1
 	material_override = _mat
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_update()

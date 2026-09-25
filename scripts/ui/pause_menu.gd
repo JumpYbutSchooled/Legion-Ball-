@@ -55,6 +55,8 @@ func _unhandled_input(event: InputEvent) -> void:
 ## just takes over input (your ball stops being controlled) while the menu is open.
 func pause() -> void:
 	_root.visible = true
+	_root.modulate.a = 0.0
+	_root.create_tween().set_trans(Tween.TRANS_SINE).tween_property(_root, "modulate:a", 1.0, 0.2)
 	var net := _net()
 	if net and net.get("online"):
 		net.set("input_blocked", true)

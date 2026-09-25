@@ -6,6 +6,8 @@ extends Control
 ##   to bracket it. The circle fills as it charges, disappears while reloading, and the
 ##   lines spin round the circle until it's reloaded.
 ## Everything fades with the weapon's enter/exit animation.
+## Transitions: switching weapons, the old crosshair spins, swells and fades out while the
+## new one spins in from small; drawing/holstering scales and twists it in and out.
 
 @export var weapon: Node
 @export var color := Color(1, 1, 1, 1)
@@ -29,11 +31,22 @@ extends Control
 ## Spin while reloading, in radians per second.
 @export var reload_spin := 4.0
 
+@export_group("Transitions")
+## Seconds for the switch morph between two weapons' crosshairs.
+@export var switch_time := 0.3
+
 var _dirs: Array[Vector2] = []  # Gatling line direction per blade, in firing order.
 var _kicks := PackedFloat32Array()
 var _rail_center := Vector2.ZERO
 var _rail_radius := -1.0
 var _spin := 0.0
+var _gat_center := Vector2.ZERO
+var _gat_radius := -1.0
+# Switch morph: the crosshair we're leaving and how far along the switch is.
+var _kind := ""
+var _prev_info := {}
+var _last_info := {}
+var _switch := 1.0
 
 
 func _ready() -> void:
@@ -64,6 +77,27 @@ func _process(delta: float) -> void:
 		_kicks[i] = lerpf(_kicks[i], 0.0, settle)
 
 	var info := _info()
+	var kind: String = info.get("kind", "")
+	if kind != _kind:
+		if _kind != "":
+			_prev_info = _last_info
+			_switch = 0.0
+		_kind = kind
+	_switch = move_toward(_switch, 1.0, delta / switch_time)
+	_last_info = info
+	if kind == "gatling" and info.has("radius"):
+		var c := size / 2.0
+		var goal_center := c
+		var goal_radius: float = info["radius"]
+		if info["locked"]:
+			goal_center = info["lock_pos"]
+			goal_radius = 8.0
+		if _gat_radius < 0.0:
+			_gat_center = goal_center
+			_gat_radius = goal_radius
+		var t := 1.0 - exp(-lock_speed * 1.5 * delta)
+		_gat_center = _gat_center.lerp(goal_center, t)
+		_gat_radius = lerpf(_gat_radius, goal_radius, t)
 	if info.get("kind") == "rail":
 		var c := size / 2.0
 		var radius: float = info["radius"]
@@ -97,15 +131,36 @@ func _draw() -> void:
 	var arm := 1.0
 	if weapon and weapon.has_method("get_arm_amount"):
 		arm = weapon.call("get_arm_amount")
-	if arm <= 0.01:
+	if arm <= 0.01 and _switch >= 1.0:
 		return
+	var c := size / 2.0
+	var t := ease(_switch, -2.0)  # Ease in and out.
+	if _switch < 1.0 and not _prev_info.is_empty():
+		# The old crosshair: swells, twists away and fades.
+		var old := color
+		old.a *= 1.0 - t
+		_set_xform(c, t * PI * 0.5, 1.0 + t * 0.9)
+		_draw_kind(_prev_info, old)
+	# Drawing / holstering: grows and untwists as the weapon comes out.
+	var arm_t := ease(arm, -2.0)
 	var col := color
-	col.a *= arm
+	col.a *= arm * (t if _switch < 1.0 else 1.0)
+	var rot := -(1.0 - t) * PI * 0.5 - (1.0 - arm_t) * PI * 0.25
+	var scale_k := lerpf(0.25, 1.0, t) * lerpf(0.4, 1.0, arm_t)
+	_set_xform(c, rot, scale_k)
+	_draw_kind(_info(), col)
+	draw_set_transform_matrix(Transform2D.IDENTITY)
 
-	var info := _info()
+
+## Rotate and scale everything drawn next round the screen center.
+func _set_xform(center: Vector2, rot: float, s: float) -> void:
+	draw_set_transform_matrix(Transform2D(rot, Vector2(s, s), 0.0, center) * Transform2D(0.0, -center))
+
+
+func _draw_kind(info: Dictionary, col: Color) -> void:
 	match info.get("kind"):
 		"gatling":
-			_draw_gatling(col)
+			_draw_gatling(info, col)
 		"rail":
 			_draw_rail(info, col)
 		"scatter":
@@ -118,12 +173,21 @@ func _draw() -> void:
 			_draw_swarm(info, col)
 
 
-func _draw_gatling(col: Color) -> void:
+## Gatling: one line per blade, plus a faint lock circle; a locked target gets a small
+## four-corner bracket that slides onto it.
+func _draw_gatling(info: Dictionary, col: Color) -> void:
 	var c := size / 2.0
 	for i in _dirs.size():
 		var d := _dirs[i]
 		var start := c + d * (line_gap + _kicks[i] * kick_pixels)
 		draw_line(start, start + d * line_length, col, line_width, true)
+	if not info.has("radius") or _gat_radius < 0.0:
+		return
+	var faint := col
+	faint.a *= 0.3
+	draw_arc(c, info["radius"], 0.0, TAU, 48, faint, line_width, true)
+	if info["locked"]:
+		_brackets(_gat_center, _gat_radius, 0.0, col)
 
 
 func _draw_rail(info: Dictionary, col: Color) -> void:

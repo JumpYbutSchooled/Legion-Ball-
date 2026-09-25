@@ -32,8 +32,40 @@ extends MeshInstance3D
 		_rebuild()
 
 
+## [corners, normal] for every face, kept for build_shell_mesh().
+var _faces: Array = []
+
+
 func _ready() -> void:
 	_rebuild()
+
+
+## A copy of the faces for the block shield (scripts/shield.gd): every vertex carries its
+## face's center in UV.xy + UV2.x, so the shader can move and grow whole faces.
+func build_shell_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for face in _faces:
+		var corners: Array[Vector3] = face[0]
+		var normal: Vector3 = face[1]
+		var center := Vector3.ZERO
+		for c in corners:
+			center += c
+		center /= corners.size()
+		for i in corners.size():
+			var a := center
+			var b := corners[i]
+			var c := corners[(i + 1) % corners.size()]
+			if (b - a).cross(c - a).dot(normal) > 0.0:
+				var tmp := b
+				b = c
+				c = tmp
+			for p in [a, b, c]:
+				st.set_normal(normal)
+				st.set_uv(Vector2(center.x, center.y))
+				st.set_uv2(Vector2(center.z, 0.0))
+				st.add_vertex(p)
+	return st.commit()
 
 
 func _rebuild() -> void:
@@ -55,6 +87,7 @@ func _rebuild() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 
+	_faces.clear()
 	for v in verts.size():
 		var n := verts[v]
 		var corners: Array[Vector3] = []
@@ -64,6 +97,7 @@ func _rebuild() -> void:
 		_sort_around(corners, n)
 		var fill := pentagon_color if corners.size() == 5 else hexagon_color
 		_add_face(st, corners, n, fill)
+		_faces.append([corners, n])
 
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true

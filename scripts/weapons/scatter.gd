@@ -12,9 +12,9 @@ extends "res://scripts/weapons/blade_weapon.gd"
 
 @export var pellets := 10
 ## Cone half-angle, in degrees.
-@export var spread_deg := 7.0
+@export var spread_deg := 2.5
 @export var fire_interval := 0.26
-@export var max_range := 60.0
+@export var max_range := 200.0
 
 @export_group("Heat")
 ## Heat added per shot (1 = overheated): 0.17 gives six quick shots.
@@ -35,7 +35,7 @@ extends "res://scripts/weapons/blade_weapon.gd"
 @export_group("")
 @export var pellet_damage := 1.4
 ## Pellets do full damage up to this range, falling to 30% at max_range.
-@export var falloff_start := 10.0
+@export var falloff_start := 60.0
 @export var pellet_impulse := 6.0
 ## Ball velocity change per shot, opposite the way the camera is looking.
 @export var self_knockback := 8.0
@@ -106,6 +106,13 @@ func _update(delta: float) -> void:
 		_set_param("extend", glow * heat_extend)
 
 
+## Equipping it while it vents flashes the vent colour.
+func _equip_flash_color() -> Color:
+	if overheated:
+		return reload_start_color.lerp(reload_end_color, 1.0 - heat)
+	return color
+
+
 func get_crosshair() -> Dictionary:
 	return {
 		"kind": "scatter",
@@ -127,6 +134,7 @@ func _on_overheat() -> void:
 	manager.spawn_warp(global_position, 0.12, 2.5)
 	manager.spawn_light(global_position, 40.0, 8.0, 0.25, hot_color)
 	manager.shake(0.5)
+	manager.play_sound("vent", global_position, -4.0)
 
 
 func _fire() -> void:
@@ -152,6 +160,7 @@ func _fire() -> void:
 		manager.spawn_beam(tip, aim_dir, 1.0, 0.6, 0.07, muzzle_intensity, color)
 	manager.spawn_warp(center + aim_dir * 2.0, 0.1, 1.6)
 	manager.spawn_light(center + aim_dir * 2.2, flash_energy, 12.0, 0.08, color)
+	manager.play_sound("shotgun", center + aim_dir * 2.0, -3.0)
 
 	var lights_left := 3  # A few impact lights is plenty; dozens would be wasteful.
 	for p in pellets:

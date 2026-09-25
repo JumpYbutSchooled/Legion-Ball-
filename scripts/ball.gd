@@ -7,18 +7,31 @@ signal jumped
 signal respawned
 
 const DashLaser := preload("res://scripts/dash_laser.gd")
+const ShieldScript := preload("res://scripts/shield.gd")
+const Sfx := preload("res://scripts/sfx.gd")
 
 @export var camera_rig: Node3D
 @export var roll_torque := 12.0
 @export var push_force := 16.0
 @export var air_control := 0.4
 @export var max_speed := 40.0
-@export var jump_impulse := 6.0
+@export var jump_impulse := 8.5
 @export var jump_cooldown := 1.0
 @export var dash_speed := 40.0
 @export var dash_lift := 1.5
 @export var dash_cooldown := 1.0
 @export var fall_reset_height := -20.0
+## Ceiling: above this height upward speed is bled off, so launches can't go forever.
+@export var max_height := 120.0
+## Hard speed cap in m/s (500 on the speedometer).
+@export var top_speed := 100.0
+
+@export_group("Block")
+## Q: seconds the shield is up (including folding out and back).
+@export var block_time := 1.0
+@export var block_cooldown := 10.0
+## Launch speed when a hit lands on the shield.
+@export var parry_launch := 70.0
 
 @export_group("Skid")
 ## Minimum speed before turning against your motion counts as a skid.
@@ -51,6 +64,10 @@ var dead := false
 var _stagger_timer := 0.0
 var _status_timer := 0.0
 var _status_color := Color.WHITE
+## Seconds of shield left (0 = down), and seconds until Q works again.
+var _block_timer := 0.0
+var _block_cd := 0.0
+var _shield: MeshInstance3D
 
 
 func _ready() -> void:
@@ -59,6 +76,10 @@ func _ready() -> void:
 	if shape:
 		_radius = shape.radius
 	_sparks.emitting = false
+	_shield = ShieldScript.new()
+	_shield.set("ball", self)
+	add_child(_shield)
+	_shield.call("setup", $Mesh)
 
 
 func _process(delta: float) -> void:
@@ -82,7 +103,11 @@ func _physics_process(delta: float) -> void:
 		return
 	_jump_timer = maxf(_jump_timer - delta, 0.0)
 	_dash_timer = maxf(_dash_timer - delta, 0.0)
+	_block_cd = maxf(_block_cd - delta, 0.0)
 	var controls := _controls_enabled()
+
+	if controls and _block_cd == 0.0 and Input.is_action_just_pressed("block"):
+		_start_block()
 
 	if (controls and Input.is_action_just_pressed("reset_ball")) or global_position.y < fall_reset_height:
 		_reset_requested = true
@@ -105,6 +130,7 @@ func _physics_process(delta: float) -> void:
 		_jump_timer = jump_cooldown
 		apply_central_impulse(Vector3.UP * jump_impulse)
 		jumped.emit()
+		Sfx.play_flat(get_tree(), "jump", -8.0)
 
 	if controls and _dash_timer == 0.0 and Input.is_action_just_pressed("dash"):
 		_dash_timer = dash_cooldown
@@ -139,6 +165,9 @@ func get_aim_point() -> Vector3:
 
 
 func take_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
+	# The host decides what a shield blocks; this is just so the shooter sees it land.
+	if is_blocking():
+		_shield.call("hit_flash")
 	var arena := _arena()
 	if arena:
 		arena.call("request_hit", get_multiplayer_authority(), amount * PVP_DAMAGE_SCALE)
@@ -179,9 +208,81 @@ func respawn_at(pos: Vector3) -> void:
 	_reset_requested = true
 
 
-## Local player only: lose control for a moment (Nova stagger).
+## Local player only: stunned (Nova stagger). Frozen in place in mid-air, no moving,
+## dashing, blocking or shooting, like a staggered practice target.
 func stagger_controls(duration: float) -> void:
 	_stagger_timer = maxf(_stagger_timer, duration)
+
+
+func is_staggered() -> bool:
+	return _stagger_timer > 0.0
+
+
+# --- Block (Q) --------------------------------------------------------------------------
+# Online, the host keeps track of who's shielded (scripts/arena.gd): hits on a shield do
+# no damage and trigger a parry on the blocker's computer instead.
+
+func is_blocking() -> bool:
+	return _block_timer > 0.0
+
+
+## 0 right after blocking, 1 when the shield is ready again.
+func get_block_ready_ratio() -> float:
+	return 1.0 - _block_cd / block_cooldown
+
+
+func _start_block() -> void:
+	_block_timer = block_time
+	_block_cd = block_cooldown
+	_show_block(block_time)
+	var arena := _arena()
+	if arena:
+		arena.call("request_block", block_time)
+	if _online():
+		_net_block.rpc(block_time)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _net_block(duration: float) -> void:
+	_block_timer = duration
+	_show_block(duration)
+
+
+func _show_block(duration: float) -> void:
+	_shield.call("play", duration)
+	Sfx.play_at(get_tree(), "shield", global_position)
+
+
+## Local player only: a hit landed on the shield. No damage; instead the shield bursts,
+## a huge explosion goes off round the ball and it's thrown high into the air.
+func on_parried() -> void:
+	_shield.call("hit_flash")
+	_shield.call("stop")
+	_block_timer = 0.0
+	_knockback += Vector3.UP * parry_launch
+	_knockback_effects = true
+	var weapon := get_node_or_null("Weapon")
+	if weapon:
+		weapon.call("spawn_explosion", {
+			"position": global_position,
+			"color": Color(0.55, 0.4, 1.0),
+			"radius": 16.0,
+			"damage": 14.0,
+			"force": 70.0,
+			"spark_count": 500,
+			"spark_speed": 40.0,
+			"chunk_count": 50,
+			"light_energy": 500.0,
+			"warp_strength": 0.5,
+			"shock_time": 0.5,
+			"sound": "parry",
+		})
+		weapon.call("shake", 1.0)
+
+
+func _online() -> bool:
+	var net := get_tree().root.get_node_or_null("Net")
+	return net != null and net.get("online")
 
 
 ## Glow the ball to show a status (every computer): "mark" violet, "stagger" gold.
@@ -198,6 +299,7 @@ func _arena() -> Node:
 func _update_status_glow(delta: float) -> void:
 	_status_timer = maxf(_status_timer - delta, 0.0)
 	_stagger_timer = maxf(_stagger_timer - delta, 0.0)
+	_block_timer = maxf(_block_timer - delta, 0.0)
 	var mesh := $Mesh as MeshInstance3D
 	if not mesh.mesh:
 		return
@@ -221,6 +323,14 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		state.angular_velocity = Vector3.ZERO
 		reset_physics_interpolation()
 		respawned.emit.call_deferred()
+		return
+
+	if _stagger_timer > 0.0:
+		# Frozen: hold still, cancelling this step's gravity too.
+		_knockback = Vector3.ZERO
+		_dash_requested = false
+		state.linear_velocity = -state.total_gravity * state.step
+		state.angular_velocity = Vector3.ZERO
 		return
 
 	if _knockback != Vector3.ZERO:
@@ -249,6 +359,17 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		# Deferred: adding nodes mid physics callback isn't safe.
 		_fire_laser.call_deferred(state.transform.origin, -dir)
 		dashed.emit()
+		var weapon := get_node_or_null("Weapon")
+		if weapon:
+			weapon.call_deferred("play_sound", "dash", state.transform.origin, -2.0)
+
+	# Speed cap and height ceiling.
+	var v := state.linear_velocity
+	if v.length() > top_speed:
+		v = v.normalized() * top_speed
+	if state.transform.origin.y > max_height and v.y > 0.0:
+		v.y *= 0.8
+	state.linear_velocity = v
 
 
 func _fire_laser(origin: Vector3, back_dir: Vector3) -> void:

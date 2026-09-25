@@ -25,6 +25,9 @@ const FlashLight := preload("res://scripts/flash_light.gd")
 const LightFlare := preload("res://scripts/light_flare.gd")
 const Explosion := preload("res://scripts/explosion.gd")
 const Missile := preload("res://scripts/weapons/swarm_missile.gd")
+const Sfx := preload("res://scripts/sfx.gd")
+## How fast the weapon turns to follow the aim (higher = snappier).
+const TURN_RATE := 30.0
 
 @export var ball: RigidBody3D
 @export var camera: Camera3D
@@ -38,6 +41,8 @@ var weapons: Array = []
 var current := 0
 
 var _was_captured := false
+var _aim_basis := Basis.IDENTITY
+var _has_aim_basis := false
 
 
 func _ready() -> void:
@@ -111,15 +116,16 @@ func _physics_process(delta: float) -> void:
 	_was_captured = captured
 
 
-## What other players need to draw this weapon: [aim point, equipped slot, drawn?].
+## What other players need to draw this weapon:
+## [aim point, equipped slot, drawn?, charge (railgun/nova, so others see it building)].
 func get_net_state() -> Array:
 	var w = current_weapon()
 	var drawn: bool = w.state == BladeWeapon.State.READY or w.state == BladeWeapon.State.ENTERING
-	return [aim_point, current, drawn]
+	return [aim_point, current, drawn, w.get_net_charge()]
 
 
 ## Applies another player's weapon state from the network.
-func apply_net_state(aim: Vector3, slot: int, drawn: bool) -> void:
+func apply_net_state(aim: Vector3, slot: int, drawn: bool, charge := 0.0) -> void:
 	aim_point = aim
 	if slot != current:
 		select(slot)
@@ -127,39 +133,56 @@ func apply_net_state(aim: Vector3, slot: int, drawn: bool) -> void:
 	var is_drawn: bool = w.state == BladeWeapon.State.READY or w.state == BladeWeapon.State.ENTERING
 	if drawn != is_drawn:
 		toggle()
+	w.apply_net_charge(charge)
 
 
+## No shooting while dead, stunned or behind the shield.
 func _controls_enabled() -> bool:
-	if ball.get("dead"):
+	if ball.get("dead") or ball.call("is_blocking") or ball.call("is_staggered"):
 		return false
 	var net := get_tree().root.get_node_or_null("Net")
 	return not (net and net.get("input_blocked"))
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not ball:
 		return
 	var center := ball.get_global_transform_interpolated().origin
 	# Other players have no camera here: fall back to the way the weapon already faces.
 	var look := -camera.global_basis.z if camera else -global_basis.z
-	var dir := aim_point - center
-	# Looking steeply down, the crosshair ray lands right next to the ball, where the
-	# direction to it is meaningless; follow the camera's own look direction instead.
-	if dir.length() < 2.0:
-		dir = look
-	dir = dir.normalized()
-	# Keep the blades upright, but near vertical "up" is parallel to the aim, so use
-	# the camera's horizontal heading as the reference instead (keeps them from spinning).
-	var up := Vector3.UP
-	if absf(dir.y) > 0.95:
-		var heading := Vector3(look.x, 0.0, look.z)
-		if heading.length() < 0.01:
-			var ref := camera.global_basis.y if camera else global_basis.y
-			heading = Vector3(ref.x, 0.0, ref.z)
-		if heading.length() < 0.01:
-			heading = Vector3.FORWARD
-		up = heading.normalized() * -signf(dir.y)
-	global_transform = Transform3D(Basis.looking_at(dir, up), center)
+	var to_aim := aim_point - center
+	var dist := to_aim.length()
+	var dir := to_aim / dist if dist > 0.001 else look
+	# Looking down at the floor, the crosshair ray lands right next to the ball, where
+	# the direction to it swings wildly. Blend smoothly toward the camera's own look
+	# direction as the aim point closes in (a hard switch here made the gun snap).
+	var blended := look.lerp(dir, smoothstep(1.5, 6.0, dist))
+	dir = blended.normalized() if blended.length() > 0.01 else look
+	# Keep the blades upright. The camera's own up is never parallel to where it looks,
+	# so it's a smooth reference at any pitch (straight "up" flips when aiming at the floor).
+	var up := camera.global_basis.y if camera else _remote_up(dir, look)
+	if absf(up.dot(dir)) > 0.99:
+		up = Vector3.UP if absf(dir.y) < 0.9 else Vector3.FORWARD
+	var goal := Basis.looking_at(dir, up)
+	if not _has_aim_basis:
+		_aim_basis = goal
+		_has_aim_basis = true
+	else:
+		_aim_basis = _aim_basis.slerp(goal, 1.0 - exp(-TURN_RATE * delta)).orthonormalized()
+	global_transform = Transform3D(_aim_basis, center)
+
+
+## Up reference for other players' weapons (no camera): world up, or the heading when
+## they aim nearly straight up or down.
+func _remote_up(dir: Vector3, look: Vector3) -> Vector3:
+	if absf(dir.y) < 0.95:
+		return Vector3.UP
+	var heading := Vector3(look.x, 0.0, look.z)
+	if heading.length() < 0.01:
+		heading = Vector3(global_basis.y.x, 0.0, global_basis.y.z)
+	if heading.length() < 0.01:
+		heading = Vector3.FORWARD
+	return heading.normalized() * -signf(dir.y)
 
 
 ## Casts from the camera through the screen center (the crosshair).
@@ -176,9 +199,12 @@ func _raycast_crosshair() -> Dictionary:
 # --- Helpers the weapons share -------------------------------------------------
 
 ## Living lock targets whose aim point is on screen within `radius_px` of the center,
-## nearest to the ball first. Each entry: {"target", "point", "screen", "distance"}.
+## closest to the center of the circle first.
+## Each entry: {"target", "point", "screen", "distance", "off_center"}.
 func targets_on_screen(radius_px: float) -> Array:
 	var found := []
+	if not camera:
+		return found
 	var center := camera.get_viewport().get_visible_rect().size / 2.0
 	var ball_pos := ball.global_position
 	for target in get_tree().get_nodes_in_group("lock_targets"):
@@ -188,10 +214,11 @@ func targets_on_screen(radius_px: float) -> Array:
 		if camera.is_position_behind(p):
 			continue
 		var screen := camera.unproject_position(p)
-		if screen.distance_to(center) > radius_px:
+		var off := screen.distance_to(center)
+		if off > radius_px:
 			continue
-		found.append({"target": target, "point": p, "screen": screen, "distance": p.distance_to(ball_pos)})
-	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["distance"] < b["distance"])
+		found.append({"target": target, "point": p, "screen": screen, "distance": p.distance_to(ball_pos), "off_center": off})
+	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["off_center"] < b["off_center"])
 	return found
 
 
@@ -227,18 +254,20 @@ func hit_object(collider: Object, damage: float, pos: Vector3, dir: Vector3, imp
 		body.apply_impulse(dir * impulse, pos - body.global_position)
 
 
-## Pushes the ball back along the flattened shot direction.
+## Pushes the ball back, horizontally, away from `shot_dir` (measure it from the ball,
+## not a blade tip: a tip can be past a point on the floor right in front of you, which
+## pushed you forward). Shots aimed steeply down push less.
 func recoil(shot_dir: Vector3, impulse: float) -> void:
-	var flat := Vector3(shot_dir.x, 0.0, shot_dir.z)
+	var d := shot_dir.normalized()
+	var flat := Vector3(d.x, 0.0, d.z)
 	if flat.length() > 0.01:
-		ball.apply_central_impulse(-flat.normalized() * impulse)
+		ball.apply_central_impulse(-flat * impulse)
 
 
-## Dash-strength kick on the ball, opposite the shot.
+## Dash-strength kick on the ball, straight back along the shot (up and down included).
 func knockback(shot_dir: Vector3, speed: float) -> void:
-	var flat := Vector3(shot_dir.x, 0.0, shot_dir.z)
-	if flat.length() > 0.01 and ball.has_method("apply_knockback"):
-		ball.call("apply_knockback", -flat.normalized() * speed)
+	if shot_dir.length() > 0.01 and ball.has_method("apply_knockback"):
+		ball.call("apply_knockback", -shot_dir.normalized() * speed)
 
 
 ## Instant change to the ball's velocity in any direction (Scatter jump, Nova launch),
@@ -307,6 +336,18 @@ func spawn_missile(props: Dictionary, visual_only := false) -> void:
 	ball.get_parent().add_child(missile)
 	if not visual_only and _broadcasting():
 		_net_missile.rpc(props)
+
+
+## A sound at `pos`; other players hear it too.
+func play_sound(sound: String, pos: Vector3, volume_db := 0.0) -> void:
+	Sfx.play_at(get_tree(), sound, pos, volume_db)
+	if _broadcasting():
+		_net_sound.rpc(sound, pos, volume_db)
+
+
+@rpc("authority", "unreliable")
+func _net_sound(sound: String, pos: Vector3, volume_db: float) -> void:
+	Sfx.play_at(get_tree(), sound, pos, volume_db)
 
 
 ## A blade jolted by a shot; other players see it too.

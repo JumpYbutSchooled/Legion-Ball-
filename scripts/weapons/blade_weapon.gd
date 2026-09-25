@@ -14,6 +14,7 @@ enum State { HOLSTERED, ENTERING, READY, EXITING }
 const BladeMesh := preload("res://scripts/energy_blade_mesh.gd")
 const BladeFlare := preload("res://scripts/weapons/blade_flare.gd")
 const FlashLight := preload("res://scripts/flash_light.gd")
+const Sfx := preload("res://scripts/sfx.gd")
 const WAVE_END := 1.4  # Wave position where every facet has fully broken/joined.
 
 @export var color := Color(0.3, 0.8, 1.0)
@@ -71,6 +72,7 @@ func enter() -> void:
 	state = State.ENTERING
 	_wave = 0.0
 	visible = true
+	_sound("equip", -10.0)
 
 
 func exit() -> void:
@@ -79,6 +81,13 @@ func exit() -> void:
 	state = State.EXITING
 	_wave = 0.0
 	_on_exit()
+	_sound("unequip", -12.0)
+
+
+## A sound at the weapon. Not broadcast: every computer runs enter/exit itself.
+func _sound(sound: String, volume_db := 0.0) -> void:
+	if is_inside_tree():
+		Sfx.play_at(get_tree(), sound, global_position, volume_db)
 
 
 func is_ready() -> bool:
@@ -154,7 +163,7 @@ func _finish_wave() -> void:
 	_wave = -1.0
 	if state == State.ENTERING:
 		state = State.READY
-		flash(color)
+		flash(_equip_flash_color())
 		equipped.emit()
 	else:
 		state = State.HOLSTERED
@@ -195,3 +204,19 @@ func _on_exit() -> void:
 ## What the crosshair should draw. Must include "kind".
 func get_crosshair() -> Dictionary:
 	return {"kind": "none"}
+
+
+## Colour of the flash when the weapon finishes coming out (a reloading weapon flashes
+## its reload colour instead).
+func _equip_flash_color() -> Color:
+	return color
+
+
+## 0..1 build-up other players should see (railgun / nova charge). Sent over the network.
+func get_net_charge() -> float:
+	return 0.0
+
+
+## Another player's charge, from the network.
+func apply_net_charge(_charge: float) -> void:
+	pass

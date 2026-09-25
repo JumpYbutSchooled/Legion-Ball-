@@ -9,6 +9,7 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ##   turning blue over reload_time, then snaps whole with a flash of blue light.
 
 const WarpShader := preload("res://shaders/charge_warp.gdshader")
+const FlareShader := preload("res://shaders/light_flare.gdshader")
 
 enum Rail { IDLE, CHARGING, RELOADING }
 
@@ -56,6 +57,11 @@ var lock_screen_pos := Vector2.ZERO
 var _charge_warp: MeshInstance3D
 var _warp_mat: ShaderMaterial
 var _ring_phase := 0.0
+## Flare + light on the tip that swells as it charges, so everyone can see a shot coming.
+var _flare: MeshInstance3D
+var _flare_mat: ShaderMaterial
+var _flare_light: OmniLight3D
+var _hum: AudioStreamPlayer3D
 
 
 func _build() -> void:
@@ -74,6 +80,8 @@ func _build() -> void:
 	sphere.rings = 12
 	_warp_mat = ShaderMaterial.new()
 	_warp_mat.shader = WarpShader
+	# Before the blade, or the warp would paint over it (see muzzle_warp.gd).
+	_warp_mat.render_priority = Material.RENDER_PRIORITY_MIN + 1
 	_charge_warp = MeshInstance3D.new()
 	_charge_warp.mesh = sphere
 	_charge_warp.material_override = _warp_mat
@@ -82,6 +90,25 @@ func _build() -> void:
 	_charge_warp.scale = Vector3.ONE * 3.6
 	_charge_warp.visible = false
 	add_child(_charge_warp)
+
+	var quad := QuadMesh.new()
+	quad.size = Vector2(3.0, 1.0)
+	_flare_mat = ShaderMaterial.new()
+	_flare_mat.shader = FlareShader
+	_flare_mat.set_shader_parameter("color", color)
+	_flare_mat.set_shader_parameter("aspect", 3.0)
+	_flare = MeshInstance3D.new()
+	_flare.mesh = quad
+	_flare.material_override = _flare_mat
+	_flare.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_flare.visible = false
+	add_child(_flare)
+	_flare_light = OmniLight3D.new()
+	_flare_light.light_color = color
+	_flare_light.omni_range = 9.0
+	_flare_light.light_energy = 0.0
+	_flare_light.visible = false
+	add_child(_flare_light)
 
 
 func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
@@ -115,8 +142,24 @@ func _on_exit() -> void:
 		rail_state = Rail.IDLE
 
 
+## Equipping it mid-reload flashes the reload colour, not orange.
+func _equip_flash_color() -> Color:
+	if rail_state == Rail.RELOADING:
+		return reload_start_color.lerp(reload_end_color, reload)
+	return color
+
+
+func get_net_charge() -> float:
+	return charge if rail_state == Rail.CHARGING else 0.0
+
+
+func apply_net_charge(c: float) -> void:
+	charge = c
+
+
 func _update(delta: float) -> void:
-	if rail_state != Rail.CHARGING:
+	# Other players' charge comes from the network (apply_net_charge).
+	if rail_state != Rail.CHARGING and (not manager or manager.is_multiplayer_authority()):
 		charge = move_toward(charge, 0.0, delta * 2.0)
 
 	if rail_state == Rail.RELOADING:
@@ -141,30 +184,46 @@ func _update(delta: float) -> void:
 	_ring_phase += delta * lerpf(ring_rate_min, ring_rate_max, charge)
 	_warp_mat.set_shader_parameter("phase", _ring_phase)
 	_warp_mat.set_shader_parameter("strength", charge_warp_strength * c)
+	_update_flare(c)
 
 
+## The tip flare grows, brightens and starts to flicker as the charge nears full.
+func _update_flare(c: float) -> void:
+	var on := visible and charge > 0.02
+	_flare.visible = on
+	_flare_light.visible = on
+	if _hum == null and is_inside_tree():
+		var sfx := get_tree().root.get_node_or_null("Sfx")
+		if sfx:
+			_hum = sfx.call("make_loop", "charge", self)
+	if _hum:
+		if on and not _hum.playing:
+			_hum.play()
+		elif not on and _hum.playing:
+			_hum.stop()
+		_hum.volume_db = lerpf(-24.0, -4.0, charge)
+		_hum.pitch_scale = lerpf(0.6, 2.2, c)
+	if not on:
+		return
+	var tip: Vector3 = _blades[0].to_global(_blades[0].call("get_tip"))
+	var flicker := 1.0 + 0.25 * sin(Time.get_ticks_msec() / 25.0) * c
+	_flare.global_position = tip
+	_flare.scale = Vector3.ONE * lerpf(0.4, 4.5, c) * flicker
+	_flare_mat.set_shader_parameter("intensity", lerpf(2.0, 14.0, c))
+	_flare_mat.set_shader_parameter("fade", clampf(charge * 3.0, 0.0, 1.0))
+	_flare_light.global_position = tip
+	_flare_light.light_energy = lerpf(0.5, 30.0, c) * flicker
+
+
+## Locks the living target closest to the middle of the circle.
 func _update_lock() -> void:
 	lock_target = null
 	if not is_ready() or rail_state == Rail.RELOADING or not manager.camera:
 		return
-	var camera: Camera3D = manager.camera
-	var center := camera.get_viewport().get_visible_rect().size / 2.0
-	var ball_pos: Vector3 = manager.ball.global_position
-	var best := INF
-	for target in get_tree().get_nodes_in_group("lock_targets"):
-		if not target.call("is_alive"):
-			continue
-		var p: Vector3 = target.call("get_aim_point")
-		if camera.is_position_behind(p):
-			continue
-		var screen := camera.unproject_position(p)
-		if screen.distance_to(center) > lock_radius_px:
-			continue
-		var dist := p.distance_to(ball_pos)
-		if dist < best:
-			best = dist
-			lock_target = target
-			lock_screen_pos = screen
+	var found: Array = manager.targets_on_screen(lock_radius_px)
+	if not found.is_empty():
+		lock_target = found[0]["target"]
+		lock_screen_pos = found[0]["screen"]
 
 
 func _fire(hit: Dictionary) -> void:
@@ -192,6 +251,7 @@ func _fire(hit: Dictionary) -> void:
 		manager.spawn_beam(tip, shot_dir.rotated(up, deg_to_rad(angle)), 0.9, 0.5, 0.1, 20.0, color)
 	manager.spawn_warp(tip, 0.18, 2.2)
 	manager.spawn_light(tip, 80.0, 20.0, 0.2, color)
+	manager.play_sound("rail", tip, 2.0)
 
 	if not hit.is_empty():
 		var pos: Vector3 = hit["position"]
