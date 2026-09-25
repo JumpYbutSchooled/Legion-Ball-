@@ -36,7 +36,8 @@ const TURN_RATE := 30.0
 @export var camera: Camera3D
 ## Gets add_shake() calls.
 @export var camera_rig: Node
-@export var max_range := 400.0
+## Long enough to reach across the whole online map.
+@export var max_range := 2000.0
 
 ## Where the crosshair ray lands (or max_range along it on a miss).
 var aim_point := Vector3.ZERO
@@ -207,8 +208,10 @@ func _raycast_crosshair() -> Dictionary:
 
 ## Living lock targets whose aim point is on screen within `radius_px` of the center and
 ## no further than `max_distance` metres, closest to the center of the circle first.
+## With `need_sight`, targets with the map in the way are skipped (so long-range locks
+## can't find people hiding behind walls).
 ## Each entry: {"target", "point", "screen", "distance", "off_center"}.
-func targets_on_screen(radius_px: float, max_distance := INF) -> Array:
+func targets_on_screen(radius_px: float, max_distance := INF, need_sight := false) -> Array:
 	var found := []
 	if not camera:
 		return found
@@ -224,6 +227,10 @@ func targets_on_screen(radius_px: float, max_distance := INF) -> Array:
 		var off := screen.distance_to(center)
 		if off > radius_px:
 			continue
+		if need_sight:
+			var block := raycast(ball_pos, p)
+			if not block.is_empty() and block["collider"] != target:
+				continue
 		found.append({"target": target, "point": p, "screen": screen, "distance": p.distance_to(ball_pos), "off_center": off})
 	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["off_center"] < b["off_center"])
 	return found

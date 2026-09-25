@@ -1,6 +1,7 @@
 extends "res://scripts/weapons/blade_weapon.gd"
 ## Slot 3: Scatter, a crystal shotgun that runs on heat. Four short blades splayed low.
 ## Each shot throws a cone of hitscan pellets (strongest up close, fading with range),
+## centred on any target you can see inside the crosshair circle (aim assist),
 ## and kicks the ball the opposite way to where you look, including up and down:
 ## look at the floor and fire to shotgun-jump.
 ## Heat: every shot adds heat; it bleeds off shortly after you stop firing. As it heats,
@@ -13,6 +14,9 @@ extends "res://scripts/weapons/blade_weapon.gd"
 @export var pellets := 10
 ## Cone half-angle, in degrees.
 @export var spread_deg := 3.5
+## Aim assist: if a target you can see is within this many degrees of the crosshair, the
+## whole cone is centred on it. Shown as the crosshair circle.
+@export var assist_deg := 9.0
 ## Slow, pump-action pace: every shot can kill up close.
 @export var fire_interval := 0.7
 @export var max_range := 120.0
@@ -38,9 +42,9 @@ extends "res://scripts/weapons/blade_weapon.gd"
 @export var pellet_damage := 2.6
 ## Pellets do full damage up to falloff_start, falling to falloff_min by falloff_end
 ## (and staying there out to max_range).
-@export var falloff_start := 8.0
-@export var falloff_end := 45.0
-@export var falloff_min := 0.15
+@export var falloff_start := 15.0
+@export var falloff_end := 70.0
+@export var falloff_min := 0.25
 @export var pellet_impulse := 6.0
 ## Ball velocity change per shot, opposite the way the camera is looking.
 @export var self_knockback := 8.0
@@ -121,7 +125,7 @@ func _equip_flash_color() -> Color:
 func get_crosshair() -> Dictionary:
 	return {
 		"kind": "scatter",
-		"radius": manager.angle_to_pixels(spread_deg),
+		"radius": manager.angle_to_pixels(assist_deg),
 		"bloom": _bloom,
 		"ready": not overheated and _cooldown == 0.0,
 		"heat": heat,
@@ -148,6 +152,10 @@ func _fire() -> void:
 	_since_shot = 0.0
 	heat = minf(heat + heat_per_shot, 1.0)
 	var aim: Vector3 = manager.aim_point
+	# Aim assist: centre the cone on the visible target nearest the crosshair.
+	var assisted: Array = manager.targets_on_screen(manager.angle_to_pixels(assist_deg), max_range, true)
+	if not assisted.is_empty():
+		aim = assisted[0]["point"]
 	var center: Vector3 = manager.ball.global_position
 	var aim_dir := (aim - center).normalized()
 	# Two axes across the aim direction, for spreading the pellets.

@@ -28,7 +28,8 @@ signal fired(blade_index: int)
 ## Small lock-on circle (pixels): a target inside it gets every shot, like the railgun.
 @export var lock_radius_px := 16.0
 ## Targets further than this can't be locked (you can still hit them by aiming).
-@export var lock_range := 70.0
+## Unlimited: anyone you can see, however far.
+@export var lock_range := INF
 ## Shots per magazine (about 1.8s of fire), and seconds to reload.
 @export var magazine := 30
 @export var reload_time := 1.6
@@ -70,7 +71,7 @@ func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
 	_cooldown = maxf(_cooldown - delta, 0.0)
 	lock_target = null
 	if is_ready():
-		var found: Array = manager.targets_on_screen(lock_radius_px, lock_range)
+		var found: Array = manager.targets_on_screen(lock_radius_px, lock_range, true)
 		if not found.is_empty():
 			lock_target = found[0]["target"]
 			lock_screen_pos = found[0]["screen"]

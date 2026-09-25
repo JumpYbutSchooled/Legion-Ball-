@@ -29,8 +29,10 @@ enum Rail { IDLE, CHARGING, RELOADING }
 @export var explosion_force := 30.0
 ## Crosshair circle radius in pixels; targets inside it can be locked.
 @export var lock_radius_px := 70.0
-## Targets further than this can't be locked.
-@export var lock_range := 150.0
+## Targets further than this can't be locked. Unlimited: anyone you can see.
+@export var lock_range := INF
+## How far the bolt flies before fizzling (across the whole online map).
+@export var bolt_range := 2000.0
 
 @export_group("Charge")
 ## How far the tip facets spread at full charge.
@@ -222,7 +224,7 @@ func _update_lock() -> void:
 	lock_target = null
 	if not is_ready() or rail_state == Rail.RELOADING or not manager.camera:
 		return
-	var found: Array = manager.targets_on_screen(lock_radius_px, lock_range)
+	var found: Array = manager.targets_on_screen(lock_radius_px, lock_range, true)
 	if not found.is_empty():
 		lock_target = found[0]["target"]
 		lock_screen_pos = found[0]["screen"]
@@ -248,6 +250,7 @@ func _fire(_hit: Dictionary) -> void:
 		"dir": shot_dir,
 		"color": color,
 		"target_path": String(lock_target.get_path()) if lock_target else "",
+		"max_range": bolt_range,
 		"damage": damage,
 		"hit_impulse": hit_impulse,
 		"explosion_radius": explosion_radius,
