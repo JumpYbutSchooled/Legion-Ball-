@@ -102,6 +102,25 @@ func _sync_players() -> void:
 		if not roster.has(id):
 			_players[id].queue_free()
 			_players.erase(id)
+	refresh_god_shields()
+
+
+## Shows the owner's gold shield on whoever has it on (the roster's "god" flag online,
+## Mod.offline_god in practice).
+func refresh_god_shields() -> void:
+	var roster := _roster()
+	var mod := get_tree().root.get_node_or_null("Mod")
+	for id in _players:
+		var on: bool = roster.get(id, {}).get("god", false)
+		if not is_online() and mod:
+			on = mod.get("offline_god")
+		_players[id].call("set_god_shield", on)
+
+
+## Host: the owner's gold shield is up, so nothing touches them.
+func _is_god(id: int) -> bool:
+	var net := _net()
+	return net != null and net.get("players").get(id, {}).get("god", false)
 
 
 func _spawn(id: int, index: int) -> void:
@@ -216,7 +235,7 @@ func _host_hit(victim: int, amount: float) -> void:
 	if not multiplayer.is_server() or match_done:
 		return
 	var attacker := _sender()
-	if attacker == victim:
+	if attacker == victim or _is_god(victim):
 		return
 	if _blocks.has(victim) and alive.get(victim, false):
 		# Shielded: no damage. The first hit on this shield sets off the parry, which
@@ -224,7 +243,7 @@ func _host_hit(victim: int, amount: float) -> void:
 		if not _parried.has(victim):
 			_parried[victim] = true
 			_to_peer(victim, "_apply_parry", [attacker])
-			if alive.get(attacker, false) and not _blocks.has(attacker):
+			if alive.get(attacker, false) and not _blocks.has(attacker) and not _is_god(attacker):
 				_to_peer(attacker, "_apply_stagger", [PARRY_STUN])
 				_show_status.rpc(attacker, "stagger", PARRY_STUN)
 				_deal(attacker, victim, PARRY_DAMAGE)
@@ -245,7 +264,7 @@ func _unblockable_hit(victim: int, amount: float) -> void:
 
 ## Host only: take `amount` off `victim`, credited to `attacker` if it kills.
 func _deal(victim: int, attacker: int, amount: float) -> void:
-	if not alive.get(victim, false) or _protect.get(victim, 0.0) > 0.0:
+	if not alive.get(victim, false) or _protect.get(victim, 0.0) > 0.0 or _is_god(victim):
 		return
 	if _marks.get(victim, 0.0) > 0.0:
 		amount *= MARK_MULTIPLIER
@@ -257,20 +276,20 @@ func _deal(victim: int, attacker: int, amount: float) -> void:
 
 @rpc("any_peer", "reliable")
 func _host_push(victim: int, impulse: Vector3) -> void:
-	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim):
+	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim) and not _is_god(victim):
 		_to_peer(victim, "_apply_push", [impulse])
 
 
 @rpc("any_peer", "reliable")
 func _host_mark(victim: int, duration: float) -> void:
-	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim):
+	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim) and not _is_god(victim):
 		_marks[victim] = maxf(_marks.get(victim, 0.0), duration)
 		_show_status.rpc(victim, "mark", duration)
 
 
 @rpc("any_peer", "reliable")
 func _host_stagger(victim: int, duration: float) -> void:
-	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim):
+	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim) and not _is_god(victim):
 		_to_peer(victim, "_apply_stagger", [duration])
 		_show_status.rpc(victim, "stagger", duration)
 

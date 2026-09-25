@@ -82,6 +82,8 @@ var _status_color := Color.WHITE
 var _block_timer := 0.0
 var _block_cd := 0.0
 var _shield: MeshInstance3D
+var _god_shield: MeshInstance3D
+var _god := false
 var _move_dir := Vector3.ZERO
 var _grounded := false
 ## Speed being held by cruise (0 = not cruising).
@@ -98,6 +100,15 @@ func _ready() -> void:
 	_shield.set("ball", self)
 	add_child(_shield)
 	_shield.call("setup", $Mesh)
+	# The owner's gold shield (G): same shell, gold, a little bigger, held until toggled.
+	_god_shield = ShieldScript.new()
+	_god_shield.set("ball", self)
+	_god_shield.set("color", Color(1.0, 0.78, 0.25))
+	add_child(_god_shield)
+	_god_shield.call("setup", $Mesh)
+	var god_mat := _god_shield.material_override as ShaderMaterial
+	god_mat.set_shader_parameter("shell_radius", 2.1)
+	god_mat.set_shader_parameter("intensity", 2.8)
 
 
 func _process(delta: float) -> void:
@@ -126,6 +137,12 @@ func _physics_process(delta: float) -> void:
 
 	if controls and _block_cd == 0.0 and Input.is_action_just_pressed("block"):
 		_start_block()
+
+	# Owner only: the gold shield (the server checks and applies it; moderation.gd).
+	if controls and Input.is_action_just_pressed("god_shield"):
+		var mod := get_tree().root.get_node_or_null("Mod")
+		if mod:
+			mod.call("toggle_god_shield")
 
 	if (controls and Input.is_action_just_pressed("reset_ball")) or global_position.y < fall_reset_height:
 		_reset_requested = true
@@ -273,6 +290,18 @@ func _start_block() -> void:
 func _net_block(duration: float) -> void:
 	_block_timer = duration
 	_show_block(duration)
+
+
+## Shows or hides the owner's gold shield (every computer; arena.gd refresh_god_shields).
+## The invincibility itself is the host's (arena.gd _is_god).
+func set_god_shield(on: bool) -> void:
+	if on == _god:
+		return
+	_god = on
+	if on:
+		_god_shield.call("play", 1.0e9)
+	else:
+		_god_shield.call("stop")
 
 
 func _show_block(duration: float) -> void:

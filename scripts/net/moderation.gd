@@ -3,7 +3,8 @@ extends Node
 ## Staff type their code into Settings. When they join an online server the game sends
 ## it, and the server compares it with its OWNER_CODE, MOD_CODE and TESTER_CODE
 ## environment variables (set on Render, never in the game files):
-##   owner  - moderator powers, both staff weapons (slots 7-8) and a gold OWNER title
+##   owner  - moderator powers, both staff weapons (slots 7-8), the gold invincibility
+##            shield (G) and a gold OWNER title
 ##   mod    - kick, ban and end the match, Rain of God (slot 7) and a MOD title
 ## Staff weapons also work in offline practice once a server has confirmed the code
 ## (STAFF_FILE), and key 0 hides or shows them (weapon.gd).
@@ -40,6 +41,8 @@ const TITLES := {
 var is_mod := false
 ## "owner", "mod", "tester" or "", as confirmed by the server.
 var role := ""
+## The gold shield in offline practice (online it's in the server's roster: "god").
+var offline_god := false
 
 var _net: Node
 var _device_id := ""
@@ -108,6 +111,24 @@ func ban(id: int) -> void:
 		_ban.rpc_id(1, id)
 
 
+## G: the owner's gold shield. Online the server checks you're the owner and makes you
+## invincible (arena.gd _is_god); everyone sees the shield. In offline practice it's
+## just the look (nothing hurts you there anyway).
+func toggle_god_shield() -> void:
+	if not is_owner():
+		return
+	if _net.get("online"):
+		var mine: Dictionary = _net.get("players").get(multiplayer.get_unique_id(), {})
+		var on: bool = not mine.get("god", false)
+		if multiplayer.is_server():
+			_set_god(on)
+		else:
+			_set_god.rpc_id(1, on)
+	else:
+		offline_god = not offline_god
+		_refresh_god_shields()
+
+
 ## Ends the round for everyone on the server (scores reset).
 func end_match() -> void:
 	if multiplayer.is_server():
@@ -123,6 +144,7 @@ func _on_roster_changed() -> void:
 	if not _net.get("online"):
 		_greeted = false
 		role = ""
+		offline_god = false
 		_set_mod(false)
 		return
 	if multiplayer.is_server() or _greeted:
@@ -262,6 +284,27 @@ func _end_match() -> void:
 	if multiplayer.is_server() and _is_moderator(_sender()):
 		print("[server] %s ended the match" % _player_name(_sender()))
 		_net.call("end_match")
+
+
+## Owner only: turn the gold shield (invincibility) on or off. (Named to sort after the
+## existing RPCs so their numbering is unchanged for older versions.)
+@rpc("any_peer", "reliable")
+func _set_god(on: bool) -> void:
+	if not multiplayer.is_server():
+		return
+	var peer := _sender()
+	var players: Dictionary = _net.get("players")
+	if not players.has(peer) or players[peer].get("role", "") != "owner":
+		return
+	players[peer]["god"] = on
+	_net.call("push_roster")
+	print("[server] %s gold shield %s" % [_player_name(peer), "ON" if on else "OFF"])
+
+
+func _refresh_god_shields() -> void:
+	var scene := get_tree().current_scene
+	if scene and scene.has_method("refresh_god_shields"):
+		scene.call("refresh_god_shields")
 
 
 ## Sender is a moderator, and the target is a real player who isn't one.

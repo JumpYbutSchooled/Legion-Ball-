@@ -254,6 +254,7 @@ const CONTROLS := [
 	["LMB", "Fire equipped weapon"],
 	["1 - 6", "Equip weapon directly"],
 	["7 / 8 / 0", "Staff only: Rain of God / Pillars of God / hide or show them"],
+	["G", "Owner only: gold shield, invincible until you press G again"],
 	["MOUSE WHEEL", "Browse weapons (hologram selector)"],
 	["RMB", "Confirm the browsed weapon"],
 	["`", "Holster / draw weapon"],
