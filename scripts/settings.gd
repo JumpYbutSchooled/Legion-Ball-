@@ -20,6 +20,8 @@ const DEFAULTS := {
 	"player_name": "PLAYER",
 	## Last address typed into Join, remembered for next time.
 	"last_join_ip": "127.0.0.1",
+	## Online server last joined (index into Net.SERVER_URLS).
+	"last_server": 0,
 	"fullscreen": false,
 	"vsync": true,
 }

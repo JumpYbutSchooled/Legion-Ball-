@@ -1,5 +1,6 @@
 extends VBoxContainer
-## Multiplayer lobby page: pick a callsign, then HOST a game or JOIN one by IP.
+## Multiplayer lobby page: pick a callsign, then join an online server (SERVER 1-4),
+## HOST a game or JOIN one by IP.
 ## Once connected it shows the address to give friends (host), the live roster and
 ## START MATCH (host) / LEAVE. Rebuilds itself whenever the Net roster or status changes.
 
@@ -62,10 +63,19 @@ func _rebuild() -> void:
 
 func _build_connect() -> void:
 	_body.add_child(UIStyle.label("ONLINE", 13, UIStyle.TEXT_DIM))
-	_body.add_child(_button("JOIN ONLINE SERVER", func() -> void: _net.call("join_server")))
+	var servers := HBoxContainer.new()
+	servers.add_theme_constant_override("separation", 10)
+	_body.add_child(servers)
+	var last: int = _settings.call("get_value", "last_server")
+	for i in NetScript.SERVER_URLS.size():
+		var b := _button("SERVER %d" % (i + 1), _join_server.bind(i))
+		if i == last:
+			b.add_theme_color_override("font_color", UIStyle.ACCENT)
+		servers.add_child(b)
 	_body.add_child(UIStyle.label(
-		"Always-running arena. Works anywhere, including school Wi-Fi.\n"
-		+ "If nobody's played for a while it takes up to a minute to wake up.", 12, UIStyle.TEXT_DIM))
+		"%d always-running arenas, %d players each. If one is full, try another.\n" % [NetScript.SERVER_URLS.size(), NetScript.MAX_PLAYERS]
+		+ "Works anywhere, including school Wi-Fi. A server nobody's used for a while\n"
+		+ "takes up to a minute to wake up.", 12, UIStyle.TEXT_DIM))
 
 	var line := ColorRect.new()
 	line.color = UIStyle.ACCENT_DIM
@@ -130,6 +140,11 @@ func _build_lobby() -> void:
 
 func _host() -> void:
 	_net.call("host")
+
+
+func _join_server(index: int) -> void:
+	_settings.call("set_value", "last_server", index)
+	_net.call("join_server", NetScript.SERVER_URLS[index])
 
 
 func _join(ip: String) -> void:

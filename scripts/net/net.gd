@@ -16,8 +16,14 @@ signal status_changed(text: String)
 signal disconnected(reason: String)
 
 const PORT := 7777
-## The online server's address (see render.yaml).
-const SERVER_URL := "wss://legion-ball-server.onrender.com"
+## The online servers (Render web services running this repo), SERVER 1-4 in the lobby.
+## Each is a separate arena of up to MAX_PLAYERS.
+const SERVER_URLS := [
+	"wss://legion-ball-server.onrender.com",
+	"wss://legion-ball-server-1i3q.onrender.com",
+	"wss://legion-ball-server-vbgx.onrender.com",
+	"wss://legion-ball-server-4v2m.onrender.com",
+]
 ## Port a dedicated server listens on when not told otherwise (Render sets $PORT).
 const SERVER_PORT := 7778
 const MAX_PLAYERS := 8
@@ -51,6 +57,8 @@ var _connect_timer := 0.0
 var _server_url := ""
 var _server_deadline := 0.0
 var _retry_timer := -1.0
+## Why the server turned us away (e.g. full), shown instead of "Lost connection".
+var _rejected_reason := ""
 
 
 func _ready() -> void:
@@ -58,7 +66,7 @@ func _ready() -> void:
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)
 	multiplayer.connection_failed.connect(_on_connect_failed)
-	multiplayer.server_disconnected.connect(func() -> void: _fail("Lost connection to the host/server."))
+	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 
 func is_host() -> bool:
@@ -141,8 +149,8 @@ func join(ip: String, port := PORT) -> Error:
 	return OK
 
 
-## Join the online server. If it's asleep (free hosting), keeps retrying while it wakes.
-func join_server(url := SERVER_URL) -> void:
+## Join an online server. If it's asleep (free hosting), keeps retrying while it wakes.
+func join_server(url: String = SERVER_URLS[0]) -> void:
 	leave()
 	_server_url = url
 	_server_deadline = _now() + SERVER_WAKE_TIMEOUT
@@ -192,6 +200,7 @@ func leave() -> void:
 	_connecting = false
 	_server_url = ""
 	_retry_timer = -1.0
+	_rejected_reason = ""
 	players.clear()
 	input_blocked = false
 	roster_changed.emit()
@@ -273,6 +282,11 @@ func _give_up(reason: String) -> void:
 	_fail(reason)
 
 
+func _on_server_disconnected() -> void:
+	var reason := _rejected_reason if _rejected_reason != "" else "Lost connection to the host/server."
+	_fail(reason)
+
+
 func _on_peer_connected(id: int) -> void:
 	if dedicated:
 		print("[server] peer %d connected" % id)
@@ -308,7 +322,9 @@ func _register(player_name_in: String) -> void:
 		return
 	var id := multiplayer.get_remote_sender_id()
 	if players.size() >= MAX_PLAYERS:
-		multiplayer.multiplayer_peer.disconnect_peer(id)
+		# Tell them why, then drop them once the message has had time to arrive.
+		_turned_away.rpc_id(id, "Server is full (%d/%d). Try another server." % [MAX_PLAYERS, MAX_PLAYERS])
+		get_tree().create_timer(0.5).timeout.connect(_drop_peer.bind(id))
 		return
 	players[id] = _new_player(player_name_in.strip_edges().substr(0, 16), _free_color())
 	if dedicated:
@@ -316,6 +332,14 @@ func _register(player_name_in: String) -> void:
 	_sync_roster.rpc(players)
 	if in_match:
 		_load_arena.rpc_id(id)
+
+
+## The server turned us away; the disconnect that follows shows this reason.
+## Named to sort after the other RPCs: Godot numbers RPCs alphabetically, so a new name
+## sorting earlier would shift theirs and break players and servers on older versions.
+@rpc("authority", "reliable")
+func _turned_away(reason: String) -> void:
+	_rejected_reason = reason
 
 
 @rpc("authority", "call_local", "reliable")
@@ -345,6 +369,11 @@ func _back_to_lobby() -> void:
 
 func _new_player(n: String, color: int) -> Dictionary:
 	return {"name": n if n != "" else "PLAYER", "color": color, "kills": 0, "deaths": 0}
+
+
+func _drop_peer(id: int) -> void:
+	if multiplayer.multiplayer_peer and not multiplayer.multiplayer_peer is OfflineMultiplayerPeer:
+		multiplayer.multiplayer_peer.disconnect_peer(id)
 
 
 func _free_color() -> int:
