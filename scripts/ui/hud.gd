@@ -189,7 +189,8 @@ func _rebuild_board() -> void:
 		swatch.color = _net.call("player_color", id)
 		swatch.custom_minimum_size = Vector2(8, 18)
 		row.add_child(swatch)
-		var name_label := UIStyle.label("  " + String(roster[id]["name"]), 16, Color.WHITE if id == multiplayer.get_unique_id() else UIStyle.TEXT)
+		var tag := "  [MOD]" if roster[id].get("mod", false) else ""
+		var name_label := UIStyle.label("  " + String(roster[id]["name"]) + tag, 16, Color.WHITE if id == multiplayer.get_unique_id() else UIStyle.TEXT)
 		name_label.custom_minimum_size = Vector2(300, 0)
 		row.add_child(name_label)
 		row.add_child(UIStyle.label("%3d K   %3d D" % [int(roster[id]["kills"]), int(roster[id]["deaths"])], 16, UIStyle.TEXT))

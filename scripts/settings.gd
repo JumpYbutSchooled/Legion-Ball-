@@ -22,6 +22,9 @@ const DEFAULTS := {
 	"last_join_ip": "127.0.0.1",
 	## Online server last joined (index into Net.SERVER_URLS).
 	"last_server": 0,
+	## Moderator code, sent to online servers when joining; the server checks it
+	## (scripts/net/moderation.gd). Empty for normal players.
+	"mod_code": "",
 	"fullscreen": false,
 	"vsync": true,
 }

@@ -40,10 +40,21 @@ func _ready() -> void:
 		var id := get_multiplayer_authority()
 		var net := get_tree().root.get_node_or_null("Net")
 		if net:
-			_name = net.call("player_name", id)
-			_tag.text = _name
+			_refresh_name()
 			_tag.modulate = net.call("player_color", id)
+			# Picks up a [MOD] tag granted after this player spawned.
+			net.connect("roster_changed", _refresh_name)
 		_tag.visible = true
+
+
+func _refresh_name() -> void:
+	var net := get_tree().root.get_node_or_null("Net")
+	if not net:
+		return
+	var id := get_multiplayer_authority()
+	var is_mod: bool = net.get("players").get(id, {}).get("mod", false)
+	_name = ("[MOD] " if is_mod else "") + String(net.call("player_name", id))
+	_tag.text = _name
 
 
 func _physics_process(delta: float) -> void:

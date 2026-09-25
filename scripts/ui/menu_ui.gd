@@ -1,6 +1,7 @@
 extends Control
 ## The menu panels shared by the main menu and the pause menu: a column of actions on
-## the left and a page on the right: SETTINGS, CONTROLS, or ARMORY (weapon briefings).
+## the left and a page on the right: SETTINGS, CONTROLS, or ARMORY (weapon briefings),
+## plus MODERATION in the pause menu for moderators (scripts/net/moderation.gd).
 ## Set `pause_mode` before adding it to switch the first action between
 ## "INITIATE SIMULATION" (main menu) and "RESUME" (pause menu).
 
@@ -20,6 +21,7 @@ var _page_holder: PanelContainer
 var _page_title: Label
 var _page: Control
 var _nav_buttons := {}
+var _current_page := ""
 
 
 func _ready() -> void:
@@ -49,6 +51,15 @@ func _ready() -> void:
 	_nav(nav, "armory", "ARMORY", func() -> void: _show_page("armory"))
 	_nav(nav, "controls", "CONTROLS", func() -> void: _show_page("controls"))
 	_nav(nav, "settings", "SETTINGS", func() -> void: _show_page("settings"))
+	if pause_mode:
+		# Shown once the server accepts your moderator code, which can be after this is built.
+		_nav(nav, "moderation", "MODERATION", func() -> void: _show_page("moderation"))
+		_update_mod_nav()
+		var mod := _mod()
+		if mod:
+			mod.connect("mod_changed", _update_mod_nav)
+		if net:
+			net.connect("roster_changed", _on_roster_changed)
 	if pause_mode:
 		var leave_text := "LEAVE MATCH" if online else "ABORT TO MAIN MENU"
 		_nav(nav, "menu", leave_text, func() -> void: main_menu_pressed.emit())
@@ -135,6 +146,7 @@ func _animate_page(box: Control) -> void:
 
 
 func _show_page(id: String) -> void:
+	_current_page = id
 	for child in _page_holder.get_children():
 		child.queue_free()
 	# Pages scroll when they're taller than the window.
@@ -156,6 +168,8 @@ func _show_page(id: String) -> void:
 			_build_controls(box)
 		"settings":
 			_build_settings(box)
+		"moderation":
+			_build_moderation(box)
 	_animate_page(box)
 	for key in _nav_buttons:
 		var b: Button = _nav_buttons[key]
@@ -266,6 +280,72 @@ func _build_controls(box: VBoxContainer) -> void:
 	box.add_child(notes)
 
 
+# --- MODERATION ---------------------------------------------------------------
+
+func _mod() -> Node:
+	return get_tree().root.get_node_or_null("Mod")
+
+
+func _update_mod_nav() -> void:
+	var mod := _mod()
+	var on: bool = mod != null and mod.call("can_moderate")
+	_nav_buttons["moderation"].visible = on
+	if not on and _current_page == "moderation":
+		_show_page("armory")
+
+
+## Keeps the player list on the moderation page current.
+func _on_roster_changed() -> void:
+	if _current_page == "moderation" and is_inside_tree():
+		_show_page("moderation")
+
+
+func _build_moderation(box: VBoxContainer) -> void:
+	_header(box, "MODERATION", "KICK OR BAN PLAYERS ON THIS SERVER")
+	var mod := _mod()
+	var net := get_tree().root.get_node_or_null("Net")
+	if not mod or not net or not mod.call("can_moderate"):
+		box.add_child(UIStyle.label("Moderator tools are not active.", 15, UIStyle.TEXT_DIM))
+		return
+	var players: Dictionary = net.get("players")
+	var me: int = net.call("local_id")
+	var ids := players.keys()
+	ids.sort()
+	var others := 0
+	for id in ids:
+		if id == me:
+			continue
+		others += 1
+		var is_mod: bool = players[id].get("mod", false)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		var swatch := ColorRect.new()
+		swatch.color = net.call("player_color", id)
+		swatch.custom_minimum_size = Vector2(10, 18)
+		row.add_child(swatch)
+		var name_label := UIStyle.label(String(players[id]["name"]) + ("  [MOD]" if is_mod else ""), 16, UIStyle.TEXT)
+		name_label.custom_minimum_size = Vector2(260, 0)
+		row.add_child(name_label)
+		if not is_mod:
+			row.add_child(_small_button("KICK", func() -> void: mod.call("kick", id)))
+			row.add_child(_small_button("BAN", func() -> void: mod.call("ban", id)))
+		box.add_child(row)
+	if others == 0:
+		box.add_child(UIStyle.label("No other players on this server.", 15, UIStyle.TEXT_DIM))
+	box.add_child(_small_button("END MATCH", func() -> void: mod.call("end_match")))
+	box.add_child(UIStyle.label(
+		"END MATCH resets everyone's score and starts a new round.\n"
+		+ "Bans last until this server restarts or goes to sleep.", 12, UIStyle.TEXT_DIM))
+
+
+func _small_button(text: String, action: Callable) -> Button:
+	var b := Button.new()
+	b.text = "[ " + text + " ]"
+	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	b.pressed.connect(action)
+	return b
+
+
 # --- SETTINGS -----------------------------------------------------------------
 
 func _settings() -> Node:
@@ -291,6 +371,24 @@ func _build_settings(box: VBoxContainer) -> void:
 	_toggle(grid, s, "IMPACT FRAMES", "impact_frames")
 	_toggle(grid, s, "FULLSCREEN", "fullscreen")
 	_toggle(grid, s, "V-SYNC", "vsync")
+
+	# Moderator code: only mods know it; online servers check it when you join.
+	var mod_row := HBoxContainer.new()
+	mod_row.add_theme_constant_override("separation", 24)
+	box.add_child(mod_row)
+	mod_row.add_child(UIStyle.label("MODERATOR CODE", 15, UIStyle.TEXT))
+	var code := LineEdit.new()
+	code.secret = true
+	code.text = s.call("get_value", "mod_code")
+	code.placeholder_text = "only for moderators"
+	code.custom_minimum_size = Vector2(240, 0)
+	code.text_changed.connect(func(t: String) -> void: s.call("set_value", "mod_code", t.strip_edges()))
+	mod_row.add_child(code)
+	var mod := _mod()
+	var active: bool = mod != null and mod.get("is_mod")
+	mod_row.add_child(UIStyle.label("MOD TOOLS ACTIVE" if active else "", 15, UIStyle.ACCENT))
+	box.add_child(UIStyle.label("Checked by the server the next time you join an online server.", 12, UIStyle.TEXT_DIM))
+
 	var reset := Button.new()
 	reset.text = "[ RESTORE DEFAULTS ]"
 	reset.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN

@@ -8,6 +8,7 @@ const SERVICES := {
 	"Settings": "res://scripts/settings.gd",
 	"Net": "res://scripts/net/net.gd",
 	"Sfx": "res://scripts/sfx.gd",
+	"Mod": "res://scripts/net/moderation.gd",
 }
 
 
