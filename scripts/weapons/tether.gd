@@ -10,7 +10,7 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## Holding fire while nothing's in range keeps trying: the moment something under the
 ## crosshair comes into range, it hooks.
 ## Slam: while hooked (or just after letting go), hit the ground coming down fast enough
-## and it detonates round you, bigger the faster you land.
+## and it detonates round you, bigger the faster you land. Anyone caught in it dies.
 ## Combos: reel into a target and finish with Scatter; fling off a wall into a dash.
 
 const LaserShader := preload("res://shaders/dash_laser.gdshader")
@@ -45,6 +45,9 @@ const LaserShader := preload("res://shaders/dash_laser.gdshader")
 @export var slam_full_speed := 60.0
 ## Seconds after letting go that a landing still counts as a slam.
 @export var slam_grace := 1.0
+## Slam damage anywhere in the blast. x4 online (ball.gd PVP_DAMAGE_SCALE) is 100, a full
+## health bar: one shot. Shields and spawn protection still stop it.
+@export var slam_damage := 25.0
 
 ## 0 slack .. 1 at max pull.
 var tension := 0.0
@@ -152,7 +155,8 @@ func _slam(pos: Vector3, speed: float) -> void:
 		"position": pos + Vector3.UP * 0.3,
 		"color": color,
 		"radius": lerpf(6.0, 14.0, k),
-		"damage": lerpf(3.0, 9.0, k),
+		"damage": slam_damage,
+		"full_damage": true,
 		"force": lerpf(25.0, 60.0, k),
 		"spark_count": int(lerpf(150.0, 400.0, k)),
 		"spark_speed": lerpf(20.0, 38.0, k),
