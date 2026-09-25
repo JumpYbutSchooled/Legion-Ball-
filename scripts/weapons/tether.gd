@@ -26,8 +26,13 @@ const LaserShader := preload("res://shaders/dash_laser.gdshader")
 @export var damping := 10.0
 ## Cap on the rope's pull, in m/s^2.
 @export var max_accel := 160.0
-## Extra lift while reeling, so it arcs instead of dragging along the floor.
-@export var lift_accel := 6.0
+## Most the rope can pull you upward, in m/s^2 on top of cancelling gravity. Kept low so
+## the tether swings and hauls you, but can't be used to fly.
+@export var max_lift := 6.0
+## The rope snaps after this many seconds hooked.
+@export var max_hook_time := 3.0
+## Seconds after letting go (or the rope snapping) before it can hook again.
+@export var rehook_delay := 0.6
 ## Lets go automatically this close to the anchor.
 @export var release_distance := 2.0
 ## Impulse per second pulling a hooked rigid body toward the ball (scaled by tension).
@@ -59,6 +64,8 @@ var _auto_hook := false
 ## Seconds left in which a hard landing slams.
 var _slam_window := 0.0
 var _fall_speed := 0.0
+var _hook_time := 0.0
+var _rehook := 0.0
 var _line: MeshInstance3D
 var _line_mat: ShaderMaterial
 
@@ -81,10 +88,10 @@ func _build() -> void:
 	cyl.rings = 1
 	_line_mat = ShaderMaterial.new()
 	_line_mat.shader = LaserShader
-	_line_mat.set_shader_parameter("color", color)
-	_line_mat.set_shader_parameter("intensity", 5.0)
-	_line_mat.set_shader_parameter("fade", 1.0)
 	_line = MeshInstance3D.new()
+	_line.set_instance_shader_parameter("color", color)
+	_line.set_instance_shader_parameter("intensity", 5.0)
+	_line.set_instance_shader_parameter("fade", 1.0)
 	_line.mesh = cyl
 	_line.material_override = _line_mat
 	_line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -101,12 +108,19 @@ func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
 	if not is_ready():
 		_detach()
 		return
-	if pressed and not _attached and _auto_hook:
+	_rehook = maxf(_rehook - delta, 0.0)
+	if pressed and not _attached and _auto_hook and _rehook == 0.0:
 		_try_attach(hit)
 	elif not pressed and _attached:
 		_detach()
 	if _attached:
-		_reel(delta)
+		_hook_time += delta
+		if _hook_time >= max_hook_time:
+			# Snaps: a fresh press is needed to hook again.
+			_detach()
+			_auto_hook = false
+		else:
+			_reel(delta)
 
 
 func _physics_process(delta: float) -> void:
@@ -193,7 +207,7 @@ func _update(delta: float) -> void:
 	var w := beam_width * lerpf(1.3, 0.7, tension)
 	var wobble := x * sin(_thrum) * 0.04 * tension
 	_line.global_transform = Transform3D(Basis(x * w, y * length, z * w), tip + span * 0.5 + wobble)
-	_line_mat.set_shader_parameter("intensity", 4.0 + tension * 10.0)
+	_line.set_instance_shader_parameter("intensity", 4.0 + tension * 10.0)
 
 
 func _try_attach(hit: Dictionary) -> void:
@@ -223,7 +237,10 @@ func _try_attach(hit: Dictionary) -> void:
 
 
 func _detach() -> void:
+	if _attached:
+		_rehook = rehook_delay
 	_attached = false
+	_hook_time = 0.0
 	_on_body = false
 	_anchor_body = null
 	tension = 0.0
@@ -266,7 +283,11 @@ func _reel(delta: float) -> void:
 			accel += -closing * damping
 	accel = minf(accel, max_accel)
 	tension = clampf(accel / max_accel, 0.0, 1.0)
-	ball.apply_central_force((dir * accel + Vector3.UP * lift_accel) * ball.mass)
+	var pull := dir * accel
+	# Cap the upward part: enough to swing and climb a little, never enough to fly.
+	var gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+	pull.y = minf(pull.y, gravity + max_lift)
+	ball.apply_central_force(pull * ball.mass)
 	# A faint rumble while it's really hauling.
 	if tension > 0.5:
 		manager.shake((tension - 0.5) * 0.04)

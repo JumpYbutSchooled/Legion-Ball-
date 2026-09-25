@@ -95,9 +95,9 @@ func _build() -> void:
 	quad.size = Vector2(3.0, 1.0)
 	_flare_mat = ShaderMaterial.new()
 	_flare_mat.shader = FlareShader
-	_flare_mat.set_shader_parameter("color", color)
 	_flare_mat.set_shader_parameter("aspect", 3.0)
 	_flare = MeshInstance3D.new()
+	_flare.set_instance_shader_parameter("color", color)
 	_flare.mesh = quad
 	_flare.material_override = _flare_mat
 	_flare.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -209,8 +209,8 @@ func _update_flare(c: float) -> void:
 	var flicker := 1.0 + 0.25 * sin(Time.get_ticks_msec() / 25.0) * c
 	_flare.global_position = tip
 	_flare.scale = Vector3.ONE * lerpf(0.4, 4.5, c) * flicker
-	_flare_mat.set_shader_parameter("intensity", lerpf(2.0, 14.0, c))
-	_flare_mat.set_shader_parameter("fade", clampf(charge * 3.0, 0.0, 1.0))
+	_flare.set_instance_shader_parameter("intensity", lerpf(2.0, 14.0, c))
+	_flare.set_instance_shader_parameter("fade", clampf(charge * 3.0, 0.0, 1.0))
 	_flare_light.global_position = tip
 	_flare_light.light_energy = lerpf(0.5, 30.0, c) * flicker
 

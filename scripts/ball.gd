@@ -13,7 +13,8 @@ const Sfx := preload("res://scripts/sfx.gd")
 @export var camera_rig: Node3D
 @export var roll_torque := 12.0
 @export var push_force := 16.0
-@export var air_control := 0.4
+## Share of WASD push you get in the air. Low: you commit to a jump or launch.
+@export var air_control := 0.08
 @export var max_speed := 40.0
 @export var jump_impulse := 8.5
 @export var jump_cooldown := 1.0
@@ -33,7 +34,7 @@ const Sfx := preload("res://scripts/sfx.gd")
 @export var cruise_alignment := 0.5
 ## Speed lost per second while cruising (0 = none).
 @export var cruise_decay := 0.0
-## How fast you can steer while cruising, in radians per second.
+## How fast you can steer while cruising, in radians per second (on the ground only).
 @export var cruise_turn := 1.6
 
 @export_group("Block")
@@ -411,7 +412,9 @@ func _cruise(state: PhysicsDirectBodyState3D) -> void:
 	var heading := flat / speed
 	var goal := _move_dir.normalized()
 	var angle := heading.signed_angle_to(goal, Vector3.UP)
-	heading = heading.rotated(Vector3.UP, clampf(angle, -cruise_turn * state.step, cruise_turn * state.step))
+	# Steering needs the ground; in the air you keep the line you left it on.
+	var turn := cruise_turn * state.step if _grounded else 0.0
+	heading = heading.rotated(Vector3.UP, clampf(angle, -turn, turn))
 	flat = heading * _cruise_speed
 	state.linear_velocity = Vector3(flat.x, v.y, flat.z)
 	if _grounded:

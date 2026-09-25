@@ -3,7 +3,7 @@ shader_type spatial;
 // center, pulling the view inward as they pass. Used for the railgun charge.
 render_mode unshaded, cull_back, depth_draw_never, shadows_disabled;
 
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform float strength = 0.0;
 // Advanced by the script; each whole step moves a ring from the rim to the center.
 uniform float phase = 0.0;

@@ -13,7 +13,7 @@ shader_type spatial;
 //   pulling back together as reload_break falls to 0.
 render_mode unshaded, cull_disabled, depth_draw_opaque, shadows_disabled;
 
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform vec3 color : source_color = vec3(0.3, 0.8, 1.0);
 // How strongly the blade bends the view behind it.
 uniform float refraction = 0.06;

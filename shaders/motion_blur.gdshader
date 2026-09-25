@@ -6,7 +6,7 @@ shader_type spatial;
 // so the thing the camera follows stays sharp.
 render_mode unshaded, depth_draw_never, depth_test_disabled, cull_disabled, shadows_disabled;
 
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
 // World -> clip, this frame and last frame, both built the same way by the script.
 uniform mat4 curr_view_proj;

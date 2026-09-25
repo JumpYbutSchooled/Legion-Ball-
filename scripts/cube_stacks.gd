@@ -49,7 +49,7 @@ func _ready() -> void:
 func _add_spark_collider() -> void:
 	var field := GPUParticlesCollisionHeightField3D.new()
 	field.size = Vector3(120, 30, 120)
-	field.resolution = GPUParticlesCollisionHeightField3D.RESOLUTION_512
+	field.resolution = GPUParticlesCollisionHeightField3D.RESOLUTION_256
 	field.update_mode = GPUParticlesCollisionHeightField3D.UPDATE_MODE_ALWAYS
 	field.heightfield_mask = CUBE_LAYER
 	field.position = Vector3(0, 13, 45)

@@ -22,16 +22,24 @@ var _origin: Vector3
 var _x: Vector3
 var _y: Vector3
 var _z: Vector3
-var _mat: ShaderMaterial
+
+# Shared by every beam: one material, and one mesh per widest_at shape. Guns spawn dozens
+# of these a second, so building a fresh mesh and material each time adds up.
+static var _shared_mat: ShaderMaterial
+static var _meshes := {}
 
 
 func fire(origin: Vector3, back_dir: Vector3) -> void:
-	mesh = _build_octahedron()
-	_mat = ShaderMaterial.new()
-	_mat.shader = LaserShader
-	material_override = _mat
-	_mat.set_shader_parameter("intensity", intensity)
-	_mat.set_shader_parameter("color", color)
+	var key := snappedf(widest_at, 0.01)
+	if not _meshes.has(key):
+		_meshes[key] = _build_octahedron()
+	mesh = _meshes[key]
+	if _shared_mat == null:
+		_shared_mat = ShaderMaterial.new()
+		_shared_mat.shader = LaserShader
+	material_override = _shared_mat
+	set_instance_shader_parameter("intensity", intensity)
+	set_instance_shader_parameter("color", color)
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 	# Local Y runs along the beam, from the ball (-0.5) to the tail (+0.5).
@@ -59,7 +67,7 @@ func _update() -> void:
 	# Thins out as it fades.
 	var w := width * lerpf(0.3, 1.0, fade)
 	global_transform = Transform3D(Basis(_x * w, _y * beam_len, _z * w), _origin + _y * beam_len * 0.5)
-	_mat.set_shader_parameter("fade", fade)
+	set_instance_shader_parameter("fade", fade)
 
 
 func _build_octahedron() -> ArrayMesh:

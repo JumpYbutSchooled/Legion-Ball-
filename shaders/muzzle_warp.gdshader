@@ -3,8 +3,9 @@ shader_type spatial;
 // Strongest around the middle of the sphere's slope, fading at the center and rim.
 render_mode unshaded, cull_back, depth_draw_never, shadows_disabled;
 
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
-uniform float strength = 0.0;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
+// Per-instance, so every bubble can share one material (set_instance_shader_parameter).
+instance uniform float strength = 0.0;
 
 void fragment() {
 	float facing = abs(dot(NORMAL, VIEW));

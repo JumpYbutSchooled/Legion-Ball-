@@ -50,7 +50,11 @@ func _process(_delta: float) -> void:
 	_mat.set_shader_parameter("curr_view_proj", curr)
 	_mat.set_shader_parameter("prev_view_proj", _prev)
 	_mat.set_shader_parameter("strength", strength)
-	visible = strength > 0.0
+	# The pass costs a full-screen read with 10 samples a pixel: skip it when the camera
+	# has barely moved since last frame, since there'd be nothing to smear.
+	var moved := (curr.x - _prev.x).length() + (curr.y - _prev.y).length() \
+		+ (curr.z - _prev.z).length() + (curr.w - _prev.w).length()
+	visible = strength > 0.0 and moved > 0.002
 	_mat.set_shader_parameter("max_blur", max_blur)
 	_prev = curr
 

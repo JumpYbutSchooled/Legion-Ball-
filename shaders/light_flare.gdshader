@@ -3,9 +3,10 @@ shader_type spatial;
 // a long horizontal streak and faint rays. Additive, so it only ever brightens.
 render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
 
-uniform vec3 color : source_color = vec3(0.4, 0.85, 1.0);
-uniform float intensity = 5.0;
-uniform float fade = 1.0;
+// Per-instance, so every flare can share one material (set_instance_shader_parameter).
+instance uniform vec3 color : source_color = vec3(0.4, 0.85, 1.0);
+instance uniform float intensity = 5.0;
+instance uniform float fade = 1.0;
 // Quad width / height, so the core stays round on a wide quad.
 uniform float aspect = 3.0;
 

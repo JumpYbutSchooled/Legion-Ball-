@@ -12,19 +12,23 @@ const ASPECT := 3.0
 @export var intensity := 5.0
 
 var _t := 0.0
-var _mat: ShaderMaterial
+
+# Shared by every flare (one spawns with every flash of light).
+static var _shared_mat: ShaderMaterial
+static var _quad: QuadMesh
 
 
 func _ready() -> void:
-	var quad := QuadMesh.new()
-	quad.size = Vector2(ASPECT, 1.0)
-	mesh = quad
-	_mat = ShaderMaterial.new()
-	_mat.shader = FlareShader
-	_mat.set_shader_parameter("color", color)
-	_mat.set_shader_parameter("intensity", intensity)
-	_mat.set_shader_parameter("aspect", ASPECT)
-	material_override = _mat
+	if _shared_mat == null:
+		_quad = QuadMesh.new()
+		_quad.size = Vector2(ASPECT, 1.0)
+		_shared_mat = ShaderMaterial.new()
+		_shared_mat.shader = FlareShader
+		_shared_mat.set_shader_parameter("aspect", ASPECT)
+	mesh = _quad
+	material_override = _shared_mat
+	set_instance_shader_parameter("color", color)
+	set_instance_shader_parameter("intensity", intensity)
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 
@@ -47,4 +51,4 @@ func _update() -> void:
 	# Snap open fast, then shrink a little as it fades.
 	var open := ease(minf(k * 5.0, 1.0), 0.3)
 	scale = Vector3.ONE * size * lerpf(0.5, 1.0, open) * lerpf(1.0, 0.8, k)
-	_mat.set_shader_parameter("fade", pow(1.0 - k, 1.5))
+	set_instance_shader_parameter("fade", pow(1.0 - k, 1.5))

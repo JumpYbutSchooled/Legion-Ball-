@@ -55,6 +55,7 @@ const WEAPONS := [
 			"HOLD  reel in on a taut elastic rope",
 			"Stretch it and it hauls harder; swing round the hook",
 			"RELEASE  let go and keep momentum",
+			"The rope snaps after 3s; it can't hold you up forever",
 			"Sticks to moving targets; yanks cubes to you",
 			"Hit the ground fast while hooked: SLAM explosion",
 		],

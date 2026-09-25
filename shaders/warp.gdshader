@@ -2,7 +2,7 @@ shader_type canvas_item;
 // Full-screen speed warp: fisheye bend, radial blur, chromatic aberration, and an
 // expanding shockwave ring on dash. Strength goes above 1 for the dash burst.
 
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform float strength : hint_range(0.0, 4.0) = 0.0;
 // 0 -> 1 as the shockwave ring expands; 1 = off.
 uniform float shock_progress : hint_range(0.0, 1.0) = 1.0;

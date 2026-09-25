@@ -2,9 +2,10 @@ shader_type spatial;
 // Additive glowing crystal. Faceted brightness comes from the flat face normals.
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
 
-uniform vec3 color : source_color = vec3(0.3, 0.8, 1.0);
-uniform float intensity = 2.5;
-uniform float fade = 1.0;
+// Per-instance, so every beam can share one material (set_instance_shader_parameter).
+instance uniform vec3 color : source_color = vec3(0.3, 0.8, 1.0);
+instance uniform float intensity = 2.5;
+instance uniform float fade = 1.0;
 
 // 0 at the ball, 1 at the tail.
 varying float along;
