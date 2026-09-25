@@ -30,7 +30,7 @@ const ShardBurst := preload("res://scripts/shard_burst.gd")
 @export var slide_speed := 5.0
 
 @export_group("Status")
-@export var mark_multiplier := 2.0
+@export var mark_multiplier := 1.5
 @export var mark_color := Color(0.6, 0.35, 1.0)
 @export var stagger_color := Color(1.0, 0.82, 0.2)
 

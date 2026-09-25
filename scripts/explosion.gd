@@ -107,6 +107,8 @@ func _blast() -> void:
 			body.call("stagger", stagger_time)
 		if damage > 0.0 and body.has_method("take_hit"):
 			body.call("take_hit", damage * falloff, body_pos, dir)
+			if manager:
+				manager.call("report_damage", body, damage * falloff, body_pos)
 		if body.has_method("receive_impulse"):
 			# Players are pushed through the network.
 			body.call("receive_impulse", (dir + Vector3.UP * 0.4).normalized() * force * falloff)

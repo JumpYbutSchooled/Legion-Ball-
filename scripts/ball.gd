@@ -286,7 +286,7 @@ func on_parried() -> void:
 			"position": global_position,
 			"color": Color(0.55, 0.4, 1.0),
 			"radius": 16.0,
-			"damage": 14.0,
+			"damage": 10.0,
 			"force": 70.0,
 			"spark_count": 500,
 			"spark_speed": 40.0,

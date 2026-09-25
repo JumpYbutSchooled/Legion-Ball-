@@ -12,13 +12,14 @@ extends "res://scripts/weapons/blade_weapon.gd"
 
 @export var pellets := 10
 ## Cone half-angle, in degrees.
-@export var spread_deg := 2.5
-@export var fire_interval := 0.26
-@export var max_range := 200.0
+@export var spread_deg := 3.5
+## Slow, pump-action pace: every shot can kill up close.
+@export var fire_interval := 0.7
+@export var max_range := 120.0
 
 @export_group("Heat")
-## Heat added per shot (1 = overheated): 0.17 gives six quick shots.
-@export var heat_per_shot := 0.17
+## Heat added per shot (1 = overheated): 0.34 gives three shots.
+@export var heat_per_shot := 0.34
 ## Heat lost per second once you've stopped firing for cool_delay seconds.
 @export var cool_rate := 0.6
 @export var cool_delay := 0.3
@@ -33,9 +34,13 @@ extends "res://scripts/weapons/blade_weapon.gd"
 @export var reload_end_color := Color(0.2, 0.45, 1.0)
 @export var reload_flash_color := Color(0.25, 0.55, 1.0)
 @export_group("")
-@export var pellet_damage := 1.4
-## Pellets do full damage up to this range, falling to 30% at max_range.
-@export var falloff_start := 60.0
+## 10 pellets x 2.6 = a one-shot on a player at point-blank if every pellet lands.
+@export var pellet_damage := 2.6
+## Pellets do full damage up to falloff_start, falling to falloff_min by falloff_end
+## (and staying there out to max_range).
+@export var falloff_start := 8.0
+@export var falloff_end := 45.0
+@export var falloff_min := 0.15
 @export var pellet_impulse := 6.0
 ## Ball velocity change per shot, opposite the way the camera is looking.
 @export var self_knockback := 8.0
@@ -168,16 +173,18 @@ func _fire() -> void:
 		var r := tan(deg_to_rad(spread_deg)) * sqrt(randf())
 		var a := randf() * TAU
 		var dir := (aim_dir + (side * cos(a) + up * sin(a)) * r).normalized()
+		# Pellets fly from the middle of the ball (a blade tip can already be past a target
+		# that's point-blank); the visible tracer still leaves from a blade tip.
+		var hit: Dictionary = manager.raycast(center, center + dir * max_range)
+		var end: Vector3 = hit["position"] if not hit.is_empty() else center + dir * max_range
 		var from := tips[p % tips.size()]
-		var hit: Dictionary = manager.raycast(from, from + dir * max_range)
-		var end: Vector3 = hit["position"] if not hit.is_empty() else from + dir * max_range
-		manager.spawn_beam(from, dir, from.distance_to(end), 0.06, 0.08, 4.0, color)
+		manager.spawn_beam(from, (end - from).normalized(), from.distance_to(end), 0.06, 0.08, 4.0, color)
 		if hit.is_empty():
 			continue
 		var pos: Vector3 = hit["position"]
 		var normal: Vector3 = hit["normal"]
-		var dist := from.distance_to(pos)
-		var falloff := lerpf(1.0, 0.3, clampf(inverse_lerp(falloff_start, max_range, dist), 0.0, 1.0))
+		var dist := center.distance_to(pos)
+		var falloff := lerpf(1.0, falloff_min, clampf(inverse_lerp(falloff_start, falloff_end, dist), 0.0, 1.0))
 		manager.spawn_beam(pos, normal, 0.3, 0.25, 0.06, 18.0, color)
 		if lights_left > 0:
 			lights_left -= 1

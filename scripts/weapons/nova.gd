@@ -9,17 +9,18 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## Combos: stagger drones so the Railgun can't miss; launch up, then slam back down.
 
 @export var charge_time := 1.2
-@export var cooldown := 1.5
+@export var cooldown := 2.5
 ## Blast radius, damage, force and ball launch at no charge and at full charge.
 @export var radius_min := 4.0
 @export var radius_max := 12.0
 @export var damage_min := 3.0
-@export var damage_max := 10.0
+@export var damage_max := 9.0
 @export var force_min := 10.0
 @export var force_max := 40.0
 @export var launch_min := 14.0
 @export var launch_max := 34.0
-@export var stagger_time := 2.0
+## Shorter than it used to be: 2s frozen was a guaranteed railgun kill.
+@export var stagger_time := 1.2
 ## How far the blades open up at full charge.
 @export var charge_spread := 0.55
 @export var charge_open := 0.5
@@ -28,10 +29,10 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## Downward speed when detonated in the air.
 @export var slam_speed_min := 30.0
 @export var slam_speed_max := 55.0
-@export var slam_radius_min := 12.0
-@export var slam_radius_max := 20.0
-@export var slam_damage_min := 10.0
-@export var slam_damage_max := 22.0
+@export var slam_radius_min := 10.0
+@export var slam_radius_max := 16.0
+@export var slam_damage_min := 8.0
+@export var slam_damage_max := 16.0
 ## Height above the ground that counts as "in the air".
 @export var air_height := 1.6
 

@@ -26,6 +26,8 @@ const LightFlare := preload("res://scripts/light_flare.gd")
 const Explosion := preload("res://scripts/explosion.gd")
 const Missile := preload("res://scripts/weapons/swarm_missile.gd")
 const Sfx := preload("res://scripts/sfx.gd")
+const DamageNumber := preload("res://scripts/damage_number.gd")
+const BallScript := preload("res://scripts/ball.gd")
 ## How fast the weapon turns to follow the aim (higher = snappier).
 const TURN_RATE := 30.0
 
@@ -41,6 +43,8 @@ var weapons: Array = []
 var current := 0
 
 var _was_captured := false
+## Damage numbers still collecting hits, by target.
+var _numbers := {}
 var _aim_basis := Basis.IDENTITY
 var _has_aim_basis := false
 
@@ -198,10 +202,10 @@ func _raycast_crosshair() -> Dictionary:
 
 # --- Helpers the weapons share -------------------------------------------------
 
-## Living lock targets whose aim point is on screen within `radius_px` of the center,
-## closest to the center of the circle first.
+## Living lock targets whose aim point is on screen within `radius_px` of the center and
+## no further than `max_distance` metres, closest to the center of the circle first.
 ## Each entry: {"target", "point", "screen", "distance", "off_center"}.
-func targets_on_screen(radius_px: float) -> Array:
+func targets_on_screen(radius_px: float, max_distance := INF) -> Array:
 	var found := []
 	if not camera:
 		return found
@@ -211,7 +215,7 @@ func targets_on_screen(radius_px: float) -> Array:
 		if not target.call("is_alive"):
 			continue
 		var p: Vector3 = target.call("get_aim_point")
-		if camera.is_position_behind(p):
+		if camera.is_position_behind(p) or p.distance_to(ball_pos) > max_distance:
 			continue
 		var screen := camera.unproject_position(p)
 		var off := screen.distance_to(center)
@@ -244,6 +248,7 @@ func raycast(from: Vector3, to: Vector3) -> Dictionary:
 func hit_object(collider: Object, damage: float, pos: Vector3, dir: Vector3, impulse: float) -> void:
 	if collider.has_method("take_hit"):
 		collider.call("take_hit", damage, pos, dir)
+		report_damage(collider, damage, pos)
 	if collider.has_method("receive_impulse"):
 		collider.call("receive_impulse", dir * impulse)
 		return
@@ -252,6 +257,32 @@ func hit_object(collider: Object, damage: float, pos: Vector3, dir: Vector3, imp
 		# Resting bodies fall asleep and can ignore impulses until woken.
 		body.sleeping = false
 		body.apply_impulse(dir * impulse, pos - body.global_position)
+
+
+## Local player only: show a floating number for damage we just dealt to `target`, with
+## the distance. Shown as player damage, so practice tells you what a hit is worth online.
+## Repeated hits on the same target add into one number.
+func report_damage(target: Object, damage: float, pos: Vector3) -> void:
+	if not is_multiplayer_authority() or damage <= 0.0 or not ball:
+		return
+	var amount := damage * BallScript.PVP_DAMAGE_SCALE
+	var dist := ball.global_position.distance_to(pos)
+	var existing = _numbers.get(target)
+	if existing and is_instance_valid(existing) and existing.can_merge():
+		existing.add(amount, dist)
+		return
+	var n := DamageNumber.new()
+	n.total = amount
+	n.distance = dist
+	var anchor := pos
+	if target is Node3D and target.has_method("get_aim_point"):
+		anchor = target.call("get_aim_point")
+	n.position = anchor
+	ball.get_parent().add_child(n)
+	_numbers[target] = n
+	for key in _numbers.keys():
+		if not is_instance_valid(_numbers[key]):
+			_numbers.erase(key)
 
 
 ## Pushes the ball back, horizontally, away from `shot_dir` (measure it from the ball,

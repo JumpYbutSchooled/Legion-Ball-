@@ -13,22 +13,29 @@ const FlareShader := preload("res://shaders/light_flare.gdshader")
 
 enum Rail { IDLE, CHARGING, RELOADING }
 
-@export var charge_time := 3.0
-@export var reload_time := 6.0
-@export var damage := 12.0
+@export var charge_time := 2.5
+@export var reload_time := 5.0
+@export var damage := 10.0
 @export var hit_impulse := 40.0
 ## Ball velocity change on firing: same as a dash.
 @export var knockback := 40.0
 @export var shot_shake := 1.0
 
 @export_group("Explosion")
-@export var explosion_radius := 7.0
+@export var explosion_radius := 5.0
 ## Damage at the center of the blast (falls off to 0 at the edge).
-@export var explosion_damage := 12.0
+@export var explosion_damage := 8.0
 ## Outward impulse on rigid bodies at the center.
 @export var explosion_force := 30.0
 ## Crosshair circle radius in pixels; targets inside it can be locked.
 @export var lock_radius_px := 70.0
+## Targets further than this can't be locked.
+@export var lock_range := 150.0
+## Damage (hit and blast) is full out to falloff_start metres, dropping to falloff_min
+## at falloff_end.
+@export var falloff_start := 80.0
+@export var falloff_end := 250.0
+@export var falloff_min := 0.6
 
 @export_group("Charge")
 ## How far the tip facets spread at full charge.
@@ -220,7 +227,7 @@ func _update_lock() -> void:
 	lock_target = null
 	if not is_ready() or rail_state == Rail.RELOADING or not manager.camera:
 		return
-	var found: Array = manager.targets_on_screen(lock_radius_px)
+	var found: Array = manager.targets_on_screen(lock_radius_px, lock_range)
 	if not found.is_empty():
 		lock_target = found[0]["target"]
 		lock_screen_pos = found[0]["screen"]
@@ -261,13 +268,14 @@ func _fire(hit: Dictionary) -> void:
 		for i in 8:
 			var jitter := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1))
 			manager.spawn_beam(pos, (normal + jitter * 1.2).normalized(), randf_range(1.5, 3.0), 1.0, 0.2, 30.0, color)
-		manager.hit_object(hit["collider"], damage, pos, shot_dir, hit_impulse)
+		var falloff := lerpf(1.0, falloff_min, clampf(inverse_lerp(falloff_start, falloff_end, tip.distance_to(pos)), 0.0, 1.0))
+		manager.hit_object(hit["collider"], damage * falloff, pos, shot_dir, hit_impulse)
 		# The blast: area damage, outward shove, particles, shockwave, warp, light.
 		manager.spawn_explosion({
 			"position": pos + normal * 0.3,
 			"color": color,
 			"radius": explosion_radius,
-			"damage": explosion_damage,
+			"damage": explosion_damage * falloff,
 			"force": explosion_force,
 		})
 

@@ -259,8 +259,8 @@ func _build_controls(box: VBoxContainer) -> void:
 		grid.add_child(UIStyle.label(entry[1], 15, UIStyle.TEXT))
 	box.add_child(UIStyle.label("\nCOMBAT NOTES", 13, UIStyle.TEXT_DIM))
 	var notes := UIStyle.label(
-		"MARKED targets (Swarm) take 2x damage from everything.\n"
-		+ "STAGGERED targets and players (Nova) freeze in place for 2s.\n"
+		"MARKED targets (Swarm) take 1.5x damage from everything for 3s.\n"
+		+ "STAGGERED targets and players (Nova) freeze in place for 1.2s.\n"
 		+ "Scatter and Nova launch you; Tether reels you back in.", 15, UIStyle.TEXT)
 	notes.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(notes)

@@ -13,7 +13,7 @@ extends Node3D
 ## Detonates this close to the goal.
 @export var fuse_distance := 1.2
 @export var lifetime := 4.0
-@export var damage := 3.0
+@export var damage := 2.5
 @export var blast_radius := 2.5
 @export var mark_time := 4.0
 @export var color := Color(0.6, 0.35, 1.0)

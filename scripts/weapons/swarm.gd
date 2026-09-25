@@ -10,11 +10,13 @@ extends "res://scripts/weapons/blade_weapon.gd"
 const MISSILE_SPEED := 38.0
 
 @export var paint_radius_px := 170.0
+## Targets further than this can't be painted.
+@export var paint_range := 90.0
 @export var paint_interval := 0.25
 @export var max_paints := 4
-@export var cooldown := 0.8
+@export var cooldown := 1.2
 ## How long a missile stays marked on its target after it hits.
-@export var mark_time := 4.0
+@export var mark_time := 3.0
 
 ## Currently painted targets, in paint order.
 var painted: Array[Node3D] = []
@@ -91,13 +93,19 @@ func _prune() -> void:
 			painted.remove_at(i)
 
 
+## Paints a new target if there is one, otherwise stacks another missile on the one
+## nearest the center (so it isn't useless against a single enemy).
 func _paint_next() -> void:
-	for entry in manager.targets_on_screen(paint_radius_px):
-		var target: Node3D = entry["target"]
-		if not painted.has(target):
-			painted.append(target)
-			manager.spawn_light(entry["point"], 12.0, 3.0, 0.1, color)
-			return
+	var found: Array = manager.targets_on_screen(paint_radius_px, paint_range)
+	if found.is_empty():
+		return
+	var pick: Dictionary = found[0]
+	for entry in found:
+		if not painted.has(entry["target"]):
+			pick = entry
+			break
+	painted.append(pick["target"])
+	manager.spawn_light(pick["point"], 12.0, 3.0, 0.1, color)
 
 
 func _launch() -> void:

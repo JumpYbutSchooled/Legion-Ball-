@@ -12,7 +12,11 @@ signal fired(blade_index: int)
 ## Mirrored for the left side. Bottom is shallower so those blades clear the floor.
 @export var row_angles := PackedFloat32Array([40.0, 0.0, -28.0])
 @export var fire_interval := 0.06
-@export var damage := 1.0
+@export var damage := 0.6
+## Full damage out to falloff_start metres, dropping to falloff_min at falloff_end.
+@export var falloff_start := 50.0
+@export var falloff_end := 180.0
+@export var falloff_min := 0.4
 ## Impulse given to rigid bodies that get hit.
 @export var hit_impulse := 4.0
 ## Impulse pushing the ball backward per shot.
@@ -21,6 +25,8 @@ signal fired(blade_index: int)
 @export var shot_shake := 0.3
 ## Small lock-on circle (pixels): a target inside it gets every shot, like the railgun.
 @export var lock_radius_px := 16.0
+## Targets further than this can't be locked (you can still hit them by aiming).
+@export var lock_range := 70.0
 
 @export_group("Muzzle")
 @export var flash_energy := 40.0
@@ -51,7 +57,7 @@ func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
 	_cooldown = maxf(_cooldown - delta, 0.0)
 	lock_target = null
 	if is_ready():
-		var found: Array = manager.targets_on_screen(lock_radius_px)
+		var found: Array = manager.targets_on_screen(lock_radius_px, lock_range)
 		if not found.is_empty():
 			lock_target = found[0]["target"]
 			lock_screen_pos = found[0]["screen"]
@@ -107,7 +113,8 @@ func _fire(hit: Dictionary) -> void:
 			var d := (normal + jitter * 0.8).normalized()
 			manager.spawn_beam(pos, d, impact_size * 0.7, impact_size * 0.5, 0.06, impact_intensity, color)
 		manager.spawn_light(pos + normal * 0.2, impact_light_energy, 5.0, 0.07, color)
-		manager.hit_object(hit["collider"], damage, pos, shot_dir, hit_impulse)
+		var falloff := lerpf(1.0, falloff_min, clampf(inverse_lerp(falloff_start, falloff_end, tip.distance_to(pos)), 0.0, 1.0))
+		manager.hit_object(hit["collider"], damage * falloff, pos, shot_dir, hit_impulse * falloff)
 
 	# Recoil from the ball's middle: a blade tip can be past a spot on the floor right in
 	# front of you, and measuring from there pushed you forward.

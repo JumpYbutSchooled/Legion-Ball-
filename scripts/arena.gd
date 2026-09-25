@@ -26,7 +26,9 @@ const SPAWN_COUNT := 8
 const MAX_HEALTH := 100.0
 const RESPAWN_TIME := 3.0
 ## After respawning, hits are ignored for this long.
-const SPAWN_PROTECT := 1.5
+const SPAWN_PROTECT := 2.0
+## Damage multiplier on a Swarm-marked player (2x made any mark + hit a kill).
+const MARK_MULTIPLIER := 1.5
 const KILLS_TO_WIN := 15
 ## Seconds the winner banner shows before everyone returns to the lobby.
 const END_DELAY := 6.0
@@ -196,7 +198,7 @@ func _host_hit(victim: int, amount: float) -> void:
 			_to_peer(victim, "_apply_parry", [])
 		return
 	if _marks.get(victim, 0.0) > 0.0:
-		amount *= 2.0
+		amount *= MARK_MULTIPLIER
 	var hp: float = health.get(victim, MAX_HEALTH) - amount
 	_set_health.rpc(victim, hp)
 	if hp <= 0.0:

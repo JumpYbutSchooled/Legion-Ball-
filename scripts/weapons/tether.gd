@@ -152,7 +152,7 @@ func _slam(pos: Vector3, speed: float) -> void:
 		"position": pos + Vector3.UP * 0.3,
 		"color": color,
 		"radius": lerpf(6.0, 14.0, k),
-		"damage": lerpf(4.0, 12.0, k),
+		"damage": lerpf(3.0, 9.0, k),
 		"force": lerpf(25.0, 60.0, k),
 		"spark_count": int(lerpf(150.0, 400.0, k)),
 		"spark_speed": lerpf(20.0, 38.0, k),
