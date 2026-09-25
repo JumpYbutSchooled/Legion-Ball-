@@ -116,6 +116,8 @@ func _build() -> void:
 
 
 func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
+	# Here, not in _update: the lock's line-of-sight ray only works during physics.
+	_update_lock()
 	match rail_state:
 		Rail.IDLE:
 			if pressed and is_ready():
@@ -181,7 +183,9 @@ func _update(delta: float) -> void:
 			reload = 0.0
 			flash(reload_flash_color)
 
-	_update_lock()
+	# handle_fire() only runs while this is the equipped weapon; drop the lock otherwise.
+	if not is_ready():
+		lock_target = null
 
 	# Charge: spread and glow build slowly, strongest right at the end.
 	var c := charge * charge
