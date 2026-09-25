@@ -11,9 +11,14 @@ extends Node
 ## games say "player" in that step and are let straight in (Net._use_client_auth).
 ## Links prove they're one of our servers with a hash of MOD_CODE (the same on every
 ## server), so nobody else can post into global chat.
+## The hub also answers "who's online?" for the multiplayer menu (ServerStatus in
+## scripts/ui/lobby_panel.gd): links keep it up to date with their player lists, and a
+## server with no link is empty (and asleep). The question and answer also go through
+## the authentication step, then the asker hangs up.
 ## For local testing: GLOBAL_HUB=1 makes a server the hub; GLOBAL_HUB_URL points a server
 ## at a hub.
 
+const ModScript := preload("res://scripts/net/moderation.gd")
 const KEY_SALT := "leigon-global-chat"
 ## Seconds the hub waits for a new connection to say "player" or prove it's a link.
 const AUTH_WAIT := 3.0
@@ -27,8 +32,10 @@ const QUEUE_MAX := 10
 ## Pending (never-authenticated) connections should never time out.
 const FOREVER := 1.0e7
 
-# Hub: linked servers, peer id -> label ("S2").
+# Hub: linked servers, peer id -> label ("S2"), and what each last reported:
+# peer id -> {"players": [names], "map": "SPRAWL"}.
 var _links := {}
+var _link_status := {}
 # Link servers: this server's own connection to the hub, while linked.
 var _link_api: SceneMultiplayer
 var _link_holder: Node
@@ -39,9 +46,29 @@ var _idle := 0.0
 var _queue: Array = []
 
 
+func _ready() -> void:
+	var net := _net()
+	if net:
+		# Links tell the hub whenever their players change (for the server list).
+		net.connect("roster_changed", func() -> void:
+			if _link_api and _connected:
+				_hello())
+
+
 ## True on the online servers: global chat goes through the relay.
 func is_active() -> bool:
 	return _is_hub() or _hub_url() != ""
+
+
+## This server's players and map, for the server list.
+func _own_status() -> Dictionary:
+	var net := _net()
+	var names: Array = []
+	for id in net.get("players"):
+		var p: Dictionary = net.get("players")[id]
+		var title := ModScript.title_of(p)
+		names.append(("[%s] " % title[0] if not title.is_empty() else "") + String(p["name"]))
+	return {"players": names, "map": net.MAP_NAMES.get(net.get("map_scene"), "")}
 
 
 ## Called by Net once a dedicated server is listening: the hub starts screening new
@@ -75,6 +102,7 @@ func _process(delta: float) -> void:
 		for id in _links.keys():
 			if not pending.has(id):
 				_links.erase(id)
+				_link_status.erase(id)
 		return
 	if _hub_url() == "":
 		return
@@ -147,15 +175,32 @@ func _on_hub_auth(id: int, data: PackedByteArray) -> void:
 	match msg.get("t", ""):
 		"player":
 			(multiplayer as SceneMultiplayer).complete_auth(id)
+		"status?":
+			(multiplayer as SceneMultiplayer).send_auth(id, _pack(_status_snapshot()))
 		"hello":
 			var k := _key()
 			if k != "" and msg.get("key", "") == k:
 				if not _links.has(id):
 					print("[relay] %s linked" % msg.get("label", "?"))
 				_links[id] = String(msg.get("label", "?"))
+				var players = msg.get("players", [])
+				_link_status[id] = {
+					"players": players if typeof(players) == TYPE_ARRAY else [],
+					"map": String(msg.get("map", "")),
+				}
 		"up":
 			if _links.has(id) and typeof(msg.get("entry")) == TYPE_DICTIONARY:
 				_relay(msg["entry"])
+
+
+## Who's on every server right now: the hub's own players plus what each link reported.
+## Servers missing from it have no players (and are asleep).
+func _status_snapshot() -> Dictionary:
+	var net := _net()
+	var servers := {String(net.call("server_label")): _own_status()}
+	for id in _links:
+		servers[_links[id]] = _link_status.get(id, {"players": [], "map": ""})
+	return {"t": "status", "version": net.get("version"), "servers": servers}
 
 
 func _relay(entry: Dictionary) -> void:
@@ -219,7 +264,11 @@ func _on_link_up(_id: int) -> void:
 
 
 func _hello() -> void:
-	_link_api.send_auth(1, _pack({"t": "hello", "key": _key(), "label": _net().call("server_label")}))
+	var status := _own_status()
+	_link_api.send_auth(1, _pack({
+		"t": "hello", "key": _key(), "label": _net().call("server_label"),
+		"players": status["players"], "map": status["map"],
+	}))
 
 
 func _send_up(entry: Dictionary) -> void:

@@ -15,6 +15,7 @@ const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const LobbyPanel := preload("res://scripts/ui/lobby_panel.gd")
 const NetScript := preload("res://scripts/net/net.gd")
 const ModScript := preload("res://scripts/net/moderation.gd")
+const InputSetup := preload("res://scripts/input_setup.gd")
 
 var pause_mode := false
 
@@ -148,6 +149,7 @@ func _animate_page(box: Control) -> void:
 
 func _show_page(id: String) -> void:
 	_current_page = id
+	_listening = {}
 	for child in _page_holder.get_children():
 		child.queue_free()
 	# Pages scroll when they're taller than the window.
@@ -189,7 +191,7 @@ func _header(parent: Control, title: String, sub: String) -> void:
 # --- ARMORY -------------------------------------------------------------------
 
 func _build_armory(box: VBoxContainer) -> void:
-	_header(box, "ARMORY", "SIX CRYSTAL WEAPON PLATFORMS  //  KEYS 1-6 OR MOUSE WHEEL + RMB")
+	_header(box, "ARMORY", "CRYSTAL WEAPON PLATFORMS  //  WEAPON KEYS OR MOUSE WHEEL + RMB")
 	var split := HBoxContainer.new()
 	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	split.add_theme_constant_override("separation", 20)
@@ -244,40 +246,57 @@ func _show_weapon(detail: VBoxContainer, slot: int) -> void:
 
 # --- CONTROLS -----------------------------------------------------------------
 
-const CONTROLS := [
-	["W A S D / ARROWS", "Roll (relative to the camera)"],
-	["SPACE", "Jump (1s cooldown)"],
-	["Q", "Shield for 1s: blocks all damage. A hit on it strikes back (damage + 5s stun), launches you, explodes and resets the cooldown (6s)"],
-	["F", "Dash: redirect all speed where you steer, +40 (in the air, look down to dash down)"],
-	["S (against motion)", "Skid: hard brake with sparks"],
+## Fixed controls (not rebindable), listed under the key bindings.
+const FIXED_CONTROLS := [
 	["MOUSE", "Aim / orbit camera (click to lock the mouse)"],
-	["LMB", "Fire equipped weapon"],
-	["1 - 6", "Equip weapon directly"],
-	["7 / 8 / 0", "Staff only: Rain of God / Pillars of God / hide or show them"],
-	["G", "Owner only: gold shield, invincible until you press G again"],
-	["MOUSE WHEEL", "Browse weapons (hologram selector)"],
-	["RMB", "Confirm the browsed weapon"],
-	["`", "Holster / draw weapon"],
-	["T", "Reload: Gatling magazine early, or vent Scatter heat"],
-	["I / O", "Zoom camera in / out (or CTRL + WHEEL)"],
-	["E", "Rotate camera"],
-	["R", "Reset (ball, cubes and targets)"],
-	["ESC", "Pause menu"],
-	["/", "Server chat (online): Enter to send, Esc to close"],
-	["RIGHT SHIFT", "Global chat: every online server"],
+	["MOUSE WHEEL", "Browse weapons (hologram selector); RMB confirms"],
+	["CTRL + WHEEL", "Zoom camera"],
+	["ESC", "Pause menu / close chat"],
 ]
+
+## The key binding being changed: {"action", "slot"} (empty when not listening).
+var _listening := {}
+## Controls page buttons: [action, slot, button].
+var _bind_buttons: Array = []
 
 
 func _build_controls(box: VBoxContainer) -> void:
-	_header(box, "CONTROLS", "INPUT MAP  //  KEYBOARD + MOUSE")
+	_header(box, "CONTROLS", "CLICK A KEY TO CHANGE IT  //  ESC CANCELS, BACKSPACE CLEARS")
 	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 36)
-	grid.add_theme_constant_override("v_separation", 9)
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 18)
+	grid.add_theme_constant_override("v_separation", 6)
 	box.add_child(grid)
-	for entry in CONTROLS:
-		grid.add_child(UIStyle.label(entry[0], 15, UIStyle.ACCENT, true))
+	_bind_buttons.clear()
+	for entry in InputSetup.REBINDABLE:
+		if entry is String:
+			# Section heading across the three columns.
+			grid.add_child(UIStyle.label("\n" + entry, 13, UIStyle.TEXT_DIM))
+			grid.add_child(Control.new())
+			grid.add_child(Control.new())
+			continue
 		grid.add_child(UIStyle.label(entry[1], 15, UIStyle.TEXT))
+		for slot in InputSetup.SLOTS:
+			var b := _small_button("", _start_listening.bind(entry[0], slot))
+			b.custom_minimum_size = Vector2(170, 0)
+			grid.add_child(b)
+			_bind_buttons.append([entry[0], slot, b])
+	_refresh_bind_buttons()
+	var reset := _small_button("RESET ALL CONTROLS", func() -> void:
+		InputSetup.reset_all()
+		_listening = {}
+		_refresh_bind_buttons())
+	box.add_child(reset)
+
+	box.add_child(UIStyle.label("\nOTHER CONTROLS", 13, UIStyle.TEXT_DIM))
+	var fixed := GridContainer.new()
+	fixed.columns = 2
+	fixed.add_theme_constant_override("h_separation", 36)
+	fixed.add_theme_constant_override("v_separation", 6)
+	box.add_child(fixed)
+	for entry in FIXED_CONTROLS:
+		fixed.add_child(UIStyle.label(entry[0], 15, UIStyle.ACCENT, true))
+		fixed.add_child(UIStyle.label(entry[1], 15, UIStyle.TEXT))
 	box.add_child(UIStyle.label("\nCOMBAT NOTES", 13, UIStyle.TEXT_DIM))
 	var notes := UIStyle.label(
 		"MARKED targets (Swarm) take 1.5x damage from everything for 3s.\n"
@@ -285,6 +304,49 @@ func _build_controls(box: VBoxContainer) -> void:
 		+ "Scatter and Nova launch you; Tether reels you back in.", 15, UIStyle.TEXT)
 	notes.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(notes)
+
+
+func _start_listening(action: String, slot: int) -> void:
+	_listening = {"action": action, "slot": slot}
+	_refresh_bind_buttons()
+
+
+## Every binding button shows its current key (in place, so the page doesn't scroll).
+func _refresh_bind_buttons() -> void:
+	for entry in _bind_buttons:
+		var b: Button = entry[2]
+		if not is_instance_valid(b):
+			continue
+		var events := InputMap.action_get_events(entry[0]) if InputMap.has_action(entry[0]) else []
+		var listening: bool = _listening.get("action", "") == entry[0] and _listening.get("slot", -1) == entry[1]
+		var text := "PRESS A KEY..." if listening else (InputSetup.event_label(events[entry[1]]) if entry[1] < events.size() else "-")
+		b.text = "[ " + text + " ]"
+		b.add_theme_color_override("font_color", UIStyle.ACCENT if listening else UIStyle.TEXT)
+
+
+## While changing a binding, the next key or mouse button goes to it (and nowhere else).
+func _input(event: InputEvent) -> void:
+	if _listening.is_empty() or not is_visible_in_tree():
+		return
+	var key := event as InputEventKey
+	var mouse := event as InputEventMouseButton
+	if key and (not key.pressed or key.echo):
+		return
+	if mouse and (not mouse.pressed or mouse.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT]):
+		return
+	if not key and not mouse:
+		return
+	get_viewport().set_input_as_handled()
+	var action: String = _listening["action"]
+	var slot: int = _listening["slot"]
+	_listening = {}
+	if key and key.keycode == KEY_ESCAPE:
+		pass  # Cancel.
+	elif key and key.keycode in [KEY_BACKSPACE, KEY_DELETE]:
+		InputSetup.clear(action, slot)
+	else:
+		InputSetup.bind(action, slot, event)
+	_refresh_bind_buttons()
 
 
 # --- MODERATION ---------------------------------------------------------------

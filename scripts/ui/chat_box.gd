@@ -75,10 +75,8 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _open:
 		return
-	# / = server chat. Right Shift = global chat (checked by hand: actions can't tell
-	# the left and right Shift apart).
-	var key := event as InputEventKey
-	var global := key != null and key.pressed and not key.echo and key.keycode == KEY_SHIFT and key.location == KEY_LOCATION_RIGHT
+	# / = server chat, right Shift = global chat (both rebindable).
+	var global := event.is_action_pressed("chat_global")
 	if not global and not event.is_action_pressed("chat"):
 		return
 	if not _net or not _net.get("online") or _net.get("input_blocked"):

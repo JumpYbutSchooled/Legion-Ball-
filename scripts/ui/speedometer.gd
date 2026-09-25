@@ -10,6 +10,7 @@ extends CanvasLayer
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
 const Sfx := preload("res://scripts/sfx.gd")
+const InputSetup := preload("res://scripts/input_setup.gd")
 
 const SCALE := 5.0
 const MAX_DISPLAY := 500.0
@@ -287,7 +288,7 @@ func _draw_shield(pos: Vector2) -> void:
 	var col := Color(0.75, 0.55, 1.0) if ready_k >= 1.0 else UIStyle.TEXT_DIM
 	if blocking:
 		col = Color.WHITE
-	var label := "SHIELD  [Q]" if ready_k >= 1.0 else "SHIELD  %.1fs" % ((1.0 - ready_k) * float(ball.get("block_cooldown")))
+	var label := "SHIELD  [%s]" % InputSetup.key_label("block") if ready_k >= 1.0 else "SHIELD  %.1fs" % ((1.0 - ready_k) * float(ball.get("block_cooldown")))
 	if blocking:
 		label = "SHIELD  ACTIVE"
 	var left := PANEL.position.x + 10.0
