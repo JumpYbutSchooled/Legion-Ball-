@@ -320,7 +320,6 @@ func _build_moderation(box: VBoxContainer) -> void:
 		if id == me:
 			continue
 		others += 1
-		var is_mod: bool = players[id].get("mod", false)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
 		var swatch := ColorRect.new()
@@ -334,7 +333,7 @@ func _build_moderation(box: VBoxContainer) -> void:
 		var title_label := UIStyle.label("[%s]" % title[0] if not title.is_empty() else "", 14, title[1] if not title.is_empty() else UIStyle.TEXT)
 		title_label.custom_minimum_size = Vector2(90, 0)
 		row.add_child(title_label)
-		if not is_mod:
+		if mod.call("can_act_on", players[id]):
 			row.add_child(_small_button("KICK", func() -> void: mod.call("kick", id)))
 			row.add_child(_small_button("BAN", func() -> void: mod.call("ban", id)))
 		box.add_child(row)

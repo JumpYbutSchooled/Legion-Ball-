@@ -307,12 +307,31 @@ func _refresh_god_shields() -> void:
 		scene.call("refresh_god_shields")
 
 
-## Sender is a moderator, and the target is a real player who isn't one.
+## Sender is a moderator, and allowed to act on the target: anyone can be kicked or
+## banned except the owner; moderators only by the owner (testers by any moderator).
 func _may_act_on(target: int) -> bool:
-	if not multiplayer.is_server() or not _is_moderator(_sender()):
+	var sender := _sender()
+	if not multiplayer.is_server() or not _is_moderator(sender):
 		return false
 	var players: Dictionary = _net.get("players")
-	return players.has(target) and target != _sender() and target != 1 and not _mods.has(target)
+	if not players.has(target) or target == sender or target == 1:
+		return false
+	if players[target].get("role", "") == "owner":
+		return false
+	if _mods.has(target):
+		return players.get(sender, {}).get("role", "") == "owner"
+	return true
+
+
+## What this player may kick or ban, by the target's roster entry (for the UI; the
+## server checks for itself in _may_act_on).
+func can_act_on(entry: Dictionary) -> bool:
+	var target_role: String = entry.get("role", "mod" if entry.get("mod", false) else "")
+	if target_role == "owner":
+		return false
+	if target_role == "mod":
+		return role == "owner"
+	return true
 
 
 func _is_moderator(peer: int) -> bool:
