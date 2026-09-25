@@ -25,6 +25,7 @@ const FlashLight := preload("res://scripts/flash_light.gd")
 const LightFlare := preload("res://scripts/light_flare.gd")
 const Explosion := preload("res://scripts/explosion.gd")
 const Missile := preload("res://scripts/weapons/swarm_missile.gd")
+const RailBolt := preload("res://scripts/weapons/rail_bolt.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 const DamageNumber := preload("res://scripts/damage_number.gd")
 const BallScript := preload("res://scripts/ball.gd")
@@ -379,6 +380,29 @@ func play_sound(sound: String, pos: Vector3, volume_db := 0.0) -> void:
 @rpc("authority", "unreliable")
 func _net_sound(sound: String, pos: Vector3, volume_db: float) -> void:
 	Sfx.play_at(get_tree(), sound, pos, volume_db)
+
+
+## Railgun bolt (scripts/weapons/rail_bolt.gd property names, plus "position" and
+## "target_path"). Other players get a harmless copy that flies the same way.
+func spawn_rail_bolt(props: Dictionary, visual_only := false) -> void:
+	var bolt := RailBolt.new()
+	for key in props:
+		if key != "position" and key != "target_path":
+			bolt.set(key, props[key])
+	var path: String = props.get("target_path", "")
+	if path != "":
+		bolt.target = get_node_or_null(path)
+	bolt.manager = self
+	bolt.visual_only = visual_only
+	bolt.position = props["position"]
+	ball.get_parent().add_child(bolt)
+	if not visual_only and _broadcasting():
+		_net_rail_bolt.rpc(props)
+
+
+@rpc("authority", "reliable")
+func _net_rail_bolt(props: Dictionary) -> void:
+	spawn_rail_bolt(props, true)
 
 
 ## A blade jolted by a shot; other players see it too.

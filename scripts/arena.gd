@@ -32,6 +32,8 @@ const MARK_MULTIPLIER := 1.5
 ## A parried shot strikes back at whoever fired it: this much damage, and a stun.
 const PARRY_DAMAGE := 20.0
 const PARRY_STUN := 5.0
+## Health the killer gets back for each kill (capped at MAX_HEALTH).
+const KILL_HEAL := 30.0
 const KILLS_TO_WIN := 15
 ## Seconds the winner banner shows before everyone returns to the lobby.
 const END_DELAY := 6.0
@@ -259,6 +261,8 @@ func _kill(victim: int, attacker: int) -> void:
 	net.call("push_roster")
 	_marks.erase(victim)
 	_respawn_timers[victim] = RESPAWN_TIME
+	if attacker != victim and alive.get(attacker, false):
+		_set_health.rpc(attacker, minf(health.get(attacker, MAX_HEALTH) + KILL_HEAL, MAX_HEALTH))
 	_on_killed.rpc(victim, attacker)
 	if roster.has(attacker) and int(roster[attacker]["kills"]) >= KILLS_TO_WIN:
 		_on_match_over.rpc(attacker)

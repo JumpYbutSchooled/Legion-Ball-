@@ -228,7 +228,7 @@ func _update_lock() -> void:
 		lock_screen_pos = found[0]["screen"]
 
 
-func _fire(hit: Dictionary) -> void:
+func _fire(_hit: Dictionary) -> void:
 	rail_state = Rail.RELOADING
 	reload = 0.0
 	charge = 0.0
@@ -238,15 +238,24 @@ func _fire(hit: Dictionary) -> void:
 	var tip: Vector3 = blade.to_global(blade.call("get_tip"))
 	var target_point: Vector3 = manager.aim_point
 	if lock_target:
-		# Aim straight at the lock; whatever is actually in the way takes the hit.
 		target_point = lock_target.call("get_aim_point")
-		var dir := (target_point - tip).normalized()
-		hit = manager.raycast(tip, target_point + dir * 0.5)
 	var shot_dir := (target_point - tip).normalized()
-	var end: Vector3 = hit["position"] if not hit.is_empty() else target_point
 
-	# Thick beam, a big muzzle flare and a strong warp bubble.
-	manager.spawn_beam(tip, shot_dir, tip.distance_to(end), 0.55, 0.35, 20.0, color)
+	# The shot itself: a bolt that streaks out and only hits when it arrives
+	# (rail_bolt.gd), homing onto the lock if there is one.
+	manager.spawn_rail_bolt({
+		"position": tip,
+		"dir": shot_dir,
+		"color": color,
+		"target_path": String(lock_target.get_path()) if lock_target else "",
+		"damage": damage,
+		"hit_impulse": hit_impulse,
+		"explosion_radius": explosion_radius,
+		"explosion_damage": explosion_damage,
+		"explosion_force": explosion_force,
+	})
+
+	# A big muzzle flare and a strong warp bubble.
 	manager.spawn_beam(tip, shot_dir, 2.4, 1.3, 0.12, 24.0, color)
 	var up := global_basis.y
 	for angle in [55.0, -55.0, 125.0, -125.0]:
@@ -254,24 +263,6 @@ func _fire(hit: Dictionary) -> void:
 	manager.spawn_warp(tip, 0.18, 2.2)
 	manager.spawn_light(tip, 80.0, 20.0, 0.2, color)
 	manager.play_sound("rail", tip, 2.0)
-
-	if not hit.is_empty():
-		var pos: Vector3 = hit["position"]
-		var normal: Vector3 = hit["normal"]
-		# A star of long spikes bursting off the surface.
-		manager.spawn_beam(pos, normal, 3.0, 2.0, 0.25, 30.0, color)
-		for i in 8:
-			var jitter := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1))
-			manager.spawn_beam(pos, (normal + jitter * 1.2).normalized(), randf_range(1.5, 3.0), 1.0, 0.2, 30.0, color)
-		manager.hit_object(hit["collider"], damage, pos, shot_dir, hit_impulse)
-		# The blast: area damage, outward shove, particles, shockwave, warp, light.
-		manager.spawn_explosion({
-			"position": pos + normal * 0.3,
-			"color": color,
-			"radius": explosion_radius,
-			"damage": explosion_damage,
-			"force": explosion_force,
-		})
 
 	manager.knockback(shot_dir, knockback)
 	manager.shake(shot_shake)

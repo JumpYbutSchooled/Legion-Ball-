@@ -25,7 +25,8 @@ const WEAPONS := [
 		"color": Color(1.0, 0.5, 0.1),
 		"summary": "One huge blade. A slow, visible charge for one heavy shot.",
 		"usage": [
-			"HOLD LMB  charge for 2.5s, fires when full",
+			"HOLD LMB  charge for 2.5s, fires a laser bolt when full",
+			"The bolt flies out (homes on the lock) and hits when it arrives",
 			"Heavy hit, but never a one-shot on its own",
 			"Locks the target nearest the circle's center (up to 150m)",
 			"Tip flare swells as it charges: others see it coming",
