@@ -17,15 +17,15 @@ const LaserShader := preload("res://shaders/dash_laser.gdshader")
 
 @export var max_range := 120.0
 ## How fast the rope winds in, in m/s.
-@export var reel_speed := 22.0
+@export var reel_speed := 28.0
 ## Constant pull toward the hook while reeling.
-@export var pull_accel := 20.0
+@export var pull_accel := 30.0
 ## Extra pull per metre the rope is stretched past its current length.
-@export var stiffness := 45.0
+@export var stiffness := 80.0
 ## Extra pull per m/s you're moving away from the hook while stretched.
-@export var damping := 10.0
+@export var damping := 16.0
 ## Cap on the rope's pull, in m/s^2.
-@export var max_accel := 160.0
+@export var max_accel := 200.0
 ## Most the rope can pull you upward, in m/s^2 on top of cancelling gravity. Kept low so
 ## the tether swings and hauls you, but can't be used to fly.
 @export var max_lift := 6.0

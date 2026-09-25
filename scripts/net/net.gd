@@ -21,7 +21,8 @@ const SERVER_URL := "wss://legion-ball-server.onrender.com"
 ## Port a dedicated server listens on when not told otherwise (Render sets $PORT).
 const SERVER_PORT := 7778
 const MAX_PLAYERS := 8
-const ARENA_SCENE := "res://scenes/arena.tscn"
+## Online matches use the big walled map; offline practice keeps scenes/arena.tscn.
+const ARENA_SCENE := "res://scenes/arena_sprawl.tscn"
 const MENU_SCENE := "res://scenes/menu.tscn"
 const CONNECT_TIMEOUT := 8.0
 ## A sleeping free-tier server takes up to about a minute to wake; keep retrying this long.

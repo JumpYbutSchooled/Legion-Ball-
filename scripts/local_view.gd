@@ -5,12 +5,16 @@ extends Node
 ## player's ball BEFORE adding it, so every piece is wired up by the time it's ready.
 
 const Speedometer := preload("res://scripts/ui/speedometer.gd")
+const Minimap := preload("res://scripts/ui/minimap.gd")
 
 
 func setup(ball: RigidBody3D) -> void:
 	var speedo := Speedometer.new()
 	speedo.ball = ball
 	add_child(speedo)
+	var minimap := Minimap.new()
+	minimap.ball = ball
+	add_child(minimap)
 	var rig := $CameraRig
 	var camera := $CameraRig/Pitch/SpringArm3D/Camera3D
 	var weapon := ball.get_node("Weapon")

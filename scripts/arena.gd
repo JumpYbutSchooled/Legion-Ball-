@@ -73,8 +73,9 @@ func _ensure_then_spawn() -> void:
 func _start(net: Node) -> void:
 	if net.get("online"):
 		# Cubes and practice targets only exist offline for now (not network-synced).
-		$Targets.queue_free()
-		$LockTargets.queue_free()
+		for practice in ["Targets", "LockTargets"]:
+			if has_node(practice):
+				get_node(practice).queue_free()
 		net.connect("roster_changed", _sync_players)
 	_sync_players()
 
@@ -130,8 +131,24 @@ func _spawn(id: int, index: int) -> void:
 func spawn_point(index: int) -> Vector3:
 	if not is_online():
 		return Vector3(0, 1, 60)  # Practice: the old start, facing the cubes.
+	var spots := _map_spawns()
+	if not spots.is_empty():
+		return spots[index % spots.size()]
 	var a := TAU * float(index % SPAWN_COUNT) / SPAWN_COUNT
 	return Vector3(sin(a), 0.0, cos(a)) * SPAWN_RADIUS + Vector3.UP
+
+
+## The map's own spawn points (Map/Layout.spawn_points()), if it has any.
+func _map_spawns() -> Array[Vector3]:
+	var layout := get_node_or_null("Map/Layout")
+	if layout and layout.has_method("spawn_points"):
+		return layout.call("spawn_points")
+	return []
+
+
+func _spawn_count() -> int:
+	var spots := _map_spawns()
+	return spots.size() if not spots.is_empty() else SPAWN_COUNT
 
 
 func is_online() -> bool:
@@ -298,7 +315,7 @@ func _physics_process(delta: float) -> void:
 func _safest_spawn() -> Vector3:
 	var best := spawn_point(0)
 	var best_score := -1.0
-	for i in SPAWN_COUNT:
+	for i in _spawn_count():
 		var p := spawn_point(i)
 		var nearest := INF
 		for id in _players:
