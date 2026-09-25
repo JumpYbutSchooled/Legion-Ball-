@@ -188,6 +188,19 @@ func _draw_gatling(info: Dictionary, col: Color) -> void:
 	draw_arc(c, info["radius"], 0.0, TAU, 48, faint, line_width, true)
 	if info["locked"]:
 		_brackets(_gat_center, _gat_radius, 0.0, col)
+	# Ammo: an arc under the crosshair that empties as you fire; while reloading it
+	# refills in purple and blinks.
+	var r: float = info["radius"] + 9.0
+	var start := PI * 0.3
+	var end := PI * 0.7
+	var back := col
+	back.a *= 0.2
+	draw_arc(c, r, start, end, 16, back, 3.0, true)
+	if info.get("reloading", false):
+		var reload_col := Color(0.65, 0.35, 1.0, col.a * (0.5 + 0.5 * float(int(Time.get_ticks_msec() / 120) % 2)))
+		draw_arc(c, r, end, lerpf(end, start, info["reload"]), 16, reload_col, 3.0, true)
+	else:
+		draw_arc(c, r, end, lerpf(end, start, info.get("ammo", 1.0)), 16, col, 3.0, true)
 
 
 func _draw_rail(info: Dictionary, col: Color) -> void:

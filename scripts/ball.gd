@@ -21,6 +21,9 @@ const Sfx := preload("res://scripts/sfx.gd")
 @export var dash_speed := 40.0
 @export var dash_lift := 1.5
 @export var dash_cooldown := 1.0
+## In the air, looking further down than this (the camera direction's height, -1 =
+## straight down), the dash goes where you look instead of along the ground.
+@export var dash_down_pitch := -0.3
 @export var fall_reset_height := -20.0
 ## Ceiling: above this height upward speed is bled off, so launches can't go forever.
 @export var max_height := 120.0
@@ -40,7 +43,7 @@ const Sfx := preload("res://scripts/sfx.gd")
 @export_group("Block")
 ## Q: seconds the shield is up (including folding out and back).
 @export var block_time := 1.0
-@export var block_cooldown := 10.0
+@export var block_cooldown := 6.0
 ## Launch speed when a hit lands on the shield.
 @export var parry_launch := 70.0
 
@@ -271,8 +274,9 @@ func _show_block(duration: float) -> void:
 
 
 ## Local player only: a hit landed on the shield. No damage; instead the shield bursts,
-## a huge explosion goes off round the ball and it's thrown high into the air.
-func on_parried() -> void:
+## a huge explosion goes off round the ball and it's thrown high into the air, and a bolt
+## strikes back at the shooter (the host deals its damage and a 5s stun).
+func on_parried(shooter_pos := Vector3.INF) -> void:
 	_shield.call("hit_flash")
 	_shield.call("stop")
 	_block_timer = 0.0
@@ -297,6 +301,12 @@ func on_parried() -> void:
 			"sound": "parry",
 		})
 		weapon.call("shake", 1.0)
+		if shooter_pos != Vector3.INF:
+			# The strike back: a thick bolt from the shield to whoever fired.
+			var to := shooter_pos - global_position
+			var purple := Color(0.55, 0.4, 1.0)
+			weapon.call("spawn_beam", global_position, to.normalized(), to.length(), 0.8, 0.4, 24.0, purple)
+			weapon.call("spawn_light", shooter_pos, 120.0, 12.0, 0.3, purple)
 
 
 func _online() -> bool:
@@ -371,6 +381,12 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		var flat_speed := Vector2(current.x, current.z).length()
 		var velocity := dir * (flat_speed + dash_speed)
 		velocity.y = maxf(current.y, 0.0) + dash_lift
+		var look := _camera_look()
+		if not _grounded and look.y < dash_down_pitch:
+			# Dash down: in the air, looking down, it fires straight where you look,
+			# carrying all your speed with it.
+			dir = look
+			velocity = look * (current.length() + dash_speed)
 		state.linear_velocity = velocity
 		# Spin the ball to match its new speed so friction doesn't eat the launch.
 		var flat := Vector3(velocity.x, 0.0, velocity.z)
@@ -499,6 +515,12 @@ func _get_move_direction() -> Vector3:
 	var basis := camera_rig.global_basis if camera_rig else Basis.IDENTITY
 	var right := Vector3(basis.x.x, 0.0, basis.x.z).normalized()
 	return (right * input.x - _get_camera_forward() * input.y).limit_length(1.0)
+
+
+## Where the local camera is looking (straight ahead if there's none).
+func _camera_look() -> Vector3:
+	var camera := get_viewport().get_camera_3d()
+	return -camera.global_basis.z if camera else _get_camera_forward()
 
 
 func _get_camera_forward() -> Vector3:

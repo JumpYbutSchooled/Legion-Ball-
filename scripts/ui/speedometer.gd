@@ -287,7 +287,7 @@ func _draw_shield(pos: Vector2) -> void:
 	var col := Color(0.75, 0.55, 1.0) if ready_k >= 1.0 else UIStyle.TEXT_DIM
 	if blocking:
 		col = Color.WHITE
-	var label := "SHIELD  [Q]" if ready_k >= 1.0 else "SHIELD  %.1fs" % ((1.0 - ready_k) * 10.0)
+	var label := "SHIELD  [Q]" if ready_k >= 1.0 else "SHIELD  %.1fs" % ((1.0 - ready_k) * float(ball.get("block_cooldown")))
 	if blocking:
 		label = "SHIELD  ACTIVE"
 	var left := PANEL.position.x + 10.0

@@ -29,6 +29,9 @@ const RESPAWN_TIME := 3.0
 const SPAWN_PROTECT := 2.0
 ## Damage multiplier on a Swarm-marked player (2x made any mark + hit a kill).
 const MARK_MULTIPLIER := 1.5
+## A parried shot strikes back at whoever fired it: this much damage, and a stun.
+const PARRY_DAMAGE := 20.0
+const PARRY_STUN := 5.0
 const KILLS_TO_WIN := 15
 ## Seconds the winner banner shows before everyone returns to the lobby.
 const END_DELAY := 6.0
@@ -189,13 +192,25 @@ func _host_hit(victim: int, amount: float) -> void:
 	if not multiplayer.is_server() or match_done:
 		return
 	var attacker := _sender()
-	if attacker == victim or not alive.get(victim, false) or _protect.get(victim, 0.0) > 0.0:
+	if attacker == victim:
 		return
-	if _blocks.has(victim):
-		# Shielded: no damage. The first hit on this shield sets off the parry.
+	if _blocks.has(victim) and alive.get(victim, false):
+		# Shielded: no damage. The first hit on this shield sets off the parry, which
+		# strikes back at the shooter wherever they are: damage and a long stun.
 		if not _parried.has(victim):
 			_parried[victim] = true
-			_to_peer(victim, "_apply_parry", [])
+			_to_peer(victim, "_apply_parry", [attacker])
+			if alive.get(attacker, false) and not _blocks.has(attacker):
+				_to_peer(attacker, "_apply_stagger", [PARRY_STUN])
+				_show_status.rpc(attacker, "stagger", PARRY_STUN)
+				_deal(attacker, victim, PARRY_DAMAGE)
+		return
+	_deal(victim, attacker, amount)
+
+
+## Host only: take `amount` off `victim`, credited to `attacker` if it kills.
+func _deal(victim: int, attacker: int, amount: float) -> void:
+	if not alive.get(victim, false) or _protect.get(victim, 0.0) > 0.0:
 		return
 	if _marks.get(victim, 0.0) > 0.0:
 		amount *= MARK_MULTIPLIER
@@ -355,10 +370,11 @@ func _apply_push(impulse: Vector3) -> void:
 
 
 @rpc("authority", "reliable")
-func _apply_parry() -> void:
+func _apply_parry(attacker: int) -> void:
 	var ball: Node3D = _players.get(multiplayer.get_unique_id())
 	if ball and not ball.get("dead"):
-		ball.call("on_parried")
+		var shooter: Node3D = _players.get(attacker)
+		ball.call("on_parried", shooter.global_position if shooter else Vector3.INF)
 
 
 @rpc("authority", "reliable")

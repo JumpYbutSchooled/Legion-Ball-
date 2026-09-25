@@ -31,11 +31,6 @@ enum Rail { IDLE, CHARGING, RELOADING }
 @export var lock_radius_px := 70.0
 ## Targets further than this can't be locked.
 @export var lock_range := 150.0
-## Damage (hit and blast) is full out to falloff_start metres, dropping to falloff_min
-## at falloff_end.
-@export var falloff_start := 80.0
-@export var falloff_end := 250.0
-@export var falloff_min := 0.6
 
 @export_group("Charge")
 ## How far the tip facets spread at full charge.
@@ -268,14 +263,13 @@ func _fire(hit: Dictionary) -> void:
 		for i in 8:
 			var jitter := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1))
 			manager.spawn_beam(pos, (normal + jitter * 1.2).normalized(), randf_range(1.5, 3.0), 1.0, 0.2, 30.0, color)
-		var falloff := lerpf(1.0, falloff_min, clampf(inverse_lerp(falloff_start, falloff_end, tip.distance_to(pos)), 0.0, 1.0))
-		manager.hit_object(hit["collider"], damage * falloff, pos, shot_dir, hit_impulse)
+		manager.hit_object(hit["collider"], damage, pos, shot_dir, hit_impulse)
 		# The blast: area damage, outward shove, particles, shockwave, warp, light.
 		manager.spawn_explosion({
 			"position": pos + normal * 0.3,
 			"color": color,
 			"radius": explosion_radius,
-			"damage": explosion_damage * falloff,
+			"damage": explosion_damage,
 			"force": explosion_force,
 		})
 
