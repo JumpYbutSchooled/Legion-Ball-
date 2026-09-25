@@ -121,10 +121,10 @@ const WEAPONS := [
 		"usage": [
 			"LMB  call the strike on the lock (or the crosshair point)",
 			"Locks like the RAILGUN, at any range, THROUGH WALLS",
-			"A targeting beam tracks them for 0.9s, then the pillar lands",
+			"A targeting beam tracks them for 1.6s, a ring of light closing in",
 			"Kills everyone in a 16m blast; 4s cooldown",
 			"UNPARRYABLE: goes straight through shields",
-			"The biggest impact frames in the game",
+			"Everyone nearby gets the biggest impact frames in the game",
 		],
 		"combo": "There is no combo. There is only the pillar.",
 	},

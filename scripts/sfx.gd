@@ -179,6 +179,9 @@ func _build_all() -> void:
 		_gain(_reverse(_shimmer(0.45, 1800.0, 200.0, 0.001)), 0.5),
 	]))
 	s["impact_boom"] = _wav(_impact_boom())
+	# Pillars of God: the wind-up, and the biggest blast in the game.
+	s["orbital_charge"] = _wav(_orbital_charge())
+	s["orbital_impact"] = _wav(_orbital_impact())
 	# Speedometer.
 	var shatter := _glass(0.5)
 	s["shatter"] = _wav(shatter)
@@ -391,6 +394,82 @@ func _impact_boom() -> PackedFloat32Array:
 		for i in range(offset, n):
 			out[i] += dry[i - offset] * echo[1]
 	return _drive(out, 2.2)
+
+
+## Orbital strike wind-up (1.6s): a sub drone climbing, a detuned whine screaming up,
+## rising static, a tremolo that speeds up, and a reversed crack sucking in at the end.
+func _orbital_charge() -> PackedFloat32Array:
+	var length := 1.6
+	var n := int(length * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var sub_phase := 0.0
+	var whine := [0.0, 0.0, 0.0]
+	var detune := [1.0, 1.012, 1.5]
+	var hiss := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var k := t / length
+		sub_phase += TAU * lerpf(28.0, 75.0, k * k) / RATE
+		var sub := sin(sub_phase) * (0.3 + 0.8 * k)
+		var f := lerpf(250.0, 4200.0, pow(k, 2.5))
+		var w := 0.0
+		for v in 3:
+			whine[v] += TAU * f * detune[v] / RATE
+			w += sin(whine[v]) * (0.4 if v < 2 else 0.2)
+		w *= pow(k, 1.5) * 0.6
+		hiss += lerpf(0.15, 0.8, k) * (randf_range(-1.0, 1.0) - hiss)
+		var noise := hiss * pow(k, 3.0) * 1.2
+		var trem := 0.7 + 0.3 * sin(TAU * lerpf(3.0, 32.0, k * k) * t)
+		out[i] = (sub + w + noise) * trem * minf(t * 20.0, 1.0)
+	# The crack, reversed, landing right at the end.
+	var crack := _reverse(_noise(0.18, 0.9, 0.001))
+	var start := n - crack.size()
+	for i in crack.size():
+		out[start + i] += crack[i] * 1.3
+	return _drive(out, 1.8)
+
+
+## Orbital strike impact (4.5s): the sky tearing open (a noisy sweep plunging from 5kHz),
+## a crack, a deep punch, a sub drop that keeps falling for seconds, a long two-layer
+## roar, falling debris, a glassy downward shimmer, and three echoes rolling across the
+## map. Driven as hard as it'll go.
+func _orbital_impact() -> PackedFloat32Array:
+	var n := int(4.5 * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var tear_phase := 0.0
+	var tear_noise := 0.0
+	var punch_phase := 0.0
+	var sub_phase := 0.0
+	var rumble := 0.0
+	var rumble2 := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		tear_phase += TAU * lerpf(5000.0, 40.0, clampf(pow(t / 0.6, 0.5), 0.0, 1.0)) / RATE
+		tear_noise += 0.6 * (randf_range(-1.0, 1.0) - tear_noise)
+		var tear := (sin(tear_phase) * 0.5 + tear_noise * 0.8) * exp(-t * 5.0)
+		var crack := randf_range(-1.0, 1.0) * exp(-t * 60.0) * 1.8
+		punch_phase += TAU * lerpf(160.0, 30.0, clampf(t / 0.18, 0.0, 1.0)) / RATE
+		var punch := sin(punch_phase) * exp(-t * 6.0) * 1.6
+		sub_phase += TAU * lerpf(50.0, 12.0, clampf(t / 3.5, 0.0, 1.0)) / RATE
+		var sub := sin(sub_phase) * exp(-t * 0.9) * 1.4
+		rumble += 0.03 * (randf_range(-1.0, 1.0) - rumble)
+		rumble2 += 0.12 * (randf_range(-1.0, 1.0) - rumble2)
+		var roar := (rumble * 6.0 + rumble2 * 1.0) * exp(-t * 0.8) * minf(t * 40.0, 1.0)
+		var debris := 0.0
+		if randf() < 0.006 * exp(-t * 0.9):
+			debris = randf_range(-1.0, 1.0)
+		out[i] = tear + crack + punch + sub + roar + debris
+	var shimmer := _shimmer(2.2, 4000.0, 100.0, 0.001)
+	for i in shimmer.size():
+		out[i] += shimmer[i] * 0.45
+	var dry := out.duplicate()
+	for echo in [[0.25, 0.5], [0.55, 0.35], [0.95, 0.2]]:
+		var offset := int(echo[0] * RATE)
+		for i in range(offset, n):
+			out[i] += dry[i - offset] * echo[1]
+	return _drive(out, 3.0)
 
 
 ## Heavy soft clipping: louder overall, peaks rounded off instead of crackling.

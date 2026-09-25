@@ -17,6 +17,11 @@ const Sfx := preload("res://scripts/sfx.gd")
 @export var full_damage := false
 ## Goes through players' shields and can't be parried (staff weapons).
 @export var unblockable := false
+## Anyone whose camera is within this many metres gets impact frames when it goes off
+## (0 = none), styled as weapon slot `impact_frame_slot`. The player who set it off also
+## gets the hitstop. (Pillars of God.)
+@export var impact_frame_range := 0.0
+@export var impact_frame_slot := 7
 ## Outward impulse on rigid bodies at the center (falls to 0 at the edge).
 @export var force := 30.0
 @export var color := Color(1.0, 0.5, 0.1)
@@ -50,6 +55,10 @@ var _shock_mat: ShaderMaterial
 func _ready() -> void:
 	if not visual_only:
 		_blast()
+	if impact_frame_range > 0.0:
+		var cam := get_viewport().get_camera_3d()
+		if cam and cam.global_position.distance_to(global_position) <= impact_frame_range:
+			get_tree().call_group("impact_frames", "trigger", global_position, color, impact_frame_slot, not visual_only)
 	if spark_count > 0:
 		_spawn_sparks()
 	if chunk_count > 0:

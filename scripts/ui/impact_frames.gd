@@ -39,7 +39,7 @@ const PROFILES := {
 	5: {"implode": 5, "explode": 8, "speed": 0.9, "pull": 0.5, "blast": 0.65, "core": 0.7, "volume": -3.0, "shake": 0.6},
 	# Owner weapons: Rain of God plays the Railgun's; Pillars of God's is the biggest.
 	6: {"implode": 12, "explode": 16, "speed": 1.0, "pull": 1.0, "blast": 1.0, "core": 1.0, "volume": 6.0, "shake": 1.0},
-	7: {"implode": 20, "explode": 26, "speed": 1.15, "pull": 1.3, "blast": 1.45, "core": 1.7, "volume": 10.0, "shake": 1.6},
+	7: {"implode": 26, "explode": 36, "speed": 1.25, "pull": 1.6, "blast": 1.8, "core": 2.2, "volume": 12.0, "shake": 2.0},
 }
 
 ## Receives add_shake().
@@ -64,6 +64,7 @@ var _profile: Dictionary = PROFILES[1]
 var _implode := 12
 ## Solid stand-ins for the see-through blades and shields: [real mesh, stand-in, params].
 var _proxies: Array = []
+var _playing_slot := -1
 
 
 func _ready() -> void:
@@ -114,6 +115,11 @@ func _build_frames(p: Dictionary) -> void:
 func trigger(world_pos: Vector3, color: Color, slot := -1, hitstop := true) -> void:
 	if slot < 0:
 		slot = weapon.get("last_hit_slot") if weapon else 1
+	# The same blast asking again straight away (the orbital strike's own frames, then
+	# its kill a moment later): let the first one play on.
+	if _start_usec >= 0 and slot == _playing_slot and Time.get_ticks_usec() - _start_usec < 800_000:
+		return
+	_playing_slot = slot
 	_build_frames(PROFILES.get(slot, PROFILES[1]))
 	var shake: float = _profile["shake"]
 	var volume: float = _profile["volume"]

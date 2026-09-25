@@ -419,6 +419,25 @@ func _net_sound(sound: String, pos: Vector3, volume_db: float) -> void:
 	Sfx.play_at(get_tree(), sound, pos, volume_db)
 
 
+## A sound heard across the whole map (the orbital strike): flat rather than 3D, full
+## volume near `pos` and fading to a distant rumble far away. Everyone hears it.
+func play_sound_far(sound: String, pos: Vector3, volume_db := 0.0) -> void:
+	_sound_far(sound, pos, volume_db)
+	if _broadcasting():
+		_net_sound_far.rpc(sound, pos, volume_db)
+
+
+@rpc("authority", "reliable")
+func _net_sound_far(sound: String, pos: Vector3, volume_db: float) -> void:
+	_sound_far(sound, pos, volume_db)
+
+
+func _sound_far(sound: String, pos: Vector3, volume_db: float) -> void:
+	var cam := get_viewport().get_camera_3d()
+	var dist := cam.global_position.distance_to(pos) if cam else 0.0
+	Sfx.play_flat(get_tree(), sound, volume_db - clampf((dist - 40.0) / 30.0, 0.0, 22.0))
+
+
 ## Railgun bolt (scripts/weapons/rail_bolt.gd property names, plus "position" and
 ## "target_path"). Other players get a harmless copy that flies the same way.
 func spawn_rail_bolt(props: Dictionary, visual_only := false) -> void:
