@@ -5,14 +5,14 @@ extends Node3D
 ## contact with anything (or near its target), marking targets in the blast.
 ## Set position and velocity before adding it to the tree. Frees itself.
 
-@export var speed := 38.0
+@export var speed := 95.0
 ## How fast it can turn toward its target, in radians per second (ramps up after launch).
-@export var turn_rate := 8.0
+@export var turn_rate := 18.0
 ## Inside this distance it stops curving and flies straight at the goal.
-@export var terminal_distance := 6.0
+@export var terminal_distance := 10.0
 ## Detonates this close to the goal.
-@export var fuse_distance := 1.2
-@export var lifetime := 4.0
+@export var fuse_distance := 2.0
+@export var lifetime := 2.5
 @export var damage := 2.5
 @export var blast_radius := 2.5
 @export var mark_time := 4.0

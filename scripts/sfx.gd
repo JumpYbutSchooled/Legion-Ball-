@@ -178,12 +178,7 @@ func _build_all() -> void:
 		_gain(_reverse(_noise(0.45, 0.25, 0.001)), 0.8),
 		_gain(_reverse(_shimmer(0.45, 1800.0, 200.0, 0.001)), 0.5),
 	]))
-	s["impact_boom"] = _wav(_mix([
-		_boom(1.6, 1.5),
-		_sweep(1.2, 3200.0, 35.0, 0.6, 0.001, 3.0, 3, 0.3),
-		_gain(_noise(0.15, 0.9, 0.001), 1.2),
-		_gain(_shimmer(0.9, 2600.0, 300.0, 0.001), 0.4),
-	]))
+	s["impact_boom"] = _wav(_impact_boom())
 	# Speedometer.
 	var shatter := _glass(0.5)
 	s["shatter"] = _wav(shatter)
@@ -353,6 +348,57 @@ func _wind(length: float) -> PackedFloat32Array:
 	for i in n:
 		out[i] *= 0.5
 	return out
+
+
+## The kill explosion after the impact frames: a white-noise crack, a punch, a sub-bass
+## drop that keeps falling, a long rumble, falling debris, a downward shimmer, and two
+## echoes off the arena walls. Driven hard so it hits as loud as the format allows.
+func _impact_boom() -> PackedFloat32Array:
+	var n := int(2.6 * RATE)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var sub_phase := 0.0
+	var punch_phase := 0.0
+	var rumble := 0.0
+	var rumble2 := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		# Crack: a few ms of pure noise.
+		var crack := randf_range(-1.0, 1.0) * exp(-t * 90.0) * 1.6
+		# Punch: 140 -> 40 Hz in a tenth of a second.
+		punch_phase += TAU * lerpf(140.0, 40.0, clampf(t / 0.12, 0.0, 1.0)) / RATE
+		var punch := sin(punch_phase) * exp(-t * 9.0) * 1.4
+		# Sub drop: 55 -> 18 Hz over two seconds.
+		sub_phase += TAU * lerpf(55.0, 18.0, clampf(t / 2.0, 0.0, 1.0)) / RATE
+		var sub := sin(sub_phase) * exp(-t * 1.6) * 1.2
+		# Rumble: two layers of filtered noise, slow to fade.
+		rumble += 0.04 * (randf_range(-1.0, 1.0) - rumble)
+		rumble2 += 0.15 * (randf_range(-1.0, 1.0) - rumble2)
+		var roar := (rumble * 5.0 + rumble2 * 0.8) * exp(-t * 1.3) * minf(t * 60.0, 1.0)
+		# Debris: sparse clicks that thin out.
+		var debris := 0.0
+		if randf() < 0.004 * exp(-t * 1.5):
+			debris = randf_range(-1.0, 1.0) * 0.9
+		out[i] = crack + punch + sub + roar + debris
+	# Downward shimmer over the top.
+	var shimmer := _shimmer(1.4, 3000.0, 180.0, 0.001)
+	for i in shimmer.size():
+		out[i] += shimmer[i] * 0.35
+	# Echoes off the arena walls.
+	var dry := out.duplicate()
+	for echo in [[0.19, 0.45], [0.41, 0.25]]:
+		var offset := int(echo[0] * RATE)
+		for i in range(offset, n):
+			out[i] += dry[i - offset] * echo[1]
+	return _drive(out, 2.2)
+
+
+## Heavy soft clipping: louder overall, peaks rounded off instead of crackling.
+func _drive(samples: PackedFloat32Array, amount: float) -> PackedFloat32Array:
+	var norm := tanh(amount)
+	for i in samples.size():
+		samples[i] = tanh(samples[i] * amount) / norm
+	return samples
 
 
 func _mix(parts: Array) -> PackedFloat32Array:

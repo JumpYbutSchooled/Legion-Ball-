@@ -7,8 +7,6 @@ const LockTarget := preload("res://scripts/lock_target.gd")
 const TARGETS := [
 	[LockTarget.Kind.DRONE, Vector3(-14, 4, 48), Vector3.ZERO],
 	[LockTarget.Kind.DRONE, Vector3(14, 5.5, 52), Vector3.ZERO],
-	[LockTarget.Kind.DUMMY, Vector3(-18, 0, 56), Vector3.ZERO],
-	[LockTarget.Kind.DUMMY, Vector3(18, 0, 56), Vector3.ZERO],
 	[LockTarget.Kind.GROUND, Vector3(-7, 0.7, 52), Vector3(7, 0.7, 52)],
 	[LockTarget.Kind.GROUND, Vector3(-27, 0.7, 42), Vector3(-27, 0.7, 60)],
 ]

@@ -75,7 +75,7 @@ func trigger(world_pos: Vector3, color: Color) -> void:
 		camera_rig.call("add_shake", 1.0)
 	if not SettingsScript.read(get_tree(), "impact_frames"):
 		# No frames: just the crack and blast.
-		Sfx.play_flat(get_tree(), "impact_boom", -2.0)
+		Sfx.play_flat(get_tree(), "impact_boom", 4.0)
 		return
 	# The implosion sound is stretched to end exactly on the crack, where the blast plays.
 	var implode_time := 0.0
@@ -172,7 +172,7 @@ func _process(_delta: float) -> void:
 	_mat.set_shader_parameter("seed", randf() * 100.0)
 	var crack: bool = f["core"] >= 0.3
 	if index == IMPLODE:
-		Sfx.play_flat(get_tree(), "impact_boom", 0.0)
+		Sfx.play_flat(get_tree(), "impact_boom", 6.0)
 	_jolt_goal = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * jolt * (2.5 if crack else 1.0)
 	if crack and camera_rig and camera_rig.has_method("add_shake"):
 		camera_rig.call("add_shake", 1.0)

@@ -7,7 +7,7 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## Combos: mark a group, then switch to Railgun or Gatling to shred them.
 
 ## Matches swarm_missile.gd's speed, for the launch velocity.
-const MISSILE_SPEED := 38.0
+const MISSILE_SPEED := 95.0
 
 @export var paint_radius_px := 170.0
 ## Targets further than this can't be painted.
