@@ -354,9 +354,23 @@ func _on_killed(victim: int, attacker: int) -> void:
 		add_child(burst)
 		burst.global_position = ball.global_position
 		ball.call("set_dead", true)
-		if attacker == multiplayer.get_unique_id():
-			get_tree().call_group("impact_frames", "trigger", ball.global_position, burst.color)
+		# Everyone sees every kill's impact frames, styled by the killer's weapon. Only the
+		# killer and the victim get the hitstop: it slows your own ball, and freezing
+		# everyone on every kill would stall the whole match.
+		var me := multiplayer.get_unique_id()
+		get_tree().call_group("impact_frames", "trigger", ball.global_position, burst.color,
+			_kill_slot(attacker), attacker == me or victim == me)
 	player_killed.emit(victim, attacker)
+
+
+## Weapon slot whose impact frames a kill plays: our own last hit if it was ours (-1),
+## otherwise whatever the killer is holding.
+func _kill_slot(attacker: int) -> int:
+	if attacker == multiplayer.get_unique_id():
+		return -1
+	var killer: Node = _players.get(attacker)
+	var weapon := killer.get_node_or_null("Weapon") if killer else null
+	return weapon.get("current") if weapon else 1
 
 
 @rpc("authority", "call_local", "reliable")

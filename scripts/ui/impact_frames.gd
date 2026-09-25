@@ -12,6 +12,7 @@ extends CanvasLayer
 ## huge, and the Railgun gets the full-length original. The weapon is whichever one last
 ## dealt damage (weapon.gd, last_hit_slot).
 ## Targets trigger it by calling the "impact_frames" group's trigger(world_pos, color).
+## Online, every player sees every kill's frames (arena.gd _on_killed).
 ## Can be switched off in Settings (the shake still plays).
 
 const FrameShader := preload("res://shaders/impact_frame.gdshader")
@@ -100,8 +101,11 @@ func _build_frames(p: Dictionary) -> void:
 		})
 
 
-func trigger(world_pos: Vector3, color: Color) -> void:
-	var slot: int = weapon.get("last_hit_slot") if weapon else 1
+## `slot`: the weapon whose version to play (-1 = our own last hit). `hitstop`: also
+## slow the game down (off for other players' kills; see arena.gd _on_killed).
+func trigger(world_pos: Vector3, color: Color, slot := -1, hitstop := true) -> void:
+	if slot < 0:
+		slot = weapon.get("last_hit_slot") if weapon else 1
 	_build_frames(PROFILES.get(slot, PROFILES[1]))
 	var shake: float = _profile["shake"]
 	var volume: float = _profile["volume"]
@@ -134,7 +138,8 @@ func trigger(world_pos: Vector3, color: Color) -> void:
 	_mat.set_shader_parameter("kill_pos", kill)
 	_mat.set_shader_parameter("tint", color)
 	_start_usec = Time.get_ticks_usec()
-	Engine.time_scale = hitstop_scale
+	if hitstop:
+		Engine.time_scale = hitstop_scale
 	_set_hud_hidden(true)
 
 
