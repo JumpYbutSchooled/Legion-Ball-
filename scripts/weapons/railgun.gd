@@ -161,6 +161,14 @@ func apply_net_charge(c: float) -> void:
 	charge = c
 
 
+## Peer id of the player this railgun is locked onto (0 if none, or not a player), so
+## they can be warned (scripts/ui/lock_warning.gd).
+func locked_peer() -> int:
+	if lock_target and is_instance_valid(lock_target) and lock_target.has_method("is_blocking"):
+		return lock_target.get_multiplayer_authority()
+	return 0
+
+
 func _update(delta: float) -> void:
 	# Other players' charge comes from the network (apply_net_charge).
 	if rail_state != Rail.CHARGING and (not manager or manager.is_multiplayer_authority()):

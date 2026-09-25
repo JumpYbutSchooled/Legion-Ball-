@@ -125,11 +125,13 @@ func _physics_process(delta: float) -> void:
 
 
 ## What other players need to draw this weapon:
-## [aim point, equipped slot, drawn?, charge (railgun/nova, so others see it building)].
+## [aim point, equipped slot, drawn?, charge (railgun/nova, so others see it building),
+## peer id the railgun is locked onto (0 = none, so that player can be warned)].
 func get_net_state() -> Array:
 	var w = current_weapon()
 	var drawn: bool = w.state == BladeWeapon.State.READY or w.state == BladeWeapon.State.ENTERING
-	return [aim_point, current, drawn, w.get_net_charge()]
+	var locked: int = w.call("locked_peer") if w.has_method("locked_peer") else 0
+	return [aim_point, current, drawn, w.get_net_charge(), locked]
 
 
 ## Applies another player's weapon state from the network.

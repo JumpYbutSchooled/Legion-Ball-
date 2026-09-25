@@ -27,6 +27,8 @@ var _rot := Quaternion.IDENTITY
 var _vel := Vector3.ZERO
 var _age := 0.0
 var _name := ""
+var _charge := 0.0
+var _locked_peer := 0
 
 
 func _ready() -> void:
@@ -54,7 +56,7 @@ func _physics_process(delta: float) -> void:
 			_send_timer = 0.0
 			var w: Array = _weapon.call("get_net_state")
 			_state.rpc(_ball.global_position, _ball.global_basis.get_rotation_quaternion(),
-				_ball.linear_velocity, w[0], w[1], w[2], w[3])
+				_ball.linear_velocity, w[0], w[1], w[2], w[3], w[4])
 	elif _has_state:
 		_age += delta
 		var predicted := _pos + _vel * minf(_age, MAX_PREDICT)
@@ -85,12 +87,25 @@ func _process(_delta: float) -> void:
 		_tag.outline_size = 8
 
 
+## True if this (remote) player's railgun is locked onto player `peer` right now.
+## Goes stale if their updates stop arriving.
+func is_locking(peer: int) -> bool:
+	return _has_state and _locked_peer == peer and _age < 0.5
+
+
+## Their railgun charge, 0..1.
+func lock_charge() -> float:
+	return _charge
+
+
 @rpc("authority", "unreliable_ordered")
-func _state(pos: Vector3, rot: Quaternion, vel: Vector3, aim: Vector3, slot: int, armed: bool, charge: float) -> void:
+func _state(pos: Vector3, rot: Quaternion, vel: Vector3, aim: Vector3, slot: int, armed: bool, charge: float, locked_peer: int) -> void:
 	_pos = pos
 	_rot = rot
 	_vel = vel
 	_age = 0.0
+	_charge = charge
+	_locked_peer = locked_peer
 	if not _has_state:
 		_has_state = true
 		_ball.global_transform = Transform3D(Basis(rot), pos)
