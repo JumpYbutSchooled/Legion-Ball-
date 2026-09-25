@@ -163,6 +163,18 @@ func apply_net_charge(c: float) -> void:
 	charge = c
 
 
+func get_net_reload() -> float:
+	return reload if rail_state == Rail.RELOADING else -1.0
+
+
+## Other players' reload: start it and follow its progress (it finishes, with the flash,
+## in _update like our own).
+func apply_net_reload(value: float) -> void:
+	if value >= 0.0:
+		rail_state = Rail.RELOADING
+		reload = value
+
+
 ## Peer id of the player this railgun is locked onto (0 if none, or not a player), so
 ## they can be warned (scripts/ui/lock_warning.gd).
 func locked_peer() -> int:

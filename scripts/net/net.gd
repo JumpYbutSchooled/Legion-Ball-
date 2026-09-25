@@ -62,6 +62,11 @@ var status := ""
 var dedicated := false
 ## The map matches load. Set by the server (_use_map) before it loads anyone in.
 var map_scene := ARENA_SCENE
+## This game's version (res://version.txt, updated with every patch). Players must match
+## the server's exactly to join.
+var version := ""
+# Server: the version each connected peer reported before registering.
+var _peer_versions := {}
 
 var _connecting := false
 var _connect_timer := 0.0
@@ -72,8 +77,9 @@ var _retry_timer := -1.0
 ## Why the server turned us away (e.g. full), shown instead of "Lost connection".
 var _rejected_reason := ""
 
-
 func _ready() -> void:
+	var f := FileAccess.open("res://version.txt", FileAccess.READ)
+	version = f.get_as_text().strip_edges() if f else "0.0.0"
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)
@@ -164,6 +170,10 @@ func join(ip: String, port := PORT) -> Error:
 ## Join an online server. If it's asleep (free hosting), keeps retrying while it wakes.
 func join_server(url: String = SERVER_URLS[0]) -> void:
 	leave()
+	# Only server 1 (the global chat hub) uses the authentication step; with any other
+	# server the connection must not wait for it.
+	if url == SERVER_URLS[0] or OS.get_environment("GLOBAL_HUB_TEST") == "1":
+		_use_client_auth()
 	_server_url = url
 	_server_deadline = _now() + SERVER_WAKE_TIMEOUT
 	_try_server()
@@ -198,23 +208,60 @@ func host_dedicated(port := SERVER_PORT) -> Error:
 	players = {}
 	map_scene = _dedicated_map()
 	print("[server] listening on port %d, map %s" % [port, MAP_NAMES.get(map_scene, map_scene)])
+	# Server 1 relays global chat between the servers (scripts/net/global_relay.gd).
+	var relay := get_tree().root.get_node_or_null("GlobalChat")
+	if relay:
+		relay.call("on_server_started")
 	get_tree().change_scene_to_file(map_scene)
 	return OK
 
 
 ## Which map this dedicated server runs: the MAP env var, else its own entry in
-## SERVER_MAPS (found from the address Render gives it), else the default.
+## SERVER_MAPS, else the default.
 func _dedicated_map() -> String:
 	var env := OS.get_environment("MAP").strip_edges().to_lower()
 	for path in MAP_NAMES:
 		if MAP_NAMES[path].to_lower() == env:
 			return path
-	var host := OS.get_environment("RENDER_EXTERNAL_HOSTNAME").strip_edges()
-	if host != "":
+	var index := server_index()
+	return SERVER_MAPS[index] if index >= 0 else ARENA_SCENE
+
+
+## Which of SERVER_URLS this dedicated server is (0-3), from the address Render gives
+## it (or a SERVER_INDEX env var, for testing); -1 if unknown (e.g. a LAN host).
+func server_index() -> int:
+	var env := OS.get_environment("SERVER_INDEX").strip_edges()
+	if env.is_valid_int():
+		return int(env)
+	var hostname := OS.get_environment("RENDER_EXTERNAL_HOSTNAME").strip_edges()
+	if hostname != "":
 		for i in SERVER_URLS.size():
-			if SERVER_URLS[i].ends_with("//" + host):
-				return SERVER_MAPS[i]
-	return ARENA_SCENE
+			if SERVER_URLS[i].ends_with("//" + hostname):
+				return i
+	return -1
+
+
+## "S1".."S4" for the online servers (shown on global chat), "LAN" otherwise.
+func server_label() -> String:
+	var index := server_index() if dedicated else -1
+	return "S%d" % (index + 1) if index >= 0 else "LAN"
+
+
+## Joining server 1 (the global chat hub) takes part in Godot's authentication step, so
+## it can tell players from the other servers' relay links: we say "player" and finish
+## straight away. See scripts/net/global_relay.gd.
+func _use_client_auth() -> void:
+	var api := multiplayer as SceneMultiplayer
+	api.auth_callback = func(_id: int, _data: PackedByteArray) -> void: pass
+	api.auth_timeout = 15.0
+	if not api.peer_authenticating.is_connected(_on_client_authenticating):
+		api.peer_authenticating.connect(_on_client_authenticating)
+
+
+func _on_client_authenticating(id: int) -> void:
+	var api := multiplayer as SceneMultiplayer
+	api.send_auth(id, var_to_bytes({"t": "player"}))
+	api.complete_auth(id)
 
 
 ## Disconnects (if connected) and goes back to offline.
@@ -222,6 +269,7 @@ func leave() -> void:
 	if multiplayer.multiplayer_peer and not multiplayer.multiplayer_peer is OfflineMultiplayerPeer:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	(multiplayer as SceneMultiplayer).auth_callback = Callable()
 	online = false
 	in_match = false
 	dedicated = false
@@ -289,6 +337,8 @@ func _on_connected() -> void:
 	_connecting = false
 	_server_url = ""
 	_set_status("Connected. Waiting for the host...")
+	# Version first: the server turns mismatched games away before they register.
+	_version_is.rpc_id(1, version)
 	_register.rpc_id(1, local_name())
 
 
@@ -324,6 +374,7 @@ func _on_peer_connected(id: int) -> void:
 
 
 func _on_peer_disconnected(id: int) -> void:
+	_peer_versions.erase(id)
 	if not multiplayer.is_server() or not players.has(id):
 		return
 	if dedicated:
@@ -352,6 +403,18 @@ func _register(player_name_in: String) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := multiplayer.get_remote_sender_id()
+	# Different versions don't work together (maps, weapons and messages change), so
+	# only exact matches get in. Games from before this check send no version at all.
+	var theirs: String = _peer_versions.get(id, "")
+	if theirs != version:
+		var reason := "Your game is out of date (v%s, server v%s). Restart the game to update." % [theirs if theirs != "" else "old", version]
+		if theirs != "" and _is_newer(theirs, version):
+			reason = "This server is still updating (server v%s, you v%s). Try again in a few minutes." % [version, theirs]
+		if dedicated:
+			print("[server] turned away %s: version %s" % [player_name_in, theirs if theirs != "" else "old"])
+		_turned_away.rpc_id(id, reason)
+		get_tree().create_timer(0.5).timeout.connect(_drop_peer.bind(id))
+		return
 	if players.size() >= MAX_PLAYERS:
 		# Tell them why, then drop them once the message has had time to arrive.
 		_turned_away.rpc_id(id, "Server is full (%d/%d). Try another server." % [MAX_PLAYERS, MAX_PLAYERS])
@@ -364,6 +427,26 @@ func _register(player_name_in: String) -> void:
 	if in_match:
 		_use_map.rpc_id(id, map_scene)
 		_load_arena.rpc_id(id)
+
+
+## A player's game version, sent right before _register. (Named to sort after the other
+## RPCs, so their numbering is unchanged for older versions.)
+@rpc("any_peer", "reliable")
+func _version_is(their_version: String) -> void:
+	if multiplayer.is_server():
+		_peer_versions[multiplayer.get_remote_sender_id()] = their_version.substr(0, 20)
+
+
+## True if version a is newer than b ("1.2.10" > "1.2.9").
+func _is_newer(a: String, b: String) -> bool:
+	var pa := a.split(".")
+	var pb := b.split(".")
+	for i in maxi(pa.size(), pb.size()):
+		var na := int(pa[i]) if i < pa.size() else 0
+		var nb := int(pb[i]) if i < pb.size() else 0
+		if na != nb:
+			return na > nb
+	return false
 
 
 ## Which map to load next (sent just before _load_arena). Named to sort after the other

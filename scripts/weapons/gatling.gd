@@ -161,6 +161,28 @@ func _fire(hit: Dictionary) -> void:
 	manager.play_sound("zap", tip, -8.0)
 	ammo -= 1
 	if ammo <= 0:
+		_start_reload()
+
+
+func _start_reload() -> void:
+	reloading = true
+	reload = 0.0
+	manager.play_sound("vent", global_position, -8.0)
+
+
+## T: reload a part-used magazine early.
+func manual_reload() -> void:
+	if not reloading and ammo < magazine:
+		_start_reload()
+
+
+func get_net_reload() -> float:
+	return reload if reloading else -1.0
+
+
+## Other players' reload: start it and follow its progress (it finishes, with the flash,
+## in _update like our own).
+func apply_net_reload(value: float) -> void:
+	if value >= 0.0:
 		reloading = true
-		reload = 0.0
-		manager.play_sound("vent", global_position, -8.0)
+		reload = value

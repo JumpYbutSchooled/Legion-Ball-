@@ -9,6 +9,8 @@ const SERVICES := {
 	"Net": "res://scripts/net/net.gd",
 	"Sfx": "res://scripts/sfx.gd",
 	"Mod": "res://scripts/net/moderation.gd",
+	"Chat": "res://scripts/net/chat.gd",
+	"GlobalChat": "res://scripts/net/global_relay.gd",
 }
 
 

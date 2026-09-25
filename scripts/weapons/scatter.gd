@@ -133,6 +133,27 @@ func get_crosshair() -> Dictionary:
 	}
 
 
+## T: vent the heat now (locked out until it's cold, like an overheat).
+func manual_reload() -> void:
+	if not overheated and heat > 0.05:
+		_on_overheat()
+
+
+## Heat, plus 1 while venting an overheat (so other players see both).
+func get_net_reload() -> float:
+	return heat + (1.0 if overheated else 0.0)
+
+
+func apply_net_reload(value: float) -> void:
+	if value < 0.0:
+		return
+	var was_venting := overheated
+	overheated = value >= 1.0
+	heat = clampf(value - 1.0 if overheated else value, 0.0, 1.0)
+	if was_venting and not overheated and is_ready():
+		flash(reload_flash_color)  # Reformed, like our own vent ending.
+
+
 func _on_overheat() -> void:
 	overheated = true
 	# Vent: a burst of hot spikes off every blade, a warp pop and a jolt.

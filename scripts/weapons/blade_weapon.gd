@@ -220,3 +220,18 @@ func get_net_charge() -> float:
 ## Another player's charge, from the network.
 func apply_net_charge(_charge: float) -> void:
 	pass
+
+
+## Reload state other players should see (-1 = not reloading). Sent over the network.
+func get_net_reload() -> float:
+	return -1.0
+
+
+## Another player's reload state, from the network.
+func apply_net_reload(_value: float) -> void:
+	pass
+
+
+## The reload key (T): reload early. Most weapons have nothing to reload.
+func manual_reload() -> void:
+	pass

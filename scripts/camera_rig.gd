@@ -154,12 +154,15 @@ func _process(delta: float) -> void:
 			global_position.x += pull.x
 			global_position.z += pull.y
 
-	var turn := Input.get_axis("camera_left", "camera_right")
-	rotation.y -= turn * key_turn_speed * delta
-	# Hold I / O to zoom in / out.
-	var zoom := Input.get_axis("zoom_in", "zoom_out")
-	if zoom != 0.0:
-		_zoom(zoom * key_zoom_speed * delta)
+	# Camera keys are ignored while typing in chat (or in the pause menu).
+	var net := get_tree().root.get_node_or_null("Net")
+	if not (net and net.get("input_blocked")):
+		var turn := Input.get_axis("camera_left", "camera_right")
+		rotation.y -= turn * key_turn_speed * delta
+		# Hold I / O to zoom in / out.
+		var zoom := Input.get_axis("zoom_in", "zoom_out")
+		if zoom != 0.0:
+			_zoom(zoom * key_zoom_speed * delta)
 
 	# Looking up would swing the camera under the floor (and the spring arm would
 	# then crush it against the ball). Raise the pivot instead, so the camera stays

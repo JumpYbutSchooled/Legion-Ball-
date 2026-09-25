@@ -79,7 +79,7 @@ func _physics_process(delta: float) -> void:
 			_send_timer = 0.0
 			var w: Array = _weapon.call("get_net_state")
 			_state.rpc(_ball.global_position, _ball.global_basis.get_rotation_quaternion(),
-				_ball.linear_velocity, w[0], w[1], w[2], w[3], w[4])
+				_ball.linear_velocity, w[0], w[1], w[2], w[3], w[4], w[5])
 	elif _has_state:
 		_age += delta
 		var predicted := _pos + _vel * minf(_age, MAX_PREDICT)
@@ -130,7 +130,7 @@ func lock_charge() -> float:
 
 
 @rpc("authority", "unreliable_ordered")
-func _state(pos: Vector3, rot: Quaternion, vel: Vector3, aim: Vector3, slot: int, armed: bool, charge: float, locked_peer: int) -> void:
+func _state(pos: Vector3, rot: Quaternion, vel: Vector3, aim: Vector3, slot: int, armed: bool, charge: float, locked_peer: int, reload: float) -> void:
 	_pos = pos
 	_rot = rot
 	_vel = vel
@@ -140,4 +140,4 @@ func _state(pos: Vector3, rot: Quaternion, vel: Vector3, aim: Vector3, slot: int
 	if not _has_state:
 		_has_state = true
 		_ball.global_transform = Transform3D(Basis(rot), pos)
-	_weapon.call("apply_net_state", aim, slot, armed, charge)
+	_weapon.call("apply_net_state", aim, slot, armed, charge, reload)

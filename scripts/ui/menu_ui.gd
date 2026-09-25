@@ -258,10 +258,13 @@ const CONTROLS := [
 	["MOUSE WHEEL", "Browse weapons (hologram selector)"],
 	["RMB", "Confirm the browsed weapon"],
 	["`", "Holster / draw weapon"],
+	["T", "Reload: Gatling magazine early, or vent Scatter heat"],
 	["I / O", "Zoom camera in / out (or CTRL + WHEEL)"],
 	["E", "Rotate camera"],
 	["R", "Reset (ball, cubes and targets)"],
 	["ESC", "Pause menu"],
+	["/", "Server chat (online): Enter to send, Esc to close"],
+	["RIGHT SHIFT", "Global chat: every online server"],
 ]
 
 

@@ -115,7 +115,7 @@ func _physics_process(delta: float) -> void:
 	if not ball or not camera or not is_multiplayer_authority():
 		return
 	var controls := _controls_enabled()
-	if Input.is_action_just_pressed("toggle_staff_weapons") and WeaponInfo.has_staff_weapons(get_tree()):
+	if controls and Input.is_action_just_pressed("toggle_staff_weapons") and WeaponInfo.has_staff_weapons(get_tree()):
 		var settings := get_tree().root.get_node_or_null("Settings")
 		if settings:
 			var shown: bool = not settings.call("get_value", "show_staff_weapons")
@@ -132,6 +132,8 @@ func _physics_process(delta: float) -> void:
 				break
 		if Input.is_action_just_pressed("toggle_weapon"):
 			toggle()
+		if Input.is_action_just_pressed("reload"):
+			current_weapon().manual_reload()
 
 	var hit := _raycast_crosshair()
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
@@ -143,16 +145,17 @@ func _physics_process(delta: float) -> void:
 
 ## What other players need to draw this weapon:
 ## [aim point, equipped slot, drawn?, charge (railgun/nova, so others see it building),
-## peer id the railgun is locked onto (0 = none, so that player can be warned)].
+## peer id the railgun is locked onto (0 = none, so that player can be warned),
+## reload state (so others see reloads and Scatter's heat; -1 = none)].
 func get_net_state() -> Array:
 	var w = current_weapon()
 	var drawn: bool = w.state == BladeWeapon.State.READY or w.state == BladeWeapon.State.ENTERING
 	var locked: int = w.call("locked_peer") if w.has_method("locked_peer") else 0
-	return [aim_point, current, drawn, w.get_net_charge(), locked]
+	return [aim_point, current, drawn, w.get_net_charge(), locked, w.get_net_reload()]
 
 
 ## Applies another player's weapon state from the network.
-func apply_net_state(aim: Vector3, slot: int, drawn: bool, charge := 0.0) -> void:
+func apply_net_state(aim: Vector3, slot: int, drawn: bool, charge := 0.0, reload := -1.0) -> void:
 	aim_point = aim
 	if slot != current:
 		select(slot)
@@ -161,6 +164,7 @@ func apply_net_state(aim: Vector3, slot: int, drawn: bool, charge := 0.0) -> voi
 	if drawn != is_drawn:
 		toggle()
 	w.apply_net_charge(charge)
+	w.apply_net_reload(reload)
 
 
 ## No shooting while dead, stunned or behind the shield.

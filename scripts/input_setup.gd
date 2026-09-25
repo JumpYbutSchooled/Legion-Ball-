@@ -24,6 +24,7 @@ const KEYS := {
 	# Owner only: gold invincibility shield.
 	"god_shield": [KEY_G],
 	"toggle_weapon": [KEY_QUOTELEFT],
+	"reload": [KEY_T],
 	"reset_ball": [KEY_R],
 	"zoom_in": [KEY_I],
 	"zoom_out": [KEY_O],
@@ -31,6 +32,7 @@ const KEYS := {
 	"camera_right": [KEY_E],
 	"block": [KEY_Q],
 	"scoreboard": [KEY_TAB],
+	"chat": [KEY_SLASH],
 }
 
 ## Keys that moved to another action: stripped from their old action on every start.
