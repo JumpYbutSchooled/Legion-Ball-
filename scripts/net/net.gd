@@ -67,13 +67,30 @@ func player_name(id: int) -> String:
 	return players.get(id, {}).get("name", "PLAYER %d" % id)
 
 
-## This PC's IPv4 addresses on the local network, to tell friends.
+## This PC's IPv4 address(es) on the local network, to tell friends - best guess first.
+## Skips loopback and link-local, plus virtual adapters (VirtualBox, VMware, Hyper-V,
+## WSL...), which show up as extra networks nobody else can reach. Those host-only
+## adapters almost always sit at x.x.x.1, so .1 addresses are dropped when there's
+## anything better.
 func lan_addresses() -> PackedStringArray:
-	var out := PackedStringArray()
-	for a in IP.get_local_addresses():
-		if a.count(".") == 3 and not a.begins_with("127.") and not a.begins_with("169.254."):
-			out.append(a)
-	return out
+	var virtual_words := ["virtual", "vmware", "vbox", "hyper-v", "vethernet", "wsl", "loopback", "bluetooth", "tailscale"]
+	var good := PackedStringArray()
+	var fallback := PackedStringArray()
+	for iface in IP.get_local_interfaces():
+		var label := (String(iface.get("friendly", "")) + " " + String(iface.get("name", ""))).to_lower()
+		var is_virtual := false
+		for w in virtual_words:
+			if label.contains(w):
+				is_virtual = true
+		for a in iface.get("addresses", []):
+			var addr := String(a)
+			if addr.count(".") != 3 or addr.begins_with("127.") or addr.begins_with("169.254."):
+				continue
+			if is_virtual or addr.ends_with(".1"):
+				fallback.append(addr)
+			else:
+				good.append(addr)
+	return good if not good.is_empty() else fallback
 
 
 func host(port := PORT) -> Error:
@@ -154,7 +171,7 @@ func _process(delta: float) -> void:
 	if _connecting:
 		_connect_timer -= delta
 		if _connect_timer <= 0.0:
-			_fail("Connection timed out. Check the IP, the port (%d) and the host's firewall." % PORT)
+			_fail("Connection timed out. Check the address, then on the HOST PC allow LeigonBall through Windows Firewall (UDP %d). School/guest Wi-Fi often blocks devices from reaching each other - use Tailscale or a phone hotspot there." % PORT)
 
 
 # --- Connection events ------------------------------------------------------------
