@@ -7,6 +7,10 @@ extends CanvasLayer
 ## The sequence: IMPLOSION (the world darkens and is sucked in and twisted toward the kill
 ## while a ring closes on it) -> the CRACK (black, then white) -> EXPLOSION (a blinding
 ## flash that lights everything, thrown outward behind a ring racing away, fading out).
+## Every weapon has its own version, scaled to how hard it hits (PROFILES): the Gatling's
+## is a quick flicker, the Scatter's is mostly blast, the Tether's mostly pull, Nova's is
+## huge, and the Railgun gets the full-length original. The weapon is whichever one last
+## dealt damage (weapon.gd, last_hit_slot).
 ## Targets trigger it by calling the "impact_frames" group's trigger(world_pos, color).
 ## Can be switched off in Settings (the shake still plays).
 
@@ -14,12 +18,23 @@ const FrameShader := preload("res://shaders/impact_frame.gdshader")
 const SettingsScript := preload("res://scripts/settings.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 
-## Key frames each side of the crack; the effect eases smoothly between them.
-const IMPLODE := 12
-const EXPLODE := 16
+## Per weapon slot (0 Gatling, 1 Railgun, 2 Scatter, 3 Tether, 4 Nova, 5 Swarm):
+##   implode / explode: key frames each side of the crack (fewer = shorter)
+##   speed: frame time multiplier    pull: implosion strength    blast: explosion strength
+##   core: size of the crack flash   volume: blast sound (dB)     shake: camera shake
+const PROFILES := {
+	0: {"implode": 4, "explode": 6, "speed": 0.8, "pull": 0.35, "blast": 0.5, "core": 0.6, "volume": -6.0, "shake": 0.5},
+	1: {"implode": 12, "explode": 16, "speed": 1.0, "pull": 1.0, "blast": 1.0, "core": 1.0, "volume": 6.0, "shake": 1.0},
+	2: {"implode": 4, "explode": 12, "speed": 1.0, "pull": 0.5, "blast": 1.0, "core": 1.0, "volume": 1.0, "shake": 0.9},
+	3: {"implode": 8, "explode": 7, "speed": 1.0, "pull": 0.9, "blast": 0.6, "core": 0.8, "volume": -2.0, "shake": 0.7},
+	4: {"implode": 10, "explode": 14, "speed": 1.0, "pull": 0.9, "blast": 0.95, "core": 1.1, "volume": 4.0, "shake": 1.0},
+	5: {"implode": 5, "explode": 8, "speed": 0.9, "pull": 0.5, "blast": 0.65, "core": 0.7, "volume": -3.0, "shake": 0.6},
+}
 
 ## Receives add_shake().
 @export var camera_rig: Node
+## The local weapon manager, to know which weapon got the kill.
+@export var weapon: Node
 ## Game speed during the hitstop.
 @export var hitstop_scale := 0.02
 ## How hard each frame jolts the whole image sideways (screen fraction).
@@ -34,6 +49,8 @@ var _mat: ShaderMaterial
 var _start_usec := -1
 var _jolt_now := Vector2.ZERO
 var _jolt_goal := Vector2.ZERO
+var _profile: Dictionary = PROFILES[1]
+var _implode := 12
 
 
 func _ready() -> void:
@@ -44,44 +61,58 @@ func _ready() -> void:
 	_mat.shader = FrameShader
 	# Last of everything, over the whole screen.
 	_mat.render_priority = Material.RENDER_PRIORITY_MAX
-	_build_frames()
+	_build_frames(PROFILES[1])
 
 
-func _build_frames() -> void:
+## The implosion -> crack -> explosion sequence, shaped by a weapon profile.
+func _build_frames(p: Dictionary) -> void:
+	_profile = p
 	frames.clear()
+	var implode: int = p["implode"]
+	var explode: int = p["explode"]
+	var speed: float = p["speed"]
+	var pull: float = p["pull"]
+	var blast: float = p["blast"]
+	var core: float = p["core"]
+	_implode = implode
 	# Implosion: darkening, sucked in harder and harder, the ring closing.
-	for i in IMPLODE:
-		var k := float(i) / (IMPLODE - 1)
+	for i in implode:
+		var k := float(i) / maxf(implode - 1, 1)
 		frames.append({
-			"time": lerpf(0.04, 0.025, k), "mode": 2 if i % 2 == 0 else 1,
-			"pinch": lerpf(0.1, 0.95, k * k), "power": lerpf(-0.2, -1.0, k),
-			"ring": lerpf(0.95, 0.06, k), "burst": false, "core": lerpf(0.01, 0.05, k),
+			"time": lerpf(0.04, 0.025, k) * speed, "mode": 2 if i % 2 == 0 else 1,
+			"pinch": lerpf(0.1, 0.95, k * k) * pull, "power": lerpf(-0.2, -1.0, k) * pull,
+			"ring": lerpf(0.95, 0.06, k), "burst": false, "core": lerpf(0.01, 0.05, k) * core,
 		})
 	# The crack: collapsed to a black point, then a white-hot flash.
-	frames.append({"time": 0.05, "mode": 1, "pinch": 0.0, "power": -1.0, "ring": 0.0, "burst": true, "core": 0.32})
-	frames.append({"time": 0.04, "mode": 2, "pinch": 0.0, "power": 4.0, "ring": 0.0, "burst": true, "core": 0.45})
+	frames.append({"time": 0.05 * speed, "mode": 1, "pinch": 0.0, "power": -1.0, "ring": 0.0, "burst": true, "core": 0.32 * core})
+	frames.append({"time": 0.04 * speed, "mode": 2, "pinch": 0.0, "power": 4.0 * blast, "ring": 0.0, "burst": true, "core": 0.45 * core})
 	# Explosion: blinding light fading, thrown out, the ring racing away.
-	for i in EXPLODE:
-		var k := float(i) / (EXPLODE - 1)
+	for i in explode:
+		var k := float(i) / maxf(explode - 1, 1)
 		frames.append({
-			"time": lerpf(0.025, 0.045, k), "mode": 1 if i % 2 == 0 else 2,
-			"pinch": lerpf(-0.55, -0.02, sqrt(k)), "power": lerpf(3.5, 0.9, k),
-			"ring": lerpf(0.1, 1.1, sqrt(k)), "burst": true, "core": lerpf(0.22, 0.02, k),
+			"time": lerpf(0.025, 0.045, k) * speed, "mode": 1 if i % 2 == 0 else 2,
+			"pinch": lerpf(-0.55, -0.02, sqrt(k)) * blast, "power": lerpf(3.5, 0.9, k) * blast,
+			"ring": lerpf(0.1, 1.1, sqrt(k)), "burst": true, "core": lerpf(0.22, 0.02, k) * core,
 		})
 
 
 func trigger(world_pos: Vector3, color: Color) -> void:
+	var slot: int = weapon.get("last_hit_slot") if weapon else 1
+	_build_frames(PROFILES.get(slot, PROFILES[1]))
+	var shake: float = _profile["shake"]
+	var volume: float = _profile["volume"]
 	if camera_rig and camera_rig.has_method("add_shake"):
-		camera_rig.call("add_shake", 1.0)
+		camera_rig.call("add_shake", shake)
 	if not SettingsScript.read(get_tree(), "impact_frames"):
 		# No frames: just the crack and blast.
-		Sfx.play_flat(get_tree(), "impact_boom", 4.0)
+		Sfx.play_flat(get_tree(), "impact_boom", volume - 2.0)
 		return
 	# The implosion sound is stretched to end exactly on the crack, where the blast plays.
 	var implode_time := 0.0
-	for i in IMPLODE:
+	for i in _implode:
 		implode_time += frames[i]["time"]
-	Sfx.play_flat(get_tree(), "implode", -3.0, 0.45 / implode_time)
+	# (Capped so the short ones don't turn squeaky; they just overlap the blast.)
+	Sfx.play_flat(get_tree(), "implode", -3.0 + minf(volume, 0.0), clampf(0.45 / implode_time, 0.8, 2.0))
 	var camera := get_viewport().get_camera_3d()
 	if not camera:
 		return
@@ -170,9 +201,9 @@ func _process(_delta: float) -> void:
 	_mat.set_shader_parameter("mode", f["mode"])
 	_mat.set_shader_parameter("bursting", f["burst"])
 	_mat.set_shader_parameter("seed", randf() * 100.0)
-	var crack: bool = f["core"] >= 0.3
-	if index == IMPLODE:
-		Sfx.play_flat(get_tree(), "impact_boom", 6.0)
+	var crack: bool = index == _implode or index == _implode + 1
+	if index == _implode:
+		Sfx.play_flat(get_tree(), "impact_boom", _profile["volume"], 1.0 + (1.0 - float(_profile["blast"])) * 0.5)
 	_jolt_goal = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * jolt * (2.5 if crack else 1.0)
 	if crack and camera_rig and camera_rig.has_method("add_shake"):
-		camera_rig.call("add_shake", 1.0)
+		camera_rig.call("add_shake", _profile["shake"])

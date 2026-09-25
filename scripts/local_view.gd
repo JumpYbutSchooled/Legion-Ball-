@@ -23,3 +23,4 @@ func setup(ball: RigidBody3D) -> void:
 	$HUD/Crosshair.set("weapon", weapon)
 	$WeaponSelector.set("weapon", weapon)
 	$ImpactFrames.set("camera_rig", rig)
+	$ImpactFrames.set("weapon", weapon)

@@ -44,6 +44,8 @@ var weapons: Array = []
 var current := 0
 
 var _was_captured := false
+## Slot of the weapon that last dealt damage: picks the kill's impact frames.
+var last_hit_slot := 1
 ## Damage numbers still collecting hits, by target.
 var _numbers := {}
 var _aim_basis := Basis.IDENTITY
@@ -266,6 +268,7 @@ func hit_object(collider: Object, damage: float, pos: Vector3, dir: Vector3, imp
 func report_damage(target: Object, damage: float, pos: Vector3) -> void:
 	if not is_multiplayer_authority() or damage <= 0.0 or not ball:
 		return
+	last_hit_slot = current
 	var amount := damage * BallScript.PVP_DAMAGE_SCALE
 	var dist := ball.global_position.distance_to(pos)
 	var existing = _numbers.get(target)
