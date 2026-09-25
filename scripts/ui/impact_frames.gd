@@ -3,7 +3,8 @@ extends CanvasLayer
 ## freezes for the length of the effect) and camera shake.
 ## Drawn by shaders/impact_frame.gdshader on a full-screen quad on the camera, which casts
 ## the blast across the real scene: surfaces lit from the kill point, hard shadows behind
-## players and walls, shafts over the sky, ink outlines, manga tones.
+## players and walls, shafts over the sky, ink outlines, manga tones. Weapon blades and
+## shields are included through solid stand-ins (_add_proxies).
 ## The sequence: IMPLOSION (the world darkens and is sucked in and twisted toward the kill
 ## while a ring closes on it) -> the CRACK (black, then white) -> EXPLOSION (a blinding
 ## flash that lights everything, thrown outward behind a ring racing away, fading out).
@@ -16,6 +17,11 @@ extends CanvasLayer
 ## Can be switched off in Settings (the shake still plays).
 
 const FrameShader := preload("res://shaders/impact_frame.gdshader")
+const BladeDepthShader := preload("res://shaders/blade_depth.gdshader")
+const ShieldDepthShader := preload("res://shaders/shield_depth.gdshader")
+## Settings copied from each real blade/shield to its solid stand-in, every frame.
+const BLADE_PARAMS := ["wave_pos", "wave_assembling", "charge_spread", "reload_break", "tip_open", "extend"]
+const SHIELD_PARAMS := ["out_amount", "grow", "fade", "shell_radius"]
 const SettingsScript := preload("res://scripts/settings.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 
@@ -56,6 +62,8 @@ var _jolt_now := Vector2.ZERO
 var _jolt_goal := Vector2.ZERO
 var _profile: Dictionary = PROFILES[1]
 var _implode := 12
+## Solid stand-ins for the see-through blades and shields: [real mesh, stand-in, params].
+var _proxies: Array = []
 
 
 func _ready() -> void:
@@ -141,6 +149,55 @@ func trigger(world_pos: Vector3, color: Color, slot := -1, hitstop := true) -> v
 	if hitstop:
 		Engine.time_scale = hitstop_scale
 	_set_hud_hidden(true)
+	_add_proxies()
+
+
+## Weapon blades and shields are see-through, so they're missing from the depth and
+## normal buffers this effect shades from. While it plays, each visible one gets a solid
+## copy with the same shape and motion (shaders/blade_depth, shield_depth) so it's lit,
+## shadowed and outlined like everything else. The effect covers the whole screen, so
+## the copies themselves are never seen.
+func _add_proxies() -> void:
+	_clear_proxies()
+	for blade in get_tree().get_nodes_in_group("impact_blades"):
+		_add_proxy(blade, BladeDepthShader, BLADE_PARAMS)
+	for shield in get_tree().get_nodes_in_group("impact_shields"):
+		_add_proxy(shield, ShieldDepthShader, SHIELD_PARAMS)
+
+
+func _add_proxy(source: MeshInstance3D, shader: Shader, params: Array) -> void:
+	if not source.is_visible_in_tree() or not source.mesh:
+		return
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	var proxy := MeshInstance3D.new()
+	proxy.mesh = source.mesh
+	proxy.material_override = mat
+	proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	proxy.extra_cull_margin = source.extra_cull_margin
+	source.add_child(proxy)
+	_proxies.append([source, proxy, params])
+	_sync_proxy(_proxies[-1])
+
+
+func _sync_proxy(entry: Array) -> void:
+	var source: MeshInstance3D = entry[0]
+	var proxy: MeshInstance3D = entry[1]
+	var from := source.material_override as ShaderMaterial
+	var to := proxy.material_override as ShaderMaterial
+	if not from:
+		return
+	for param in entry[2]:
+		var value = from.get_shader_parameter(param)
+		if value != null:
+			to.set_shader_parameter(param, value)
+
+
+func _clear_proxies() -> void:
+	for entry in _proxies:
+		if is_instance_valid(entry[1]):
+			entry[1].queue_free()
+	_proxies.clear()
 
 
 ## The frame takes over the whole screen: hide the HUD layers beside it while it plays.
@@ -187,8 +244,14 @@ func _process(_delta: float) -> void:
 		_start_usec = -1
 		Engine.time_scale = 1.0  # End of hitstop.
 		_set_hud_hidden(false)
+		_clear_proxies()
 		return
 	_quad.visible = true
+	# Keep the stand-ins moving with the real blades and shields.
+	for entry in _proxies:
+		if is_instance_valid(entry[0]) and is_instance_valid(entry[1]):
+			entry[1].visible = entry[0].visible
+			_sync_proxy(entry)
 	var f: Dictionary = frames[index]
 	# Smooth: every rendered frame eases the warp, light, ring and core from this key
 	# frame toward the next, so the suck-in and blow-out move continuously.

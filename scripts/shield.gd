@@ -33,6 +33,8 @@ func setup(source: MeshInstance3D) -> void:
 	# The mesh sits on the ball's surface at rest; the shader pushes it well outside.
 	extra_cull_margin = 2.0
 	visible = false
+	# So impact frames can include it in their shading (impact_frames.gd).
+	add_to_group("impact_shields")
 
 
 ## Raise the shield for `duration` seconds (retract included).

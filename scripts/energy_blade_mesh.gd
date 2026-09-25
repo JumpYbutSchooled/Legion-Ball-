@@ -63,6 +63,8 @@ const BladeShader := preload("res://shaders/blade_warp.gdshader")
 
 func _ready() -> void:
 	_rebuild()
+	# So impact frames can include it in their shading (impact_frames.gd).
+	add_to_group("impact_blades")
 
 
 ## Tip position in this blade's local space, with mirroring applied.
