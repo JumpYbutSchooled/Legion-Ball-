@@ -231,7 +231,7 @@ func _show_weapon(detail: VBoxContainer, slot: int) -> void:
 const CONTROLS := [
 	["W A S D / ARROWS", "Roll (relative to the camera)"],
 	["SPACE", "Jump (1s cooldown)"],
-	["Q", "Shield for 1s: blocks all damage; a hit on it launches you + explodes (10s cooldown)"],
+	["Q", "Shield for 1s: blocks all damage; a hit on it launches you + explodes and resets the cooldown (10s)"],
 	["F", "Dash: redirect all speed where you steer, +40"],
 	["S (against motion)", "Skid: hard brake with sparks"],
 	["MOUSE", "Aim / orbit camera (click to lock the mouse)"],

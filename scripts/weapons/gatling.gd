@@ -20,7 +20,7 @@ signal fired(blade_index: int)
 ## Camera shake added per shot (0..1 trauma).
 @export var shot_shake := 0.3
 ## Small lock-on circle (pixels): a target inside it gets every shot, like the railgun.
-@export var lock_radius_px := 30.0
+@export var lock_radius_px := 16.0
 
 @export_group("Muzzle")
 @export var flash_energy := 40.0

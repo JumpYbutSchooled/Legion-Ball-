@@ -76,7 +76,7 @@ func _process(delta: float) -> void:
 
 ## With a little hysteresis on the way down so it doesn't flicker at a boundary.
 func _tier_for(v: float) -> int:
-	if v >= MAX_DISPLAY - 1.0:
+	if v >= MAX_DISPLAY - 2.0 or (_tier == 5 and v > MAX_DISPLAY - 20.0):
 		return 5
 	var t := int(v / 100.0)
 	if t < _tier and v > _tier * 100.0 - 8.0:

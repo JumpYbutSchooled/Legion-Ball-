@@ -26,6 +26,16 @@ const Sfx := preload("res://scripts/sfx.gd")
 ## Hard speed cap in m/s (500 on the speedometer).
 @export var top_speed := 100.0
 
+@export_group("Cruise")
+## Above max_speed, holding a direction close to the way you're travelling keeps your
+## speed from bleeding off, so dashes stack all the way up to top_speed and stay there.
+## How closely input must match the travel direction (1 = exactly).
+@export var cruise_alignment := 0.5
+## Speed lost per second while cruising (0 = none).
+@export var cruise_decay := 0.0
+## How fast you can steer while cruising, in radians per second.
+@export var cruise_turn := 1.6
+
 @export_group("Block")
 ## Q: seconds the shield is up (including folding out and back).
 @export var block_time := 1.0
@@ -68,6 +78,10 @@ var _status_color := Color.WHITE
 var _block_timer := 0.0
 var _block_cd := 0.0
 var _shield: MeshInstance3D
+var _move_dir := Vector3.ZERO
+var _grounded := false
+## Speed being held by cruise (0 = not cruising).
+var _cruise_speed := 0.0
 
 
 func _ready() -> void:
@@ -114,6 +128,8 @@ func _physics_process(delta: float) -> void:
 
 	var grounded := _is_grounded()
 	var dir := _get_move_direction()
+	_move_dir = dir
+	_grounded = grounded
 
 	if dir != Vector3.ZERO:
 		# Only push while under the speed cap in the requested direction,
@@ -259,6 +275,8 @@ func on_parried() -> void:
 	_shield.call("hit_flash")
 	_shield.call("stop")
 	_block_timer = 0.0
+	# A successful block is rewarded: the shield is ready again straight away.
+	_block_cd = 0.0
 	_knockback += Vector3.UP * parry_launch
 	_knockback_effects = true
 	var weapon := get_node_or_null("Weapon")
@@ -363,6 +381,8 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		if weapon:
 			weapon.call_deferred("play_sound", "dash", state.transform.origin, -2.0)
 
+	_cruise(state)
+
 	# Speed cap and height ceiling.
 	var v := state.linear_velocity
 	if v.length() > top_speed:
@@ -370,6 +390,33 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if state.transform.origin.y > max_height and v.y > 0.0:
 		v.y *= 0.8
 	state.linear_velocity = v
+
+
+## Holds high speed while you steer the way you're going: the horizontal speed can't
+## drop below what you had (minus cruise_decay), and it turns gently toward your input.
+## Let go of the keys, or steer hard away, and friction takes over again.
+func _cruise(state: PhysicsDirectBodyState3D) -> void:
+	var v := state.linear_velocity
+	var flat := Vector3(v.x, 0.0, v.z)
+	var speed := flat.length()
+	if _move_dir == Vector3.ZERO or speed < max_speed \
+			or _move_dir.normalized().dot(flat / speed) < cruise_alignment:
+		_cruise_speed = 0.0
+		return
+	if speed < _cruise_speed * 0.85:
+		# A sudden big loss is a crash (a wall, a ramp lip): keep what's left, don't undo it.
+		_cruise_speed = speed
+	_cruise_speed = maxf(_cruise_speed - cruise_decay * state.step, speed)
+	_cruise_speed = minf(_cruise_speed, top_speed)
+	var heading := flat / speed
+	var goal := _move_dir.normalized()
+	var angle := heading.signed_angle_to(goal, Vector3.UP)
+	heading = heading.rotated(Vector3.UP, clampf(angle, -cruise_turn * state.step, cruise_turn * state.step))
+	flat = heading * _cruise_speed
+	state.linear_velocity = Vector3(flat.x, v.y, flat.z)
+	if _grounded:
+		# Roll to match, so ground friction doesn't brake it.
+		state.angular_velocity = Vector3.UP.cross(flat) / _radius
 
 
 func _fire_laser(origin: Vector3, back_dir: Vector3) -> void:
