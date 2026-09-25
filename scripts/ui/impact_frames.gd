@@ -73,9 +73,15 @@ func _build_frames() -> void:
 func trigger(world_pos: Vector3, color: Color) -> void:
 	if camera_rig and camera_rig.has_method("add_shake"):
 		camera_rig.call("add_shake", 1.0)
-	Sfx.play_flat(get_tree(), "kill", -2.0)
 	if not SettingsScript.read(get_tree(), "impact_frames"):
+		# No frames: just the crack and blast.
+		Sfx.play_flat(get_tree(), "impact_boom", -2.0)
 		return
+	# The implosion sound is stretched to end exactly on the crack, where the blast plays.
+	var implode_time := 0.0
+	for i in IMPLODE:
+		implode_time += frames[i]["time"]
+	Sfx.play_flat(get_tree(), "implode", -3.0, 0.45 / implode_time)
 	var camera := get_viewport().get_camera_3d()
 	if not camera:
 		return
@@ -165,6 +171,8 @@ func _process(_delta: float) -> void:
 	_mat.set_shader_parameter("bursting", f["burst"])
 	_mat.set_shader_parameter("seed", randf() * 100.0)
 	var crack: bool = f["core"] >= 0.3
+	if index == IMPLODE:
+		Sfx.play_flat(get_tree(), "impact_boom", 0.0)
 	_jolt_goal = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * jolt * (2.5 if crack else 1.0)
 	if crack and camera_rig and camera_rig.has_method("add_shake"):
 		camera_rig.call("add_shake", 1.0)

@@ -171,6 +171,19 @@ func _build_all() -> void:
 		_sweep(0.6, 1800.0, 50.0, 0.5, 0.001, 2.0, 3, 0.4),
 		_boom(0.6, 0.8),
 	]), 10.0))
+	# Impact frames: a reversed whoosh that sucks in and rises for the whole implosion,
+	# then the crack and explosion.
+	s["implode"] = _wav(_mix([
+		_reverse(_sweep(0.45, 2400.0, 50.0, 0.5, 0.001, 1.6, 3, 0.35)),
+		_gain(_reverse(_noise(0.45, 0.25, 0.001)), 0.8),
+		_gain(_reverse(_shimmer(0.45, 1800.0, 200.0, 0.001)), 0.5),
+	]))
+	s["impact_boom"] = _wav(_mix([
+		_boom(1.6, 1.5),
+		_sweep(1.2, 3200.0, 35.0, 0.6, 0.001, 3.0, 3, 0.3),
+		_gain(_noise(0.15, 0.9, 0.001), 1.2),
+		_gain(_shimmer(0.9, 2600.0, 300.0, 0.001), 0.4),
+	]))
 	# Speedometer.
 	var shatter := _glass(0.5)
 	s["shatter"] = _wav(shatter)

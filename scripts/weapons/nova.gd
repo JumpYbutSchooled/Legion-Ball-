@@ -9,7 +9,8 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## Combos: stagger drones so the Railgun can't miss; launch up, then slam back down.
 
 @export var charge_time := 1.2
-@export var cooldown := 2.5
+## 0 = no cooldown: detonate again as soon as you've charged.
+@export var cooldown := 0.0
 ## Blast radius, damage, force and ball launch at no charge and at full charge.
 @export var radius_min := 4.0
 @export var radius_max := 12.0
@@ -17,18 +18,21 @@ extends "res://scripts/weapons/blade_weapon.gd"
 @export var damage_max := 9.0
 @export var force_min := 10.0
 @export var force_max := 40.0
-@export var launch_min := 14.0
-@export var launch_max := 34.0
+@export var launch_min := 28.0
+@export var launch_max := 70.0
 ## Shorter than it used to be: 2s frozen was a guaranteed railgun kill.
 @export var stagger_time := 1.2
+## Only blasts charged at least this much stagger (with no cooldown, tapping it would
+## otherwise stun-lock anyone nearby).
+@export var stagger_min_charge := 0.6
 ## How far the blades open up at full charge.
 @export var charge_spread := 0.55
 @export var charge_open := 0.5
 
 @export_group("Air slam")
 ## Downward speed when detonated in the air.
-@export var slam_speed_min := 30.0
-@export var slam_speed_max := 55.0
+@export var slam_speed_min := 65.0
+@export var slam_speed_max := 100.0
 @export var slam_radius_min := 10.0
 @export var slam_radius_max := 16.0
 @export var slam_damage_min := 8.0
@@ -85,7 +89,7 @@ func get_crosshair() -> Dictionary:
 		"kind": "nova",
 		"charge": charge,
 		"ready": _cooldown == 0.0,
-		"cooldown": 1.0 - _cooldown / cooldown,
+		"cooldown": 1.0 - _cooldown / cooldown if cooldown > 0.0 else 1.0,
 	}
 
 
@@ -159,7 +163,7 @@ func _detonate() -> void:
 		"radius": lerpf(radius_min, radius_max, k),
 		"damage": lerpf(damage_min, damage_max, k),
 		"force": lerpf(force_min, force_max, k),
-		"stagger_time": stagger_time,
+		"stagger_time": stagger_time if k >= stagger_min_charge else 0.0,
 		"spark_count": int(lerpf(80.0, 260.0, k)),
 		"spark_speed": lerpf(14.0, 30.0, k),
 		"chunk_count": int(lerpf(8.0, 24.0, k)),

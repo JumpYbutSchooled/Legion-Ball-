@@ -76,7 +76,7 @@ const WEAPONS := [
 			"Bigger charge: bigger radius (4-12m) and launch",
 			"In the AIR: throws you down into a huge ground SLAM",
 			"STAGGERS targets: frozen in place for 1.2s",
-			"2.5s cooldown",
+			"No cooldown; STAGGER needs at least 60% charge",
 		],
 		"combo": "Stagger, then RAILGUN; launch up, then Nova again to slam.",
 	},
