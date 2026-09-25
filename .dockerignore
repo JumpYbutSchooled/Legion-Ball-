@@ -1,0 +1,6 @@
+.godot/
+build/
+.git/
+.claude/
+.mcp.json
+tools/

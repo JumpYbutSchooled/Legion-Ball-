@@ -61,6 +61,17 @@ func _rebuild() -> void:
 
 
 func _build_connect() -> void:
+	_body.add_child(UIStyle.label("ONLINE", 13, UIStyle.TEXT_DIM))
+	_body.add_child(_button("JOIN ONLINE SERVER", func() -> void: _net.call("join_server")))
+	_body.add_child(UIStyle.label(
+		"Always-running arena. Works anywhere, including school Wi-Fi.\n"
+		+ "If nobody's played for a while it takes up to a minute to wake up.", 12, UIStyle.TEXT_DIM))
+
+	var line := ColorRect.new()
+	line.color = UIStyle.ACCENT_DIM
+	line.custom_minimum_size = Vector2(0, 1)
+	_body.add_child(line)
+	_body.add_child(UIStyle.label("LOCAL NETWORK (host needs firewall access)", 13, UIStyle.TEXT_DIM))
 	var host := _button("HOST GAME", _host)
 	_body.add_child(host)
 	_body.add_child(UIStyle.label("Friends join you by IP on port %d." % NetScript.PORT, 13, UIStyle.TEXT_DIM))

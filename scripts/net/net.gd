@@ -1,9 +1,13 @@
 extends Node
 ## Networking service (/root/Net, created by scripts/services.gd).
-## One player hosts (ENet server on PORT) and up to MAX_PLAYERS - 1 others join by IP.
-## The host owns the roster {peer_id: {name, color, kills, deaths}} and sends it to
-## everyone whenever it changes. The host starts the match; late joiners are sent
-## straight into it. Offline (no host/join) the game runs as single-player practice.
+## Two ways to play:
+## - Online server: a dedicated server (scenes/server.tscn, hosted on Render) keeps one
+##   arena running; players join it over WebSockets (wss://, the normal web port, so it
+##   works on school networks and needs no firewall changes). It has no player of its own.
+## - Local: one player hosts (ENet on PORT) and others on the same network join by IP.
+## The server/host owns the roster {peer_id: {name, color, kills, deaths}} and sends it
+## to everyone whenever it changes. Late joiners go straight into a running match.
+## Offline (no host/join) the game runs as single-player practice.
 
 signal roster_changed
 ## Human-readable connection status for the lobby screen.
@@ -12,10 +16,17 @@ signal status_changed(text: String)
 signal disconnected(reason: String)
 
 const PORT := 7777
+## The online server's address (see render.yaml).
+const SERVER_URL := "wss://legion-ball-server.onrender.com"
+## Port a dedicated server listens on when not told otherwise (Render sets $PORT).
+const SERVER_PORT := 7778
 const MAX_PLAYERS := 8
 const ARENA_SCENE := "res://scenes/arena.tscn"
 const MENU_SCENE := "res://scenes/menu.tscn"
 const CONNECT_TIMEOUT := 8.0
+## A sleeping free-tier server takes up to about a minute to wake; keep retrying this long.
+const SERVER_WAKE_TIMEOUT := 100.0
+const SERVER_RETRY_DELAY := 3.0
 
 ## Trim colours handed out to players in join order.
 const COLORS := [
@@ -30,17 +41,23 @@ var in_match := false
 ## Set by menus that should stop the local player moving and firing (the pause menu).
 var input_blocked := false
 var status := ""
+## True on the dedicated server itself (no local player).
+var dedicated := false
 
 var _connecting := false
 var _connect_timer := 0.0
+# Online-server joining: keep retrying until the deadline while it wakes up.
+var _server_url := ""
+var _server_deadline := 0.0
+var _retry_timer := -1.0
 
 
 func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)
-	multiplayer.connection_failed.connect(func() -> void: _fail("Could not reach the host."))
-	multiplayer.server_disconnected.connect(func() -> void: _fail("The host left the match."))
+	multiplayer.connection_failed.connect(_on_connect_failed)
+	multiplayer.server_disconnected.connect(func() -> void: _fail("Lost connection to the host/server."))
 
 
 func is_host() -> bool:
@@ -123,6 +140,46 @@ func join(ip: String, port := PORT) -> Error:
 	return OK
 
 
+## Join the online server. If it's asleep (free hosting), keeps retrying while it wakes.
+func join_server(url := SERVER_URL) -> void:
+	leave()
+	_server_url = url
+	_server_deadline = _now() + SERVER_WAKE_TIMEOUT
+	_try_server()
+
+
+func _try_server() -> void:
+	var peer := WebSocketMultiplayerPeer.new()
+	var tls := TLSOptions.client() if _server_url.begins_with("wss") else null
+	var err := peer.create_client(_server_url, tls)
+	if err != OK:
+		_give_up("Could not start a connection to the online server.")
+		return
+	multiplayer.multiplayer_peer = peer
+	online = true
+	_connecting = true
+	_connect_timer = 20.0
+	_set_status("Connecting to the online server...")
+
+
+## Run as the dedicated online server: no local player, one arena that never stops.
+func host_dedicated(port := SERVER_PORT) -> Error:
+	leave()
+	var peer := WebSocketMultiplayerPeer.new()
+	var err := peer.create_server(port)
+	if err != OK:
+		print("[server] could not listen on port %d (error %d)" % [port, err])
+		return err
+	multiplayer.multiplayer_peer = peer
+	online = true
+	dedicated = true
+	in_match = true
+	players = {}
+	print("[server] listening on port %d" % port)
+	get_tree().change_scene_to_file(ARENA_SCENE)
+	return OK
+
+
 ## Disconnects (if connected) and goes back to offline.
 func leave() -> void:
 	if multiplayer.multiplayer_peer and not multiplayer.multiplayer_peer is OfflineMultiplayerPeer:
@@ -130,7 +187,10 @@ func leave() -> void:
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	online = false
 	in_match = false
+	dedicated = false
 	_connecting = false
+	_server_url = ""
+	_retry_timer = -1.0
 	players.clear()
 	input_blocked = false
 	roster_changed.emit()
@@ -150,7 +210,8 @@ func push_roster() -> void:
 		_sync_roster.rpc(players)
 
 
-## Host only: the match is over; everyone goes back to the lobby with scores reset.
+## Host only: the match is over; scores reset. A dedicated server starts a fresh round
+## straight away; a player-hosted game goes back to the lobby.
 func end_match() -> void:
 	if not is_host():
 		return
@@ -158,7 +219,10 @@ func end_match() -> void:
 		players[id]["kills"] = 0
 		players[id]["deaths"] = 0
 	_sync_roster.rpc(players)
-	_back_to_lobby.rpc()
+	if dedicated:
+		_load_arena.rpc()
+	else:
+		_back_to_lobby.rpc()
 
 
 ## Leave the match and return to the main menu.
@@ -168,29 +232,62 @@ func quit_to_menu() -> void:
 
 
 func _process(delta: float) -> void:
+	if _retry_timer >= 0.0:
+		_retry_timer -= delta
+		if _retry_timer < 0.0:
+			_try_server()
 	if _connecting:
 		_connect_timer -= delta
 		if _connect_timer <= 0.0:
-			_fail("Connection timed out. Check the address, then on the HOST PC allow LeigonBall through Windows Firewall (UDP %d). School/guest Wi-Fi often blocks devices from reaching each other - use Tailscale or a phone hotspot there." % PORT)
+			_on_connect_failed()
 
 
 # --- Connection events ------------------------------------------------------------
 
 func _on_connected() -> void:
 	_connecting = false
+	_server_url = ""
 	_set_status("Connected. Waiting for the host...")
 	_register.rpc_id(1, local_name())
 
 
-func _on_peer_connected(_id: int) -> void:
-	pass  # The new peer registers itself once it's connected.
+func _on_connect_failed() -> void:
+	_connecting = false
+	if _server_url != "":
+		# Online server: probably still waking up. Try again until the deadline.
+		if _now() < _server_deadline:
+			if multiplayer.multiplayer_peer:
+				multiplayer.multiplayer_peer.close()
+			multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+			_retry_timer = SERVER_RETRY_DELAY
+			var left := int(_server_deadline - _now())
+			_set_status("Waking the online server up (free hosting sleeps when idle)... %ds" % left)
+			return
+		_give_up("The online server didn't answer. It may be down; try again in a minute.")
+		return
+	_give_up("Connection timed out. Check the address, then on the HOST PC allow LeigonBall through Windows Firewall (UDP %d). On school Wi-Fi use the ONLINE SERVER instead." % PORT)
+
+
+func _give_up(reason: String) -> void:
+	_fail(reason)
+
+
+func _on_peer_connected(id: int) -> void:
+	if dedicated:
+		print("[server] peer %d connected" % id)
 
 
 func _on_peer_disconnected(id: int) -> void:
 	if not multiplayer.is_server() or not players.has(id):
 		return
+	if dedicated:
+		print("[server] %s left" % players[id]["name"])
 	players.erase(id)
 	_sync_roster.rpc(players)
+
+
+func _now() -> float:
+	return Time.get_ticks_msec() / 1000.0
 
 
 func _fail(reason: String) -> void:
@@ -213,6 +310,8 @@ func _register(player_name_in: String) -> void:
 		multiplayer.multiplayer_peer.disconnect_peer(id)
 		return
 	players[id] = _new_player(player_name_in.strip_edges().substr(0, 16), _free_color())
+	if dedicated:
+		print("[server] %s joined (%d online)" % [players[id]["name"], players.size()])
 	_sync_roster.rpc(players)
 	if in_match:
 		_load_arena.rpc_id(id)

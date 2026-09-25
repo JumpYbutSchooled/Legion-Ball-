@@ -1,0 +1,10 @@
+# Render blueprint for the Leigon Ball online server (free tier).
+# Render -> New -> Blueprint -> pick this repository. It builds the Dockerfile and
+# redeploys automatically on every push.
+services:
+  - type: web
+    name: legion-ball-server
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
