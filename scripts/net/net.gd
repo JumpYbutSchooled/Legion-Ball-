@@ -27,8 +27,18 @@ const SERVER_URLS := [
 ## Port a dedicated server listens on when not told otherwise (Render sets $PORT).
 const SERVER_PORT := 7778
 const MAX_PLAYERS := 8
-## Online matches use the big walled map; offline practice keeps scenes/arena.tscn.
+## Online matches use the big walled map by default; offline practice keeps
+## scenes/arena.tscn (online, its cubes and targets are left out).
 const ARENA_SCENE := "res://scenes/arena_sprawl.tscn"
+const TRAINING_SCENE := "res://scenes/arena.tscn"
+const MAP_NAMES := {
+	"res://scenes/arena_sprawl.tscn": "SPRAWL",
+	"res://scenes/arena.tscn": "TRAINING",
+}
+## The map each online server runs, in the same order as SERVER_URLS. A server finds its
+## own entry from Render's RENDER_EXTERNAL_HOSTNAME; a MAP env var ("sprawl" or
+## "training") overrides it.
+const SERVER_MAPS := [ARENA_SCENE, ARENA_SCENE, TRAINING_SCENE, TRAINING_SCENE]
 const MENU_SCENE := "res://scenes/menu.tscn"
 const CONNECT_TIMEOUT := 8.0
 ## A sleeping free-tier server takes up to about a minute to wake; keep retrying this long.
@@ -50,6 +60,8 @@ var input_blocked := false
 var status := ""
 ## True on the dedicated server itself (no local player).
 var dedicated := false
+## The map matches load. Set by the server (_use_map) before it loads anyone in.
+var map_scene := ARENA_SCENE
 
 var _connecting := false
 var _connect_timer := 0.0
@@ -184,9 +196,25 @@ func host_dedicated(port := SERVER_PORT) -> Error:
 	dedicated = true
 	in_match = true
 	players = {}
-	print("[server] listening on port %d" % port)
-	get_tree().change_scene_to_file(ARENA_SCENE)
+	map_scene = _dedicated_map()
+	print("[server] listening on port %d, map %s" % [port, MAP_NAMES.get(map_scene, map_scene)])
+	get_tree().change_scene_to_file(map_scene)
 	return OK
+
+
+## Which map this dedicated server runs: the MAP env var, else its own entry in
+## SERVER_MAPS (found from the address Render gives it), else the default.
+func _dedicated_map() -> String:
+	var env := OS.get_environment("MAP").strip_edges().to_lower()
+	for path in MAP_NAMES:
+		if MAP_NAMES[path].to_lower() == env:
+			return path
+	var host := OS.get_environment("RENDER_EXTERNAL_HOSTNAME").strip_edges()
+	if host != "":
+		for i in SERVER_URLS.size():
+			if SERVER_URLS[i].ends_with("//" + host):
+				return SERVER_MAPS[i]
+	return ARENA_SCENE
 
 
 ## Disconnects (if connected) and goes back to offline.
@@ -201,6 +229,7 @@ func leave() -> void:
 	_server_url = ""
 	_retry_timer = -1.0
 	_rejected_reason = ""
+	map_scene = ARENA_SCENE
 	players.clear()
 	input_blocked = false
 	roster_changed.emit()
@@ -211,6 +240,7 @@ func start_match() -> void:
 	if not is_host():
 		return
 	in_match = true
+	_use_map.rpc(map_scene)
 	_load_arena.rpc()
 
 
@@ -230,6 +260,7 @@ func end_match() -> void:
 		players[id]["deaths"] = 0
 	_sync_roster.rpc(players)
 	if dedicated:
+		_use_map.rpc(map_scene)
 		_load_arena.rpc()
 	else:
 		_back_to_lobby.rpc()
@@ -331,7 +362,16 @@ func _register(player_name_in: String) -> void:
 		print("[server] %s joined (%d online)" % [players[id]["name"], players.size()])
 	_sync_roster.rpc(players)
 	if in_match:
+		_use_map.rpc_id(id, map_scene)
 		_load_arena.rpc_id(id)
+
+
+## Which map to load next (sent just before _load_arena). Named to sort after the other
+## RPCs, so their numbering is unchanged for older versions.
+@rpc("authority", "reliable")
+func _use_map(path: String) -> void:
+	if MAP_NAMES.has(path):
+		map_scene = path
 
 
 ## The server turned us away; the disconnect that follows shows this reason.
@@ -354,7 +394,7 @@ func _sync_roster(roster: Dictionary) -> void:
 func _load_arena() -> void:
 	in_match = true
 	input_blocked = false
-	get_tree().change_scene_to_file(ARENA_SCENE)
+	get_tree().change_scene_to_file(map_scene)
 
 
 @rpc("authority", "call_local", "reliable")

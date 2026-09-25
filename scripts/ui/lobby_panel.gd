@@ -68,7 +68,8 @@ func _build_connect() -> void:
 	_body.add_child(servers)
 	var last: int = _settings.call("get_value", "last_server")
 	for i in NetScript.SERVER_URLS.size():
-		var b := _button("SERVER %d" % (i + 1), _join_server.bind(i))
+		var map_name: String = NetScript.MAP_NAMES.get(NetScript.SERVER_MAPS[i], "")
+		var b := _button("SERVER %d · %s" % [i + 1, map_name], _join_server.bind(i))
 		if i == last:
 			b.add_theme_color_override("font_color", UIStyle.ACCENT)
 		servers.add_child(b)
