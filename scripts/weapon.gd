@@ -2,7 +2,8 @@ extends Node3D
 ## Weapon manager, mounted on the ball. Follows the ball (not its spin), turns every
 ## weapon toward the crosshair, and routes input to the equipped one:
 ##   1 Gatling  2 Railgun  3 Scatter  4 Tether  5 Nova  6 Swarm
-##   7 Rain of God  8 Pillars of God  (owner only: WeaponInfo.unlocked_count)
+##   7 Rain of God (mods, owner)  8 Pillars of God (owner)  0 hide/show those two
+##   (WeaponInfo.unlocked_count)
 ##   ` = holster/draw, left mouse = fire (mouse captured).
 ## Switching plays the old weapon's exit wave and the new weapon's enter wave together.
 ## Also provides the helpers the weapons share: beams, lights, warp bubbles, hits,
@@ -10,6 +11,8 @@ extends Node3D
 
 ## Forwarded from the gatling: which blade just fired (the crosshair uses it).
 signal fired(blade_index: int)
+## Key 0 hid or showed the staff weapons (the weapon selector shows the result).
+signal staff_weapons_toggled(shown: bool)
 
 const BladeWeapon := preload("res://scripts/weapons/blade_weapon.gd")
 const Gatling := preload("res://scripts/weapons/gatling.gd")
@@ -112,9 +115,15 @@ func _physics_process(delta: float) -> void:
 	if not ball or not camera or not is_multiplayer_authority():
 		return
 	var controls := _controls_enabled()
+	if Input.is_action_just_pressed("toggle_staff_weapons") and WeaponInfo.has_staff_weapons(get_tree()):
+		var settings := get_tree().root.get_node_or_null("Settings")
+		if settings:
+			var shown: bool = not settings.call("get_value", "show_staff_weapons")
+			settings.call("set_value", "show_staff_weapons", shown)
+			staff_weapons_toggled.emit(shown)
 	var unlocked := WeaponInfo.unlocked_count(get_tree())
 	if current >= unlocked:
-		# Lost owner status (left the server): back to the Gatling.
+		# Staff weapon no longer available (hidden with 0, or left the server).
 		select(0)
 	if controls:
 		for slot in mini(SLOT_ACTIONS.size(), unlocked):
@@ -264,9 +273,13 @@ func raycast(from: Vector3, to: Vector3) -> Dictionary:
 
 
 ## Damages anything with take_hit() and shoves it: players through the network
-## (receive_impulse), everything else directly.
-func hit_object(collider: Object, damage: float, pos: Vector3, dir: Vector3, impulse: float) -> void:
-	if collider.has_method("take_hit"):
+## (receive_impulse), everything else directly. `unblockable` hits go through players'
+## shields and can't be parried (staff weapons).
+func hit_object(collider: Object, damage: float, pos: Vector3, dir: Vector3, impulse: float, unblockable := false) -> void:
+	if unblockable and collider.has_method("take_unblockable_hit"):
+		collider.call("take_unblockable_hit", damage, pos, dir)
+		report_damage(collider, damage, pos)
+	elif collider.has_method("take_hit"):
 		collider.call("take_hit", damage, pos, dir)
 		report_damage(collider, damage, pos)
 	if collider.has_method("receive_impulse"):

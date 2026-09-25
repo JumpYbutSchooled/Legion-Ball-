@@ -3,9 +3,10 @@ extends Node
 ## Staff type their code into Settings. When they join an online server the game sends
 ## it, and the server compares it with its OWNER_CODE, MOD_CODE and TESTER_CODE
 ## environment variables (set on Render, never in the game files):
-##   owner  - moderator powers, the owner weapons (slots 7-8, also in offline practice
-##            once a server has confirmed the code: STAFF_FILE) and a gold OWNER title
-##   mod    - kick, ban and end the match, and a MOD title
+##   owner  - moderator powers, both staff weapons (slots 7-8) and a gold OWNER title
+##   mod    - kick, ban and end the match, Rain of God (slot 7) and a MOD title
+## Staff weapons also work in offline practice once a server has confirmed the code
+## (STAFF_FILE), and key 0 hides or shows them (weapon.gd).
 ##   tester - a green TESTER title
 ## The server checks every request, so a modified game can't fake being a mod.
 ## On a player-hosted game the host can moderate without a code.
@@ -72,12 +73,18 @@ static func title_of(entry: Dictionary) -> Array:
 	return TITLES.get(r, [])
 
 
-## Online: what the server confirmed. Offline (practice): the role a server confirmed
-## before, as long as the same code is still in Settings.
-func is_owner() -> bool:
+## Online: the role the server confirmed. Offline (practice): the role a server
+## confirmed before, as long as the same code is still in Settings.
+func staff_role() -> String:
 	if _net != null and _net.get("online"):
-		return role == "owner"
-	return _saved_role == "owner" and _saved_hash != "" and _saved_hash == _code_hash()
+		return role
+	if _saved_hash != "" and _saved_hash == _code_hash():
+		return _saved_role
+	return ""
+
+
+func is_owner() -> bool:
+	return staff_role() == "owner"
 
 
 ## True if this player can use the moderation tools right now.

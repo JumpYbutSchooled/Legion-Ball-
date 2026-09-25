@@ -15,6 +15,8 @@ const Sfx := preload("res://scripts/sfx.gd")
 @export var damage := 12.0
 ## Full damage anywhere in the radius instead of falling off toward the edge.
 @export var full_damage := false
+## Goes through players' shields and can't be parried (staff weapons).
+@export var unblockable := false
 ## Outward impulse on rigid bodies at the center (falls to 0 at the edge).
 @export var force := 30.0
 @export var color := Color(1.0, 0.5, 0.1)
@@ -109,7 +111,10 @@ func _blast() -> void:
 			body.call("stagger", stagger_time)
 		if damage > 0.0 and body.has_method("take_hit"):
 			var dealt := damage if full_damage else damage * falloff
-			body.call("take_hit", dealt, body_pos, dir)
+			if unblockable and body.has_method("take_unblockable_hit"):
+				body.call("take_unblockable_hit", dealt, body_pos, dir)
+			else:
+				body.call("take_hit", dealt, body_pos, dir)
 			if manager:
 				manager.call("report_damage", body, dealt, body_pos)
 		if body.has_method("receive_impulse"):

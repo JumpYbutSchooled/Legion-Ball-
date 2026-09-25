@@ -25,6 +25,8 @@ const DEFAULTS := {
 	## Moderator code, sent to online servers when joining; the server checks it
 	## (scripts/net/moderation.gd). Empty for normal players.
 	"mod_code": "",
+	## Staff weapons shown in the picker and on keys 7-8 (key 0 toggles).
+	"show_staff_weapons": true,
 	"fullscreen": false,
 	"vsync": true,
 }

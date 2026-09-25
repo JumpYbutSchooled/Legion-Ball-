@@ -40,6 +40,17 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build_ui()
 	_panel.modulate.a = 0.0
+	if weapon and weapon.has_signal("staff_weapons_toggled"):
+		weapon.connect("staff_weapons_toggled", _on_staff_weapons_toggled)
+
+
+## Key 0: pop the list open so you can see the staff weapons appear or vanish.
+func _on_staff_weapons_toggled(shown: bool) -> void:
+	_open = true
+	_candidate = weapon.get("current")
+	_idle = 0.0
+	_refresh()
+	_hint.text = "STAFF WEAPONS SHOWN  (0)" if shown else "STAFF WEAPONS HIDDEN  (0)"
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -104,7 +115,7 @@ func _refresh() -> void:
 	var equipped: int = weapon.get("current")
 	var unlocked := WeaponInfo.unlocked_count(get_tree())
 	for i in _rows.size():
-		# Owner-only weapons stay hidden unless unlocked.
+		# Staff weapons stay hidden unless unlocked (and shown with 0).
 		_rows[i].visible = i < unlocked
 		var row_info := WeaponInfo.get_entry(i)
 		var mark := ">" if i == _candidate else " "

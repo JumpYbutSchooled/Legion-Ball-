@@ -204,7 +204,7 @@ func _build_armory(box: VBoxContainer) -> void:
 	detail.add_theme_constant_override("separation", 8)
 	split.add_child(detail)
 
-	# Owner weapons only show for the owner.
+	# Staff weapons only show for staff who have them (and haven't hidden them with 0).
 	for slot in WeaponInfo.unlocked_count(get_tree()):
 		var info := WeaponInfo.get_entry(slot)
 		var b := Button.new()
@@ -253,6 +253,7 @@ const CONTROLS := [
 	["MOUSE", "Aim / orbit camera (click to lock the mouse)"],
 	["LMB", "Fire equipped weapon"],
 	["1 - 6", "Equip weapon directly"],
+	["7 / 8 / 0", "Staff only: Rain of God / Pillars of God / hide or show them"],
 	["MOUSE WHEEL", "Browse weapons (hologram selector)"],
 	["RMB", "Confirm the browsed weapon"],
 	["`", "Holster / draw weapon"],

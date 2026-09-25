@@ -1,6 +1,6 @@
 extends RefCounted
-## Names, colours and briefings for the weapons, in slot order. The last ones are
-## "owner_only": hidden and unusable unless the server accepted the owner code.
+## Names, colours and briefings for the weapons, in slot order. The last ones are staff
+## weapons ("access"): hidden and unusable unless a server accepted a staff code.
 ## The single source for weapon colours (the weapon manager applies them) and for
 ## the text shown in the main menu's Armory and the in-game weapon selector.
 
@@ -94,18 +94,20 @@ const WEAPONS := [
 		],
 		"combo": "Mark a group, then switch to GATLING or RAILGUN.",
 	},
-	# Owner only (unlocked by the owner code; scripts/net/moderation.gd).
+	# Staff weapons (unlocked by a staff code; scripts/net/moderation.gd). "access" is
+	# the lowest role that gets it. Key 0 hides or shows them.
 	{
 		"name": "RAIN OF GOD",
-		"tag": "OWNER // FIFTY GUNS",
+		"tag": "STAFF // FIFTY GUNS",
 		"color": Color(1.0, 0.9, 0.45),
-		"owner_only": true,
+		"access": "mod",
 		"summary": "The Gatling with fifty blades. A wall of fire that goes through walls.",
 		"usage": [
 			"HOLD LMB  fire ~50 shots/sec from fifty blades in turn",
 			"Locks like the RAILGUN, at any range, THROUGH WALLS",
 			"Locked shots hit the target directly, wherever it is",
 			"No lock: hitscan down the crosshair",
+			"UNPARRYABLE: goes straight through shields",
 			"Kills play the railgun's impact frames",
 		],
 		"combo": "Lock on and hold.",
@@ -114,18 +116,22 @@ const WEAPONS := [
 		"name": "PILLARS OF GOD",
 		"tag": "OWNER // ORBITAL STRIKE",
 		"color": Color(1.0, 0.97, 0.85),
-		"owner_only": true,
+		"access": "owner",
 		"summary": "Calls a pillar of light down from orbit onto whoever you're locked on to.",
 		"usage": [
 			"LMB  call the strike on the lock (or the crosshair point)",
 			"Locks like the RAILGUN, at any range, THROUGH WALLS",
 			"A targeting beam tracks them for 0.9s, then the pillar lands",
 			"Kills everyone in a 16m blast; 4s cooldown",
+			"UNPARRYABLE: goes straight through shields",
 			"The biggest impact frames in the game",
 		],
 		"combo": "There is no combo. There is only the pillar.",
 	},
 ]
+
+## Which roles may use a weapon with each "access" level.
+const ACCESS := {"mod": ["mod", "owner"], "owner": ["owner"]}
 
 
 static func count() -> int:
@@ -136,13 +142,25 @@ static func get_entry(slot: int) -> Dictionary:
 	return WEAPONS[slot]
 
 
-## Slots this player may use: everything for the owner, otherwise the standard six.
+## How many slots (from the first) this player may use right now. Staff weapons sit at
+## the end, least exclusive first, so what a role gets is always a run of slots.
+## Hidden entirely while the player has them toggled off (key 0).
 static func unlocked_count(tree: SceneTree) -> int:
 	var mod := tree.root.get_node_or_null("Mod") if tree else null
-	if mod and mod.call("is_owner"):
-		return WEAPONS.size()
+	var role: String = mod.call("staff_role") if mod else ""
+	var settings := tree.root.get_node_or_null("Settings") if tree else null
+	var shown: bool = settings.call("get_value", "show_staff_weapons") if settings else true
 	var n := 0
 	for w in WEAPONS:
-		if not w.get("owner_only", false):
-			n += 1
+		var access: String = w.get("access", "")
+		if access != "" and (not shown or not ACCESS[access].has(role)):
+			break
+		n += 1
 	return n
+
+
+## True if this player has any staff weapons (whether or not they're toggled on).
+static func has_staff_weapons(tree: SceneTree) -> bool:
+	var mod := tree.root.get_node_or_null("Mod") if tree else null
+	var role: String = mod.call("staff_role") if mod else ""
+	return ACCESS["mod"].has(role)

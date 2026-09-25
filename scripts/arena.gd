@@ -171,6 +171,11 @@ func request_hit(victim: int, amount: float) -> void:
 	_to_host("_host_hit", [victim, amount])
 
 
+## Like request_hit, but shields don't stop it and it can't be parried (staff weapons).
+func request_unblockable_hit(victim: int, amount: float) -> void:
+	_to_host("_unblockable_hit", [victim, amount])
+
+
 ## Push player `victim`'s ball by `impulse` (applied on their own computer).
 func request_push(victim: int, impulse: Vector3) -> void:
 	_to_host("_host_push", [victim, impulse])
@@ -225,6 +230,17 @@ func _host_hit(victim: int, amount: float) -> void:
 				_deal(attacker, victim, PARRY_DAMAGE)
 		return
 	_deal(victim, attacker, amount)
+
+
+## A hit that ignores shields and parries. (Named to sort after this node's other RPCs:
+## Godot numbers RPCs alphabetically, and renumbering them breaks other versions.)
+@rpc("any_peer", "reliable")
+func _unblockable_hit(victim: int, amount: float) -> void:
+	if not multiplayer.is_server() or match_done:
+		return
+	var attacker := _sender()
+	if attacker != victim:
+		_deal(victim, attacker, amount)
 
 
 ## Host only: take `amount` off `victim`, credited to `attacker` if it kills.

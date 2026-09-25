@@ -1,9 +1,10 @@
 extends "res://scripts/weapons/blade_weapon.gd"
-## Slot 7 (owner only): Rain of God. The Gatling with fifty blades instead of six,
+## Slot 7 (moderators and the owner): Rain of God. The Gatling with fifty blades instead of six,
 ## wrapped all the way round the ball, firing one after another at a huge rate.
 ## Locks like the railgun (the target nearest the circle's center, any range), but the
 ## lock ignores walls, and so do the shots: a locked target is hit directly, wherever it
-## is. With no lock it's hitscan down the crosshair, like the Gatling.
+## is. With no lock it's hitscan down the crosshair, like the Gatling. Unparryable: the
+## hits go straight through shields (weapon.gd hit_object, unblockable).
 ## Kills play the railgun's impact frames (impact_frames.gd).
 
 @export var gun_count := 50
@@ -102,7 +103,7 @@ func _fire(hit: Dictionary) -> void:
 	if not target_hit.is_empty():
 		var pos: Vector3 = target_hit["position"]
 		manager.spawn_beam(pos, target_hit["normal"], 0.3, 0.25, 0.05, 16.0, color)
-		manager.hit_object(target_hit["collider"], damage, pos, shot_dir, hit_impulse)
+		manager.hit_object(target_hit["collider"], damage, pos, shot_dir, hit_impulse, true)
 	manager.shake(shot_shake)
 	if _shots % 3 == 0:
 		manager.play_sound("zap", tip, -12.0)

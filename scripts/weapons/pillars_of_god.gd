@@ -4,7 +4,7 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## on the locked target (or the crosshair point with no lock): a thin targeting beam
 ## drops from the sky and tracks them for strike_delay seconds, then a pillar of light
 ## slams down with a blast that kills anyone caught in it. Walls don't matter: it comes
-## from above.
+## from above. Unparryable: the blast goes straight through shields.
 ## Kills play the biggest impact frames in the game (impact_frames.gd).
 
 ## Seconds the targeting beam tracks before the strike lands.
@@ -136,6 +136,7 @@ func _strike() -> void:
 		"radius": blast_radius,
 		"damage": damage,
 		"full_damage": true,
+		"unblockable": true,
 		"force": blast_force,
 		"spark_count": 600,
 		"spark_speed": 45.0,

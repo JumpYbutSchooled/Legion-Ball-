@@ -193,6 +193,13 @@ func take_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
 		arena.call("request_hit", get_multiplayer_authority(), amount * PVP_DAMAGE_SCALE)
 
 
+## A hit that goes straight through the shield and can't be parried (staff weapons).
+func take_unblockable_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
+	var arena := _arena()
+	if arena:
+		arena.call("request_unblockable_hit", get_multiplayer_authority(), amount * PVP_DAMAGE_SCALE)
+
+
 func receive_impulse(impulse: Vector3) -> void:
 	var arena := _arena()
 	if arena:
