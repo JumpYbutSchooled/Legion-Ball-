@@ -29,8 +29,6 @@ const MapGrid := preload("res://scripts/ui/map_grid.gd")
 const GLOBAL_COLOR := Color(1.0, 0.72, 0.3)
 
 var pause_mode := false
-## The page to open when the menu is rebuilt (after changing the UI colour).
-static var _reopen_page := ""
 
 ## Main menu only: the global chat connection, the open chat page's log, and messages
 ## that came in while another page was open.
@@ -131,11 +129,7 @@ func _ready() -> void:
 	_frame = TechFrame.new()
 	_page_holder.add_child(_frame)
 	# Back from a match (still connected): land on the lobby.
-	var first := "multiplayer" if online and not pause_mode else "armory"
-	if _reopen_page != "":
-		first = _reopen_page
-		_reopen_page = ""
-	_show_page(first, true)
+	_show_page("multiplayer" if online and not pause_mode else "armory", true)
 	_intro.call_deferred()
 	visibility_changed.connect(func() -> void:
 		if is_visible_in_tree():
@@ -252,9 +246,17 @@ func _animate_page(box: Control) -> void:
 
 func _show_page(id: String, quiet := false) -> void:
 	var changed := id != _current_page
+	# Refreshing the page you're on (a button changed something): swap the new build in
+	# where you were scrolled to, with no entrance animation, so it doesn't look reloaded.
+	var refresh := not changed and _scroll != null and is_instance_valid(_scroll)
+	var old_scroll := _scroll if refresh else null
+	var keep := 0
+	if refresh:
+		# Still waiting to swap in from a refresh a moment ago: use where that one was headed.
+		keep = _scroll.get_meta("keep", _scroll.scroll_vertical)
 	_current_page = id
 	_listening = {}
-	if _scroll:
+	if _scroll and not refresh:
 		_scroll.queue_free()
 	_chat_log = null
 	_chat_status = null
@@ -291,10 +293,28 @@ func _show_page(id: String, quiet := false) -> void:
 			_build_practice(box)
 		"updates":
 			_build_updates(box)
-	_animate_page(box)
+	if refresh:
+		scroll.modulate.a = 0.0
+		scroll.set_meta("keep", keep)
+		_swap_in.call_deferred(scroll, old_scroll, keep)
+	else:
+		_animate_page(box)
 	for key in _nav_buttons:
 		var b: Button = _nav_buttons[key]
 		b.add_theme_color_override("font_color", UIStyle.ACCENT if key == id else UIStyle.TEXT)
+
+
+## A refreshed page: once it's laid out (two frames), scroll it to where the old one was,
+## show it and drop the old one.
+func _swap_in(scroll: ScrollContainer, old: ScrollContainer, keep: int) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if is_instance_valid(scroll):
+		scroll.scroll_vertical = keep
+		scroll.modulate.a = 1.0
+		scroll.remove_meta("keep")
+	if is_instance_valid(old):
+		old.queue_free()
 
 
 func _header(parent: Control, title: String, sub: String) -> void:
@@ -1061,19 +1081,33 @@ func _set_ui_color(accent: String) -> void:
 	var s := _settings()
 	if not s:
 		return
+	var old := UIStyle.ACCENT
 	s.call("set_value", "ui_color", accent)
 	ui_sound(self, "ui_click", -8.0)
-	_reopen_page = "settings"
-	if pause_mode:
-		# Restyle the menu's buttons too (the theme comes from an ancestor).
-		var node: Node = self
-		while node and not (node is Control and (node as Control).theme):
-			node = node.get_parent()
-		if node:
-			(node as Control).theme = UIStyle.make_theme()
-		_show_page("settings", true)
-	else:
-		get_tree().reload_current_scene()
+	# Recolour in place, no reload: the buttons' theme (on an ancestor), anything drawn in
+	# the old accent, then this page.
+	var node: Node = self
+	while node and not (node is Control and (node as Control).theme):
+		node = node.get_parent()
+	if node:
+		(node as Control).theme = UIStyle.make_theme()
+	_recolor(get_tree().current_scene, old, UIStyle.ACCENT)
+	_show_page("settings", true)
+
+
+## Text and fills in the old accent colour (or its see-through version) take the new one.
+func _recolor(node: Node, old: Color, new: Color) -> void:
+	var control := node as Control
+	if control:
+		for key in ["font_color", "font_hover_color"]:
+			if control.has_theme_color_override(key) and control.get_theme_color(key).is_equal_approx(old):
+				control.add_theme_color_override(key, new)
+		var rect := control as ColorRect
+		if rect and Color(rect.color, 1.0).is_equal_approx(Color(old, 1.0)):
+			rect.color = Color(new, rect.color.a)
+		control.queue_redraw()
+	for child in node.get_children():
+		_recolor(child, old, new)
 
 
 func _slider(grid: GridContainer, s: Node, title: String, key: String, lo: float, hi: float, step: float, fmt: String) -> void:
