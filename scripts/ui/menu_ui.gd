@@ -110,6 +110,11 @@ func _ready() -> void:
 		if mod:
 			mod.connect("mod_changed", func() -> void:
 				_nav_buttons["turrets"].visible = mod.call("can_toggle_turrets"))
+		# Bots on/off for the whole server: any player, online only (practice has none).
+		if online:
+			_nav(nav, "bots", "BOTS: ON", func() -> void:
+				if net:
+					net.call("set_bots", not net.get("bots_enabled")))
 		var leave_text := "LEAVE MATCH" if online else "ABORT TO MAIN MENU"
 		_nav(nav, "menu", leave_text, func() -> void: main_menu_pressed.emit())
 	else:
@@ -143,6 +148,10 @@ func _process(_delta: float) -> void:
 		var mod := _mod()
 		var on: bool = mod != null and mod.call("turrets_enabled")
 		b.text = "[ TURRETS: %s ]" % ("ON" if on else "OFF")
+	var bots: Button = _nav_buttons.get("bots")
+	if bots and is_visible_in_tree():
+		var net := get_tree().root.get_node_or_null("Net")
+		bots.text = "[ BOTS: %s ]" % ("ON" if net and net.get("bots_enabled") else "OFF")
 
 
 ## With a controller, menus are driven by focus: put it on the first action.

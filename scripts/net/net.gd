@@ -124,6 +124,9 @@ var turrets_on := false
 ## A CLASSIC server: every loadout is the original six (DEFAULT_LOADOUT). Set on the
 ## server itself, and sent to each player as they join (_zzclassic).
 var classic := false
+## Bots on this server (any player can switch them off or on from the pause menu). The
+## server's copy is the real one; everyone gets told when it changes (_zzbots_state).
+var bots_enabled := true
 ## This game's version (res://version.txt, updated with every patch). Players must match
 ## the server's exactly to join.
 var version := ""
@@ -172,7 +175,7 @@ func update_bots() -> bool:
 		return false
 	var humans := human_count()
 	var want := 0
-	if humans > 0 and humans < BOT_FILL:
+	if bots_enabled and humans > 0 and humans < BOT_FILL:
 		want = mini(BOT_FILL - humans, MAX_BOTS)
 		if game_mode == "teams" and (humans + want) % 2 == 1 and want < MAX_BOTS:
 			want += 1
@@ -430,6 +433,7 @@ func leave() -> void:
 	map_scene = ARENA_SCENE
 	game_mode = "ffa"
 	classic = false
+	bots_enabled = true
 	players.clear()
 	input_blocked = false
 	roster_changed.emit()
@@ -611,6 +615,7 @@ func _register(player_name_in: String) -> void:
 	if game_mode == "teams":
 		players[id]["team"] = _smaller_team()
 	_zzclassic.rpc_id(id, classic)
+	_zzbots_state.rpc_id(id, bots_enabled)
 	if dedicated:
 		print("[server] %s joined (%d online)" % [players[id]["name"], human_count()])
 	if in_match:
@@ -727,6 +732,35 @@ func _allowed_loadout(ids: Array) -> Array:
 func _zzuse_mode(mode: String) -> void:
 	if MODES.has(mode):
 		game_mode = mode
+
+
+## Any player: switch this server's bots on or off (for everyone).
+func set_bots(on: bool) -> void:
+	if not online:
+		return
+	if multiplayer.is_server():
+		_zztoggle_bots(on)
+	else:
+		_zztoggle_bots.rpc_id(1, on)
+
+
+@rpc("any_peer", "reliable")
+func _zztoggle_bots(on: bool) -> void:
+	if not multiplayer.is_server() or on == bots_enabled:
+		return
+	bots_enabled = on
+	_zzbots_state.rpc(on)
+	if in_match and update_bots():
+		_sync_roster.rpc(players)
+	var who := multiplayer.get_remote_sender_id()
+	if dedicated:
+		print("[server] %s turned bots %s" % [player_name(who if who != 0 else 1), "on" if on else "off"])
+
+
+## Everyone: whether this server's bots are on (for the pause menu button).
+@rpc("authority", "reliable")
+func _zzbots_state(on: bool) -> void:
+	bots_enabled = on
 
 
 ## The server tells a joining player whether it's a CLASSIC server (the Armory says so).
