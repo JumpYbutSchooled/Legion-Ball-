@@ -603,7 +603,7 @@ func _on_roster_changed() -> void:
 
 
 func _build_moderation(box: VBoxContainer) -> void:
-	_header(box, "MODERATION", "KICK OR BAN PLAYERS ON THIS SERVER")
+	_header(box, "MODERATION", "BRING, KICK OR BAN PLAYERS  //  SWITCH MAPS")
 	var mod := _mod()
 	var net := get_tree().root.get_node_or_null("Net")
 	if not mod or not net or not mod.call("can_moderate"):
@@ -631,13 +631,32 @@ func _build_moderation(box: VBoxContainer) -> void:
 		var title_label := UIStyle.label("[%s]" % title[0] if not title.is_empty() else "", 14, title[1] if not title.is_empty() else UIStyle.TEXT)
 		title_label.custom_minimum_size = Vector2(90, 0)
 		row.add_child(title_label)
+		row.add_child(_small_button("BRING", func() -> void: mod.call("bring", id)))
 		if mod.call("can_act_on", players[id]):
 			row.add_child(_small_button("KICK", func() -> void: mod.call("kick", id)))
 			row.add_child(_small_button("BAN", func() -> void: mod.call("ban", id)))
 		box.add_child(row)
 	if others == 0:
 		box.add_child(UIStyle.label("No other players on this server.", 15, UIStyle.TEXT_DIM))
-	box.add_child(_small_button("END MATCH", func() -> void: mod.call("end_match")))
+	var actions := HFlowContainer.new()
+	actions.add_theme_constant_override("h_separation", 10)
+	actions.add_theme_constant_override("v_separation", 8)
+	box.add_child(actions)
+	actions.add_child(_small_button("END MATCH", func() -> void: mod.call("end_match")))
+	actions.add_child(_small_button("BRING ALL", func() -> void: mod.call("bring", 0)))
+	# Owner only: strike everyone down, and lock or unlock everyone's weapons.
+	if mod.call("is_owner"):
+		var gold := Color(1.0, 0.78, 0.25)
+		var kill := _small_button("KILL ALL", func() -> void: mod.call("kill_all"))
+		kill.add_theme_color_override("font_color", gold)
+		actions.add_child(kill)
+		var guns := _small_button("GUNS: %s" % ("LOCKED" if mod.get("guns_locked") else "ON"), func() -> void: pass)
+		guns.add_theme_color_override("font_color", gold)
+		guns.pressed.connect(func() -> void:
+			mod.call("toggle_guns")
+			# The server answers in a moment; show what it'll be.
+			guns.text = "[ GUNS: %s ]" % ("ON" if mod.get("guns_locked") else "LOCKED"))
+		actions.add_child(guns)
 	box.add_child(UIStyle.label("\nSWITCH MAP  (now: %s)" % NetScript.MAP_NAMES.get(net.get("map_scene"), "?"), 13, UIStyle.TEXT_DIM))
 	var maps := HFlowContainer.new()
 	maps.add_theme_constant_override("h_separation", 10)
@@ -645,10 +664,13 @@ func _build_moderation(box: VBoxContainer) -> void:
 	box.add_child(maps)
 	for path in NetScript.MAP_NAMES:
 		maps.add_child(_small_button(NetScript.MAP_NAMES[path], func() -> void: mod.call("switch_map", path)))
-	box.add_child(UIStyle.label(
-		"END MATCH resets everyone's score and starts a new round.\n"
+	var help := "END MATCH resets everyone's score and starts a new round.\n" \
+		+ "BRING teleports a player (or everyone) to you.\n" \
 		+ "SWITCH MAP moves everyone to that map now (scores reset).\n"
-		+ "Bans last until this server restarts or goes to sleep.", 12, UIStyle.TEXT_DIM))
+	if mod.call("is_owner"):
+		help += "KILL ALL takes out everyone else (scores unchanged).\n" \
+			+ "GUNS locks or unlocks everyone else's weapons.\n"
+	box.add_child(UIStyle.label(help + "Bans last until this server restarts or goes to sleep.", 12, UIStyle.TEXT_DIM))
 
 
 func _small_button(text: String, action: Callable) -> Button:

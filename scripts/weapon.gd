@@ -100,7 +100,8 @@ func select(slot: int) -> void:
 	if slot != current:
 		current_weapon().exit()
 		current = slot
-	current_weapon().enter()
+	if not _guns_locked():
+		current_weapon().enter()
 
 
 ## False while holstered (or putting it away).
@@ -119,8 +120,17 @@ func toggle() -> void:
 	var w = current_weapon()
 	if w.state == BladeWeapon.State.READY or w.state == BladeWeapon.State.ENTERING:
 		w.exit()
-	else:
+	elif not _guns_locked():
 		w.enter()
+
+
+## Our own weapons, while the owner has everyone's locked (moderation.gd). Other
+## players' weapons just follow the network.
+func _guns_locked() -> bool:
+	if not is_multiplayer_authority():
+		return false
+	var mod := get_tree().root.get_node_or_null("Mod") if is_inside_tree() else null
+	return mod != null and mod.call("my_guns_locked")
 
 
 func _physics_process(delta: float) -> void:
@@ -128,6 +138,11 @@ func _physics_process(delta: float) -> void:
 	if not ball or not camera or not is_multiplayer_authority():
 		return
 	var controls := _controls_enabled()
+	if _guns_locked():
+		# Locked by the owner: put it away and keep it away.
+		if is_drawn():
+			current_weapon().exit()
+		controls = false
 	if controls and Input.is_action_just_pressed("toggle_staff_weapons") and WeaponInfo.has_staff_weapons(get_tree()):
 		var settings := get_tree().root.get_node_or_null("Settings")
 		if settings:

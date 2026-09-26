@@ -90,6 +90,8 @@ var _grounded := false
 var _cruise_speed := 0.0
 ## Online: already told the host we fell off (cleared on respawn).
 var _fall_reported := false
+## Where staff are bringing us (moderation.gd bring); INF = nowhere.
+var _teleport_to := Vector3.INF
 
 
 func _ready() -> void:
@@ -270,6 +272,11 @@ func respawn_at(pos: Vector3) -> void:
 		weapon.call("refill_all")
 
 
+## Local player only: moved to `pos` and stopped (a moderator's bring).
+func teleport(pos: Vector3) -> void:
+	_teleport_to = pos
+
+
 ## Local player only: stunned (Nova stagger). Frozen in place in mid-air, no moving,
 ## dashing, blocking or shooting, like a staggered practice target.
 func stagger_controls(duration: float) -> void:
@@ -406,6 +413,15 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		state.angular_velocity = Vector3.ZERO
 		reset_physics_interpolation()
 		respawned.emit.call_deferred()
+		return
+
+	if _teleport_to != Vector3.INF:
+		state.transform = Transform3D(Basis.IDENTITY, _teleport_to)
+		state.linear_velocity = Vector3.ZERO
+		state.angular_velocity = Vector3.ZERO
+		_teleport_to = Vector3.INF
+		_dash_requested = false
+		reset_physics_interpolation()
 		return
 
 	if _stagger_timer > 0.0:

@@ -23,6 +23,7 @@ var _center_sub: Label
 var _respawn_left := 0.0
 var _feed_items: Array = []  # [label, time_left]
 var _streak: Control
+var _locked_label: Label
 ## End-of-match map vote: the panel, one label per option, and our own pick.
 var _vote_box: PanelContainer
 var _vote_labels: Array[Label] = []
@@ -64,6 +65,15 @@ func _ready() -> void:
 	_feed.custom_minimum_size = Vector2(356, 0)
 	_feed.alignment = BoxContainer.ALIGNMENT_BEGIN
 	root.add_child(_feed)
+
+	# Shown while the owner has locked everyone's weapons.
+	_locked_label = UIStyle.label("// WEAPONS LOCKED BY OWNER", 14, Color(1.0, 0.78, 0.25), true)
+	_locked_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_locked_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_locked_label.custom_minimum_size = Vector2(400, 0)
+	_locked_label.position = Vector2(-200, 92)
+	_locked_label.visible = false
+	root.add_child(_locked_label)
 
 	# Killstreak skull, top-centre.
 	_streak = Killstreak.new()
@@ -114,6 +124,8 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	var mod := get_tree().root.get_node_or_null("Mod")
+	_locked_label.visible = mod != null and mod.call("my_guns_locked")
 	_board.visible = Input.is_action_pressed("scoreboard")
 	if _board.visible:
 		_rebuild_board()

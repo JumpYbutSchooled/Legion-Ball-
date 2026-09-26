@@ -43,6 +43,9 @@ var is_mod := false
 var role := ""
 ## The gold shield in offline practice (online it's in the server's roster: "god").
 var offline_god := false
+## The owner has locked everyone's weapons (the owner's own still work). Every peer has
+## the server's value (_zguns_state).
+var guns_locked := false
 
 var _net: Node
 var _device_id := ""
@@ -66,6 +69,10 @@ func _ready() -> void:
 	_net = get_tree().root.get_node_or_null("Net")
 	if _net:
 		_net.connect("roster_changed", _on_roster_changed)
+		# Server: whoever joins learns whether weapons are locked.
+		_net.connect("roster_changed", func() -> void:
+			if _net.get("online") and multiplayer.is_server() and guns_locked:
+				_zguns_state.rpc(true))
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
 
@@ -137,6 +144,35 @@ func end_match() -> void:
 		_end_match.rpc_id(1)
 
 
+## Moderators and the owner: teleport player `id` to you (0 = everyone).
+func bring(id: int) -> void:
+	_to_server("_zbring", [id])
+
+
+## Owner: kill every other player (scores unchanged).
+func kill_all() -> void:
+	_to_server("_zkill_all", [])
+
+
+## Owner: lock or unlock everyone else's weapons.
+func toggle_guns() -> void:
+	_to_server("_zguns_toggle", [])
+
+
+func _to_server(method: StringName, args: Array) -> void:
+	if not _net or not _net.get("online"):
+		return
+	if multiplayer.is_server():
+		callv(method, args)
+	else:
+		callv("rpc_id", [1, method] + args)
+
+
+## True if this game's player has their weapons locked by the owner.
+func my_guns_locked() -> bool:
+	return guns_locked and staff_role() != "owner"
+
+
 ## Who may switch the AI turrets on and off: anyone in practice; online, staff (owner,
 ## mod or tester) or the host of a player-hosted game.
 func can_toggle_turrets() -> bool:
@@ -189,6 +225,7 @@ func _on_roster_changed() -> void:
 		_greeted = false
 		role = ""
 		offline_god = false
+		guns_locked = false
 		_set_mod(false)
 		return
 	if multiplayer.is_server() or _greeted:
@@ -366,6 +403,64 @@ func _toggle_turrets() -> void:
 	var on: bool = not _net.get("turrets_on")
 	_apply_turrets(on)
 	print("[server] %s turned the turrets %s" % [_player_name(peer), "ON" if on else "OFF"])
+
+
+## Owner and moderator powers on players in the match. (All named to sort after the other
+## RPCs: Godot numbers RPCs alphabetically.)
+@rpc("any_peer", "reliable")
+func _zbring(target: int) -> void:
+	var peer := _sender()
+	if not multiplayer.is_server() or not _is_moderator(peer):
+		return
+	var arena := _arena()
+	var me: Node3D = arena.call("player_ball", peer) if arena else null
+	if not me:
+		return
+	var ids: Array = [target] if target != 0 else _net.get("players").keys()
+	ids.erase(peer)
+	for i in ids.size():
+		# In a ring round you, so they don't land on top of each other.
+		var spot := Vector2.from_angle(TAU * i / maxf(ids.size(), 1.0)) * 4.0
+		arena.call("teleport_player", ids[i], me.global_position + Vector3(spot.x, 1.5, spot.y))
+	print("[server] %s brought %s" % [_player_name(peer), "everyone" if target == 0 else _player_name(target)])
+
+
+@rpc("any_peer", "reliable")
+func _zkill_all() -> void:
+	var peer := _sender()
+	if not multiplayer.is_server() or not _is_owner(peer):
+		return
+	var arena := _arena()
+	if not arena:
+		return
+	for id in _net.get("players").keys():
+		if id != peer:
+			arena.call("staff_kill", id, peer)
+	print("[server] %s killed everyone" % _player_name(peer))
+
+
+@rpc("any_peer", "reliable")
+func _zguns_toggle() -> void:
+	var peer := _sender()
+	if not multiplayer.is_server() or not _is_owner(peer):
+		return
+	_zguns_state.rpc(not guns_locked)
+	print("[server] %s %s everyone's weapons" % [_player_name(peer), "locked" if guns_locked else "unlocked"])
+
+
+@rpc("authority", "call_local", "reliable")
+func _zguns_state(locked: bool) -> void:
+	guns_locked = locked
+	mod_changed.emit()
+
+
+func _is_owner(peer: int) -> bool:
+	return _net.get("players").get(peer, {}).get("role", "") == "owner"
+
+
+func _arena() -> Node:
+	var scene := get_tree().current_scene
+	return scene if scene and scene.has_method("teleport_player") else null
 
 
 func _refresh_god_shields() -> void:

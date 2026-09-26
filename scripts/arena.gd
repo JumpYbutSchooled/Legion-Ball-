@@ -635,6 +635,32 @@ func _zvote_tally(counts: Array) -> void:
 	vote_counts.emit(counts)
 
 
+## Host: staff moved player `id` to `pos` (moderation.gd bring).
+func teleport_player(id: int, pos: Vector3) -> void:
+	if multiplayer.is_server() and alive.get(id, false):
+		_to_peer(id, "_zzteleport", [pos])
+
+
+## Host: the owner struck `victim` down (kill all). Ignores shields and spawn protection;
+## nobody's score changes.
+func staff_kill(victim: int, by: int) -> void:
+	if not multiplayer.is_server() or match_done or not alive.get(victim, false):
+		return
+	_set_health.rpc(victim, 0.0)
+	_marks.erase(victim)
+	_last_hit.erase(victim)
+	_respawn_timers[victim] = RESPAWN_TIME
+	_on_killed.rpc(victim, by)
+
+
+## Staff brought us to `pos`.
+@rpc("authority", "reliable")
+func _zzteleport(pos: Vector3) -> void:
+	var ball: Node3D = _players.get(multiplayer.get_unique_id())
+	if ball and not ball.get("dead"):
+		ball.call("teleport", pos)
+
+
 ## Our shield parried a turret's shot from `from`. (Named to sort last.)
 @rpc("authority", "reliable")
 func _zzparry_at(from: Vector3) -> void:
