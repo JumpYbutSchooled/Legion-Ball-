@@ -263,6 +263,11 @@ func request_block(duration: float) -> void:
 	_to_host("_host_block", [duration])
 
 
+## Like request_hit, from a Tears of an Angel missile: parrying it kills the shooter.
+func request_tears_hit(victim: int, amount: float) -> void:
+	_to_host("_zztears_hit", [victim, amount])
+
+
 ## The local player fell off the map.
 func request_fall() -> void:
 	_to_host("_zfell", [])
@@ -639,6 +644,27 @@ func _zvote_open(options: Array) -> void:
 @rpc("authority", "call_local", "reliable")
 func _zvote_tally(counts: Array) -> void:
 	vote_counts.emit(counts)
+
+
+## A Tears of an Angel hit. Unshielded: ordinary damage. On a shield: the usual parry for
+## the blocker, and the shooter dies outright, credited to the blocker. (Named to sort
+## after the other RPCs.)
+@rpc("any_peer", "reliable")
+func _zztears_hit(victim: int, amount: float) -> void:
+	if not multiplayer.is_server() or match_done:
+		return
+	var attacker := _sender()
+	if attacker == victim or _is_god(victim):
+		return
+	if _blocks.has(victim) and alive.get(victim, false):
+		if not _parried.has(victim):
+			_parried[victim] = true
+			_to_peer(victim, "_apply_parry", [attacker])
+			if alive.get(attacker, false) and not _is_god(attacker):
+				_set_health.rpc(attacker, 0.0)
+				_kill(attacker, victim)
+		return
+	_deal(victim, attacker, amount)
 
 
 ## Host: staff moved player `id` to `pos` (moderation.gd bring).

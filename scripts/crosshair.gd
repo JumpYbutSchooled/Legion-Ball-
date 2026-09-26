@@ -171,6 +171,8 @@ func _draw_kind(info: Dictionary, col: Color) -> void:
 			_draw_nova(info, col)
 		"swarm":
 			_draw_swarm(info, col)
+		"tears":
+			_draw_tears(info, col)
 
 
 ## Gatling: one line per blade, plus a faint lock circle; a locked target gets a small
@@ -316,6 +318,32 @@ func _draw_swarm(info: Dictionary, col: Color) -> void:
 			draw_rect(Rect2(p - Vector2(2, 2), Vector2(4, 4)), col)
 		else:
 			draw_rect(Rect2(p - Vector2(2, 2), Vector2(4, 4)), faint, false, 1.0)
+
+
+## Tears of an Angel: Swarm's paint zone and a spinning bracket on each locked target,
+## but a counter of how many missiles are locked instead of a row of boxes.
+func _draw_tears(info: Dictionary, col: Color) -> void:
+	var c := size / 2.0
+	var zone: float = info["radius"] * 0.72
+	var faint := col
+	faint.a *= 0.3 if not info["painting"] else 0.6
+	for k in 4:
+		var corner := c + Vector2(zone if k % 2 == 0 else -zone, zone if k < 2 else -zone)
+		var sx := -signf(corner.x - c.x) * 10.0
+		var sy := -signf(corner.y - c.y) * 10.0
+		draw_line(corner, corner + Vector2(sx, 0), faint, line_width, true)
+		draw_line(corner, corner + Vector2(0, sy), faint, line_width, true)
+	_brackets(c, 5.0, 0.0, col if info["ready"] else faint)
+	var spin := Time.get_ticks_msec() / 1000.0 * 3.0
+	for mark in info["marks"]:
+		_brackets(mark, 11.0, spin, col)
+	var count: int = info["count"]
+	if count > 0 or info["painting"]:
+		var font := ThemeDB.fallback_font
+		var text := "x%d" % count
+		var fs := 18
+		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		draw_string(font, c + Vector2(-w / 2.0, 34.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
 
 
 func _diamond(center: Vector2, r: float, angle: float, col: Color) -> void:

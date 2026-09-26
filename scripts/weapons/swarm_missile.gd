@@ -17,6 +17,14 @@ extends Node3D
 @export var blast_radius := 2.5
 @export var mark_time := 4.0
 @export var color := Color(0.6, 0.35, 1.0)
+## Tears of an Angel: steer round walls (and glance off them) instead of exploding on
+## them, only detonating on its target or something that can be hit.
+@export var avoid_walls := false
+## Deal `damage` straight to what it hits (the blast is just for show) instead of
+## splash damage.
+@export var direct_hit := false
+## A parried hit kills whoever fired it (ball.gd take_tears_hit).
+@export var parry_kills := false
 
 var velocity := Vector3.FORWARD
 var target: Node3D = null
@@ -56,7 +64,7 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	_t += delta
 	if _t >= lifetime:
-		_explode(global_position)
+		_explode(global_position, null)
 		return
 
 	var goal := Vector3.ZERO
@@ -83,8 +91,10 @@ func _physics_process(delta: float) -> void:
 			if axis.length() > 0.0001:
 				dir = dir.rotated(axis.normalized(), minf(angle, rate * delta))
 		velocity = dir * speed
+		if avoid_walls:
+			velocity = _steer_round_walls(velocity, delta)
 		if global_position.distance_to(goal) < fuse_distance:
-			_explode(global_position)
+			_explode(global_position, target if is_instance_valid(target) else null)
 			return
 
 	var step := velocity * delta
@@ -93,10 +103,39 @@ func _physics_process(delta: float) -> void:
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		var normal: Vector3 = hit["normal"]
-		_explode(hit["position"] + normal * 0.2)
+		var collider: Object = hit["collider"]
+		if avoid_walls and not collider.has_method("take_hit"):
+			# A wall: glance off it and keep hunting.
+			velocity = velocity.bounce(normal)
+			global_position = hit["position"] + normal * 0.3
+			_face_velocity()
+			return
+		_explode(hit["position"] + normal * 0.2, collider)
 		return
 	global_position += step
 	_face_velocity()
+
+
+## Looks ahead; if a wall is coming (and it isn't the target), slides along it toward
+## the goal and lifts a little, so it goes round or over instead of into it.
+func _steer_round_walls(v: Vector3, _delta: float) -> Vector3:
+	var ahead := v.normalized() * minf(speed * 0.3, 60.0)
+	var query := PhysicsRayQueryParameters3D.create(global_position, global_position + ahead)
+	query.exclude = _exclude
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty() or hit["collider"] == target or (hit["collider"] as Object).has_method("take_hit"):
+		return v
+	var n: Vector3 = hit["normal"]
+	var dir := v.normalized()
+	var slide := dir - n * dir.dot(n)
+	if slide.length() < 0.05:
+		slide = n.cross(Vector3.UP)
+		if slide.length() < 0.05:
+			slide = Vector3.RIGHT
+	# Closer walls push harder.
+	var near := 1.0 - global_position.distance_to(hit["position"]) / ahead.length()
+	var steered := (slide.normalized() + n * (0.3 + near) + Vector3.UP * 0.25).normalized()
+	return steered * speed
 
 
 func _face_velocity() -> void:
@@ -105,12 +144,21 @@ func _face_velocity() -> void:
 		global_basis = Basis.looking_at(velocity.normalized(), up)
 
 
-func _explode(pos: Vector3) -> void:
+func _explode(pos: Vector3, struck: Object = null) -> void:
+	# Direct hits land on what they struck; the blast after is only for show.
+	if direct_hit and struck and not visual_only and manager:
+		var dir := velocity.normalized()
+		if parry_kills and struck.has_method("take_tears_hit"):
+			struck.call("take_tears_hit", damage, pos, dir)
+			manager.call("report_damage", struck, damage, pos)
+		elif struck.has_method("take_hit"):
+			struck.call("take_hit", damage, pos, dir)
+			manager.call("report_damage", struck, damage, pos)
 	var props := {
 		"position": pos,
 		"color": color,
 		"radius": blast_radius,
-		"damage": damage,
+		"damage": 0.0 if direct_hit else damage,
 		"force": 8.0,
 		"mark_time": mark_time,
 		"spark_count": 50,

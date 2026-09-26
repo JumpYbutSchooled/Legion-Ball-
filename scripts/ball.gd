@@ -235,6 +235,16 @@ func take_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
 		arena.call("request_hit", get_multiplayer_authority(), amount * PVP_DAMAGE_SCALE)
 
 
+## A Tears of an Angel missile: an ordinary hit, except that parrying it kills whoever
+## fired it (the host decides; arena.gd).
+func take_tears_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
+	if is_blocking():
+		_shield.call("hit_flash")
+	var arena := _arena()
+	if arena:
+		arena.call("request_tears_hit", get_multiplayer_authority(), amount * PVP_DAMAGE_SCALE)
+
+
 ## A hit that goes straight through the shield and can't be parried (staff weapons).
 func take_unblockable_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
 	var arena := _arena()

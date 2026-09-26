@@ -37,9 +37,11 @@ const PROFILES := {
 	3: {"implode": 8, "explode": 7, "speed": 1.0, "pull": 0.9, "blast": 0.6, "core": 0.8, "volume": -2.0, "shake": 0.7},
 	4: {"implode": 10, "explode": 14, "speed": 1.0, "pull": 0.9, "blast": 0.95, "core": 1.1, "volume": 4.0, "shake": 1.0},
 	5: {"implode": 5, "explode": 8, "speed": 0.9, "pull": 0.5, "blast": 0.65, "core": 0.7, "volume": -3.0, "shake": 0.6},
-	# Owner weapons: Rain of God plays the Railgun's; Pillars of God's is the biggest.
+	# Staff weapons: Rain of God plays the Railgun's; Tears of an Angel a bright, quick
+	# flurry; Pillars of God's is the biggest.
 	6: {"implode": 12, "explode": 16, "speed": 1.0, "pull": 1.0, "blast": 1.0, "core": 1.0, "volume": 6.0, "shake": 1.0},
-	7: {"implode": 26, "explode": 36, "speed": 1.25, "pull": 1.6, "blast": 1.8, "core": 2.2, "volume": 12.0, "shake": 2.0},
+	7: {"implode": 6, "explode": 12, "speed": 0.85, "pull": 0.6, "blast": 1.2, "core": 0.9, "volume": 2.0, "shake": 0.8},
+	8: {"implode": 26, "explode": 36, "speed": 1.25, "pull": 1.6, "blast": 1.8, "core": 2.2, "volume": 12.0, "shake": 2.0},
 }
 
 ## Receives add_shake().

@@ -24,6 +24,7 @@ const KEYS := {
 	# Staff weapons, and showing/hiding them.
 	"weapon_7": [KEY_7],
 	"weapon_8": [KEY_8],
+	"weapon_9": [KEY_9],
 	"toggle_staff_weapons": [KEY_0],
 	# Owner only: gold invincibility shield.
 	"god_shield": [KEY_G],
@@ -114,8 +115,9 @@ const REBINDABLE := [
 	["weapon_4", "Tether"],
 	["weapon_5", "Nova"],
 	["weapon_6", "Swarm"],
-	["weapon_7", "Rain of God (staff)"],
-	["weapon_8", "Pillars of God (owner)"],
+	["weapon_7", "Rain of God (mods)"],
+	["weapon_8", "Tears of an Angel (mods)"],
+	["weapon_9", "Pillars of God (owner)"],
 	["toggle_staff_weapons", "Hide / show staff weapons"],
 	["god_shield", "Gold shield (owner)"],
 	"CAMERA & HUD",

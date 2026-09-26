@@ -739,7 +739,7 @@ func _build_moderation(box: VBoxContainer) -> void:
 		var mask: int = mod.get("allowed_weapons")
 		box.add_child(UIStyle.label("ALLOWED WEAPONS  (click to lock / unlock; yours always work)", 13, UIStyle.TEXT_DIM))
 		var guns := _flow(box)
-		for slot in 8:
+		for slot in WeaponInfo.count():
 			var info := WeaponInfo.get_entry(slot)
 			var allowed := (mask & (1 << slot)) != 0
 			var b := _small_button("%d %s: %s" % [slot + 1, info["name"], "ON" if allowed else "LOCKED"],

@@ -48,7 +48,7 @@ var offline_god := false
 ##   allowed_weapons  bitmask of the weapon slots players may use (owner exempt); 0 = none
 ##   low_gravity      everyone floats (owner toggle)
 ##   frozen / muted   peer ids held in place / kept out of chat (moderators)
-const ALL_WEAPONS := 0xFF
+const ALL_WEAPONS := 0x1FF
 const LOW_GRAVITY_SCALE := 0.3
 var allowed_weapons := ALL_WEAPONS
 var low_gravity := false

@@ -2,7 +2,8 @@ extends Node3D
 ## Weapon manager, mounted on the ball. Follows the ball (not its spin), turns every
 ## weapon toward the crosshair, and routes input to the equipped one:
 ##   1 Gatling  2 Railgun  3 Scatter  4 Tether  5 Nova  6 Swarm
-##   7 Rain of God (mods, owner)  8 Pillars of God (owner)  0 hide/show those two
+##   7 Rain of God, 8 Tears of an Angel (mods, owner)  9 Pillars of God (owner)
+##   0 hide/show the staff weapons
 ##   (WeaponInfo.unlocked_count)
 ##   ` = holster/draw, left mouse = fire (mouse captured).
 ## Switching plays the old weapon's exit wave and the new weapon's enter wave together.
@@ -22,9 +23,10 @@ const Tether := preload("res://scripts/weapons/tether.gd")
 const Nova := preload("res://scripts/weapons/nova.gd")
 const Swarm := preload("res://scripts/weapons/swarm.gd")
 const RainOfGod := preload("res://scripts/weapons/rain_of_god.gd")
+const TearsOfAnAngel := preload("res://scripts/weapons/tears_of_an_angel.gd")
 const PillarsOfGod := preload("res://scripts/weapons/pillars_of_god.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
-const SLOT_ACTIONS := ["weapon_1", "weapon_2", "weapon_3", "weapon_4", "weapon_5", "weapon_6", "weapon_7", "weapon_8"]
+const SLOT_ACTIONS := ["weapon_1", "weapon_2", "weapon_3", "weapon_4", "weapon_5", "weapon_6", "weapon_7", "weapon_8", "weapon_9"]
 const Beam := preload("res://scripts/dash_laser.gd")
 const MuzzleWarp := preload("res://scripts/muzzle_warp.gd")
 const FlashLight := preload("res://scripts/flash_light.gd")
@@ -64,7 +66,7 @@ func _ready() -> void:
 	top_level = true
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	# Every player has the owner weapons too, so an owner's shows up on their ball.
-	var scripts := [Gatling, Railgun, Scatter, Tether, Nova, Swarm, RainOfGod, PillarsOfGod]
+	var scripts := [Gatling, Railgun, Scatter, Tether, Nova, Swarm, RainOfGod, TearsOfAnAngel, PillarsOfGod]
 	for slot in scripts.size():
 		var w = scripts[slot].new()
 		w.manager = self

@@ -113,6 +113,22 @@ const WEAPONS := [
 		"combo": "Lock on and hold.",
 	},
 	{
+		"name": "TEARS OF AN ANGEL",
+		"tag": "STAFF // ENDLESS SWARM",
+		"color": Color(0.95, 0.97, 1.0),
+		"access": "mod",
+		"summary": "A white Swarm with no limits. Lock anyone, anywhere, as many times as you like.",
+		"usage": [
+			"HOLD LMB  lock targets anywhere on screen, any range, through walls",
+			"No lock limit: stack as many missiles on a target as you want",
+			"The crosshair counts your locks",
+			"RELEASE  missiles leave one by one in quick succession",
+			"Twice Swarm's speed, 25 damage each, they steer round walls",
+			"PARRYABLE, and a parried tear KILLS YOU instantly",
+		],
+		"combo": "Lock, lock, lock, release. Don't aim it at a shield.",
+	},
+	{
 		"name": "PILLARS OF GOD",
 		"tag": "OWNER // ORBITAL STRIKE",
 		"color": Color(1.0, 0.97, 0.85),
