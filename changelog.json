@@ -1,0 +1,197 @@
+[
+    {
+        "version":  "0.8.6",
+        "date":  "2026-09-26",
+        "notes":  "Fix: falling into the void now counts as one death instead of several."
+    },
+    {
+        "version":  "0.8.5",
+        "date":  "2026-09-26",
+        "notes":  "Fixes: impact frames now stay on the kill when you turn the camera, and everyone can see Tether ropes (not just the player using it)."
+    },
+    {
+        "version":  "0.8.4",
+        "date":  "2026-09-26",
+        "notes":  "Staff tools: the owner can lock specific weapons, launch players, heal/freeze everyone and turn on low gravity; mods can slay, freeze, mute and make announcements; testers can jump to players."
+    },
+    {
+        "version":  "0.8.3",
+        "date":  "2026-09-26",
+        "notes":  "Staff powers: mods and the owner can BRING players (or everyone) to them and switch maps; the owner can also KILL ALL and lock or unlock everyone\u0027s weapons."
+    },
+    {
+        "version":  "0.8.2",
+        "date":  "2026-09-26",
+        "notes":  "AI turrets are now off by default. Staff (owner, mod, tester) can turn them on for a server from the pause menu; in practice anyone can. Turret shots can be parried with the shield, and turrets can be stunned (Nova, parries) and destroyed."
+    },
+    {
+        "version":  "0.8.1",
+        "date":  "2026-09-26",
+        "notes":  "Menu pages (armory, global chat and the rest) now stretch to the right edge of the screen."
+    },
+    {
+        "version":  "0.8.0",
+        "date":  "2026-09-26",
+        "notes":  "Five new maps (Coliseum, The Box, Thunder Dome, Tunnels, City), end-of-match map vote, AI turrets, music, controller support, killstreak counter, map build-in cutscene, global chat in the main menu, holstered healing, Tether airborne lock-on and wall blast, faster dash, and fixes: armory clipping, reload on death, falling off the map now counts as a death."
+    },
+    {
+        "version":  "0.7.27",
+        "date":  "2026-09-25",
+        "notes":  "Pillars of God is far more dramatic: 1.6s wind-up with a closing ring of light and a map-wide charge sound, a three-layer pillar, shockwaves, a huge new impact sound, and impact frames for everyone nearby."
+    },
+    {
+        "version":  "0.7.26",
+        "date":  "2026-09-25",
+        "notes":  "Weapon wheel back on the left, styled like the old menu (scroll + right-click). Minimap now shows the whole map, north up."
+    },
+    {
+        "version":  "0.7.25",
+        "date":  "2026-09-25",
+        "notes":  "Radial weapon menu (mouse wheel, point with the mouse, right-click to equip). See who\u0027s online on each server before joining. Rebind every key in Controls."
+    },
+    {
+        "version":  "0.7.24",
+        "date":  "2026-09-25",
+        "notes":  "Fix: chat no longer gets stuck if you click, shoot or die while typing."
+    },
+    {
+        "version":  "0.7.23",
+        "date":  "2026-09-25",
+        "notes":  "Server chat (/) and global chat across all servers (Right Shift). Version check: mismatched game versions can\u0027t join. Other players\u0027 reloads are now visible. Manual reload on T."
+    },
+    {
+        "version":  "0.7.22",
+        "date":  "2026-09-25",
+        "notes":  "Servers 3 and 4 now run the Training map (no cubes or targets). Server buttons show each server\u0027s map."
+    },
+    {
+        "version":  "0.7.21",
+        "date":  "2026-09-25",
+        "notes":  "The owner can now kick and ban moderators (and testers, as mods can). Nobody can kick or ban the owner."
+    },
+    {
+        "version":  "0.7.20",
+        "date":  "2026-09-25",
+        "notes":  "Impact frames now shade weapon blades and shields (lit, shadowed and outlined like the rest of the world)."
+    },
+    {
+        "version":  "0.7.19",
+        "date":  "2026-09-25",
+        "notes":  "Owner gold shield: press G to become invincible (server-checked); everyone sees the gold shell."
+    },
+    {
+        "version":  "0.7.18",
+        "date":  "2026-09-25",
+        "notes":  "Rain of God now for moderators too. Key 0 hides/shows staff weapons. Rain of God and Pillars of God are unparryable (go through shields)."
+    },
+    {
+        "version":  "0.7.17",
+        "date":  "2026-09-25",
+        "notes":  "Everyone now sees every kill\u0027s impact frames (styled by the killer\u0027s weapon). Hitstop still only for the killer and victim."
+    },
+    {
+        "version":  "0.7.16",
+        "date":  "2026-09-25",
+        "notes":  "Staff codes: OWNER_CODE (mod tools, owner weapons Rain of God + Pillars of God, gold OWNER title), MOD_CODE, TESTER_CODE (green TESTER title). Owner weapons also work in practice once a server has confirmed the code."
+    },
+    {
+        "version":  "0.7.15",
+        "date":  "2026-09-25",
+        "notes":  "Moderators: enter the moderator code in Settings to get a MODERATION page in the pause menu (kick, ban, end match) and a [MOD] tag. The server checks the code."
+    },
+    {
+        "version":  "0.7.14",
+        "date":  "2026-09-25",
+        "notes":  "4 online servers: pick SERVER 1-4 in Multiplayer (8 players each). A full server now says so instead of dropping you."
+    },
+    {
+        "version":  "0.7.13",
+        "date":  "2026-09-25",
+        "notes":  "Fix: railgun lock-on was unreliable (and so the red locked-on warning rarely showed). Lock now updates every physics step."
+    },
+    {
+        "version":  "0.7.12",
+        "date":  "2026-09-25",
+        "notes":  "Screen edges glow red while someone\u0027s railgun is locked onto you, stronger as their shot charges. Everyone (and the server) needs this version to play together."
+    },
+    {
+        "version":  "0.7.11",
+        "date":  "2026-09-25",
+        "notes":  "Gatling and railgun lock on at any range (line of sight only); railgun bolt reaches across the map. Scatter has aim assist and holds damage further out."
+    },
+    {
+        "version":  "0.7.10",
+        "date":  "2026-09-25",
+        "notes":  "Tether slam now one-shots anyone in the blast (shields and spawn protection still block it)."
+    },
+    {
+        "version":  "0.7.9",
+        "date":  "2026-09-25",
+        "notes":  "New online map \u0027Sprawl\u0027: huge irregular arena with 150 m outer walls, a walled hub, ring road and spokes to break line of sight. Minimap (top-left) that only shows players you can see. Tether pulls harder with more tension."
+    },
+    {
+        "version":  "0.7.8",
+        "date":  "2026-09-25",
+        "notes":  "Every weapon has its own impact frames, scaled to how hard it hits. Railgun keeps the full one."
+    },
+    {
+        "version":  "0.7.7",
+        "date":  "2026-09-25",
+        "notes":  "Railgun now fires a laser bolt that flies out and only hits when it arrives. Kills give you 30 integrity back."
+    },
+    {
+        "version":  "0.7.6",
+        "date":  "2026-09-25",
+        "notes":  "Swarm rockets are way faster. Dummy targets removed (drones and ground targets stay). Huge new explosion sound after the impact frames."
+    },
+    {
+        "version":  "0.7.5",
+        "date":  "2026-09-25",
+        "notes":  "Nova has no cooldown, launches you far higher and slams you down at top speed (stun needs 60% charge). Impact frames now have a rising implosion sound that ends in a big explosion."
+    },
+    {
+        "version":  "0.7.4",
+        "date":  "2026-09-25",
+        "notes":  "Gatling now has a 30-shot magazine with a 1.6s reload. Shield cooldown 6s. Dash down in the air by looking down. Railgun has no damage dropoff. Parries strike back at the shooter: 20 damage and a 5s stun."
+    },
+    {
+        "version":  "0.7.3",
+        "date":  "2026-09-25",
+        "notes":  "Big balance pass: every weapon rebalanced so none is best. Damage numbers show damage and distance. Damage dropoff and max lock-on range per weapon. Scatter is now a pump shotgun that can one-shot point-blank. Marks 1.5x for 3s, Nova stun 1.2s."
+    },
+    {
+        "version":  "0.7.2",
+        "date":  "2026-09-25",
+        "notes":  "Smoother 3D impact frames (real shadows and lighting from the kill). About 20% faster overall. Tether can\u0027t be used to fly anymore (rope snaps after 3s). Much less steering in the air."
+    },
+    {
+        "version":  "0.7.1",
+        "date":  "2026-09-25",
+        "notes":  "Hold your speed: dashes now stack up to 500 while you keep steering forward. New implosion-to-explosion kill frames with manga shading. Smaller Gatling lock-on. Blocking a hit resets the shield cooldown."
+    },
+    {
+        "version":  "0.7.0",
+        "date":  "2026-09-25",
+        "notes":  "Block (Q) shield + parry, speedometer, sounds, warmer lighting, Nova air slam, Tether slam, Gatling lock-on, longer-range Scatter, and lots of fixes."
+    },
+    {
+        "version":  "0.6.0",
+        "date":  "2026-09-25",
+        "notes":  "Online server: play over the internet (works on school Wi-Fi) with the new ONLINE SERVER button."
+    },
+    {
+        "version":  "0.5.2",
+        "date":  "2026-09-25",
+        "notes":  "Lobby shows the right address (hides virtual adapters); clearer connection-timeout help."
+    },
+    {
+        "version":  "0.5.1",
+        "date":  "2026-09-24",
+        "notes":  "Update pipeline test (no gameplay changes)."
+    },
+    {
+        "version":  "0.5.0",
+        "date":  "2026-09-24",
+        "notes":  "First release: multiplayer PvP, six weapons, auto-updates."
+    }
+]

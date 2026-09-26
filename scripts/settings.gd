@@ -23,6 +23,8 @@ const DEFAULTS := {
 	"ui_sounds": true,
 	## The wireframe build-in when a map loads (scripts/map_intro.gd).
 	"map_intro": true,
+	## The last version whose "what's new" message was shown (main_menu.gd).
+	"last_seen_version": "",
 	"player_name": "PLAYER",
 	## Last address typed into Join, remembered for next time.
 	"last_join_ip": "127.0.0.1",

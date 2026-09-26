@@ -21,6 +21,7 @@ const TechFrame := preload("res://scripts/ui/tech_frame.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 const SettingsScript := preload("res://scripts/settings.gd")
 const MenuChat := preload("res://scripts/net/menu_chat.gd")
+const Changelog := preload("res://scripts/ui/changelog.gd")
 const GLOBAL_COLOR := Color(1.0, 0.72, 0.3)
 
 var pause_mode := false
@@ -76,6 +77,7 @@ func _ready() -> void:
 	_nav(nav, "armory", "ARMORY", func() -> void: _show_page("armory"))
 	_nav(nav, "controls", "CONTROLS", func() -> void: _show_page("controls"))
 	_nav(nav, "settings", "SETTINGS", func() -> void: _show_page("settings"))
+	_nav(nav, "updates", "UPDATES", func() -> void: _show_page("updates"))
 	if pause_mode:
 		# Shown once the server accepts your moderator code, which can be after this is built.
 		_nav(nav, "moderation", "MODERATION", func() -> void: _show_page("moderation"))
@@ -269,6 +271,8 @@ func _show_page(id: String, quiet := false) -> void:
 			_build_chat(box)
 		"practice":
 			_build_practice(box)
+		"updates":
+			_build_updates(box)
 	_animate_page(box)
 	for key in _nav_buttons:
 		var b: Button = _nav_buttons[key]
@@ -343,6 +347,35 @@ func _wrapped(label: Label) -> Label:
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return label
+
+
+# --- UPDATES --------------------------------------------------------------------
+
+## Every past update, newest first (scripts/ui/changelog.gd), the installed one marked.
+func _build_updates(box: VBoxContainer) -> void:
+	var all := Changelog.entries()
+	var oldest: String = all.back()["version"] if not all.is_empty() else "?"
+	_header(box, "UPDATES", "EVERY PATCH SINCE v%s  //  NEWEST FIRST" % oldest)
+	if all.is_empty():
+		box.add_child(UIStyle.label("No update history in this build.", 15, UIStyle.TEXT_DIM))
+		return
+	var f := FileAccess.open("res://version.txt", FileAccess.READ)
+	var installed := f.get_as_text().strip_edges() if f else ""
+	for e in all:
+		var version := String(e["version"])
+		var head := HBoxContainer.new()
+		head.add_theme_constant_override("separation", 14)
+		box.add_child(head)
+		var current := version == installed
+		head.add_child(UIStyle.label("v" + version, 18, UIStyle.ACCENT if current else Color.WHITE, true))
+		head.add_child(UIStyle.label(String(e.get("date", "")), 13, UIStyle.TEXT_DIM))
+		if current:
+			head.add_child(UIStyle.label("// INSTALLED", 13, UIStyle.ACCENT))
+		box.add_child(_wrapped(UIStyle.label(String(e.get("notes", "")), 15, UIStyle.TEXT)))
+		var line := ColorRect.new()
+		line.color = Color(UIStyle.ACCENT, 0.12)
+		line.custom_minimum_size = Vector2(0, 1)
+		box.add_child(line)
 
 
 # --- PRACTICE -------------------------------------------------------------------

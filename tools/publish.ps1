@@ -27,6 +27,17 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Version must look like 1.2.3"
 Set-Location $Root
 [IO.File]::WriteAllText("$Root\version.txt", "$Version`n")
 
+# Add this update to the in-game changelog (the menu's UPDATES page and the what's-new
+# message), newest first; publishing the same version again replaces its entry.
+$Log = "$Root\changelog.json"
+$Entries = @()
+if (Test-Path $Log) {
+    $Parsed = Get-Content $Log -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($E in $Parsed) { if ($E.version -ne $Version) { $Entries += $E } }
+}
+$Entries = @([pscustomobject]@{ version = $Version; date = (Get-Date -Format "yyyy-MM-dd"); notes = $Notes }) + $Entries
+[IO.File]::WriteAllText($Log, (ConvertTo-Json -InputObject $Entries -Depth 3), (New-Object Text.UTF8Encoding($false)))
+
 New-Item -ItemType Directory -Force "$Root\build" | Out-Null
 $pck = "$Root\build\game.pck"
 if (Test-Path $pck) { Remove-Item $pck }
