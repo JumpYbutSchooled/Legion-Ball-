@@ -24,6 +24,8 @@ var _respawn_left := 0.0
 var _feed_items: Array = []  # [label, time_left]
 var _streak: Control
 var _locked_label: Label
+var _announce: Label
+var _announce_left := 0.0
 ## End-of-match map vote: the panel, one label per option, and our own pick.
 var _vote_box: PanelContainer
 var _vote_labels: Array[Label] = []
@@ -74,6 +76,19 @@ func _ready() -> void:
 	_locked_label.position = Vector2(-200, 92)
 	_locked_label.visible = false
 	root.add_child(_locked_label)
+	# Staff announcements: a banner across the top for a few seconds.
+	_announce = UIStyle.label("", 22, Color.WHITE, true)
+	_announce.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_announce.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_announce.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_announce.custom_minimum_size = Vector2(900, 0)
+	_announce.position = Vector2(-450, 120)
+	_announce.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_announce.add_theme_constant_override("outline_size", 6)
+	root.add_child(_announce)
+	var mod_node := get_tree().root.get_node_or_null("Mod")
+	if mod_node:
+		mod_node.connect("announced", _on_announced)
 
 	# Killstreak skull, top-centre.
 	_streak = Killstreak.new()
@@ -125,7 +140,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	var mod := get_tree().root.get_node_or_null("Mod")
-	_locked_label.visible = mod != null and mod.call("my_guns_locked")
+	_update_staff_status(mod, delta)
 	_board.visible = Input.is_action_pressed("scoreboard")
 	if _board.visible:
 		_rebuild_board()
@@ -146,6 +161,34 @@ func _process(delta: float) -> void:
 			if InputMap.has_action(key) and Input.is_action_just_pressed(key):
 				_vote(i)
 		_refresh_vote()
+
+
+## One line of whatever staff have imposed on us: frozen, weapons locked or restricted,
+## low gravity. And the announcement banner fading out.
+func _update_staff_status(mod: Node, delta: float) -> void:
+	_announce_left = maxf(_announce_left - delta, 0.0)
+	_announce.modulate.a = clampf(_announce_left, 0.0, 1.0)
+	var parts: Array[String] = []
+	if mod:
+		if mod.call("is_frozen", multiplayer.get_unique_id()):
+			parts.append("FROZEN BY STAFF")
+		if mod.call("my_guns_locked"):
+			parts.append("WEAPONS LOCKED")
+		elif mod.call("staff_role") != "owner" and int(mod.get("allowed_weapons")) != ModScript.ALL_WEAPONS:
+			parts.append("WEAPONS RESTRICTED")
+		if mod.get("low_gravity"):
+			parts.append("LOW GRAVITY")
+	_locked_label.visible = not parts.is_empty()
+	_locked_label.text = "// " + "  //  ".join(parts)
+
+
+func _on_announced(text: String, by: String) -> void:
+	_announce.text = "%s\n— %s" % [text, by]
+	_announce_left = 6.0
+	_slam_in(_announce)
+	var sfx := get_tree().root.get_node_or_null("Sfx")
+	if sfx:
+		sfx.call("play_ui", "ui_page", -4.0)
 
 
 ## Controller: D-pad left / down / right vote for options 1 / 2 / 3.

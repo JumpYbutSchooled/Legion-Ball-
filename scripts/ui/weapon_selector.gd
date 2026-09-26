@@ -209,6 +209,11 @@ func _draw_ring() -> void:
 		_ring.draw_string(_font, pos + Vector2(-w / 2.0, 4.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color if picked else UIStyle.TEXT_DIM)
 		if i == equipped:
 			_ring.draw_circle(center + Vector2.from_angle(mid) * (OUTER - 7.0), 2.5, color)
+		# Locked by the owner: a red slash across the segment.
+		if weapon and not weapon.call("_slot_allowed", i):
+			var a := center + Vector2.from_angle(mid - step * 0.3) * (INNER + 4.0)
+			var b := center + Vector2.from_angle(mid + step * 0.3) * (OUTER - 4.0)
+			_ring.draw_line(a, b, Color(1.0, 0.25, 0.25, 0.9), 2.0, true)
 
 
 func _build_hologram(slot: int) -> void:

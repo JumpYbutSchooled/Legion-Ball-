@@ -92,6 +92,7 @@ var _cruise_speed := 0.0
 var _fall_reported := false
 ## Where staff are bringing us (moderation.gd bring); INF = nowhere.
 var _teleport_to := Vector3.INF
+var _mod: Node
 
 
 func _ready() -> void:
@@ -137,6 +138,11 @@ func _physics_process(delta: float) -> void:
 	_jump_timer = maxf(_jump_timer - delta, 0.0)
 	_dash_timer = maxf(_dash_timer - delta, 0.0)
 	_block_cd = maxf(_block_cd - delta, 0.0)
+	# Frozen by staff (moderation.gd): held in place like a stagger, for as long as it lasts.
+	if _mod == null:
+		_mod = get_tree().root.get_node_or_null("Mod")
+	if _mod and _mod.call("is_frozen", multiplayer.get_unique_id()):
+		_stagger_timer = maxf(_stagger_timer, 0.1)
 	var controls := _controls_enabled()
 
 	if controls and _block_cd == 0.0 and Input.is_action_just_pressed("block"):

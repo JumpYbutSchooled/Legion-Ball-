@@ -43,9 +43,20 @@ var is_mod := false
 var role := ""
 ## The gold shield in offline practice (online it's in the server's roster: "god").
 var offline_god := false
-## The owner has locked everyone's weapons (the owner's own still work). Every peer has
-## the server's value (_zguns_state).
-var guns_locked := false
+## Staff state the server shares with every peer (_zstate), so each game enforces it on
+## its own player:
+##   allowed_weapons  bitmask of the weapon slots players may use (owner exempt); 0 = none
+##   low_gravity      everyone floats (owner toggle)
+##   frozen / muted   peer ids held in place / kept out of chat (moderators)
+const ALL_WEAPONS := 0xFF
+const LOW_GRAVITY_SCALE := 0.3
+var allowed_weapons := ALL_WEAPONS
+var low_gravity := false
+var frozen: Array = []
+var muted: Array = []
+
+## A staff announcement for everyone (HUD banner).
+signal announced(text: String, by: String)
 
 var _net: Node
 var _device_id := ""
@@ -69,10 +80,10 @@ func _ready() -> void:
 	_net = get_tree().root.get_node_or_null("Net")
 	if _net:
 		_net.connect("roster_changed", _on_roster_changed)
-		# Server: whoever joins learns whether weapons are locked.
+		# Server: whoever joins learns the staff state (weapon locks, freezes...).
 		_net.connect("roster_changed", func() -> void:
-			if _net.get("online") and multiplayer.is_server() and guns_locked:
-				_zguns_state.rpc(true))
+			if _net.get("online") and multiplayer.is_server():
+				_send_state())
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
 
@@ -154,9 +165,51 @@ func kill_all() -> void:
 	_to_server("_zkill_all", [])
 
 
-## Owner: lock or unlock everyone else's weapons.
-func toggle_guns() -> void:
-	_to_server("_zguns_toggle", [])
+## Owner: which weapon slots everyone else may use (bitmask, bit n = slot n).
+func set_weapons(mask: int) -> void:
+	_to_server("_zweapons", [mask])
+
+
+## Testers and up: jump to player `id`.
+func goto(id: int) -> void:
+	_to_server("_zgoto", [id])
+
+
+## Moderators: kill one player (scores unchanged).
+func slay(id: int) -> void:
+	_to_server("_zslay", [id])
+
+
+## Moderators: hold a player in place (0 = everyone, owner only).
+func set_frozen(id: int, on: bool) -> void:
+	_to_server("_zfreeze", [id, on])
+
+
+## Moderators: keep a player out of chat.
+func set_muted(id: int, on: bool) -> void:
+	_to_server("_zmute", [id, on])
+
+
+## Moderators: a banner on everyone's screen.
+func announce(text: String) -> void:
+	text = text.replace("\n", " ").strip_edges().substr(0, 100)
+	if text != "":
+		_to_server("_zannounce", [text])
+
+
+## Owner: everyone back to full health.
+func heal_all() -> void:
+	_to_server("_zheal_all", [])
+
+
+## Owner: fling a player high into the air.
+func launch(id: int) -> void:
+	_to_server("_zlaunch", [id])
+
+
+## Owner: low gravity for everyone, on or off.
+func toggle_low_gravity() -> void:
+	_to_server("_zgravity", [])
 
 
 func _to_server(method: StringName, args: Array) -> void:
@@ -168,9 +221,37 @@ func _to_server(method: StringName, args: Array) -> void:
 		callv("rpc_id", [1, method] + args)
 
 
-## True if this game's player has their weapons locked by the owner.
+## Staff levels: 3 owner, 2 mod, 1 tester, 0 nobody.
+static func level_of(staff: String) -> int:
+	return {"owner": 3, "mod": 2, "tester": 1}.get(staff, 0)
+
+
+## This player's staff level online (a player-hosted game's host counts as a mod).
+func my_level() -> int:
+	if not _net or not _net.get("online"):
+		return 0
+	var lvl := level_of(role)
+	if _net.call("is_host") and not _net.get("dedicated"):
+		lvl = maxi(lvl, 2)
+	return lvl
+
+
+## May our own player use weapon `slot` right now? The owner always may.
+func weapon_allowed(slot: int) -> bool:
+	return staff_role() == "owner" or (allowed_weapons & (1 << slot)) != 0
+
+
+## Every weapon locked for our player.
 func my_guns_locked() -> bool:
-	return guns_locked and staff_role() != "owner"
+	return staff_role() != "owner" and (allowed_weapons & ALL_WEAPONS) == 0
+
+
+func is_frozen(id: int) -> bool:
+	return frozen.has(id)
+
+
+func is_muted(id: int) -> bool:
+	return muted.has(id)
 
 
 ## Who may switch the AI turrets on and off: anyone in practice; online, staff (owner,
@@ -225,7 +306,9 @@ func _on_roster_changed() -> void:
 		_greeted = false
 		role = ""
 		offline_god = false
-		guns_locked = false
+		# Leaving a server lifts everything it imposed.
+		if allowed_weapons != ALL_WEAPONS or low_gravity or not frozen.is_empty() or not muted.is_empty():
+			_zstate({"weapons": ALL_WEAPONS, "gravity": false, "frozen": [], "muted": []})
 		_set_mod(false)
 		return
 	if multiplayer.is_server() or _greeted:
@@ -440,22 +523,143 @@ func _zkill_all() -> void:
 
 
 @rpc("any_peer", "reliable")
-func _zguns_toggle() -> void:
+func _zweapons(mask: int) -> void:
 	var peer := _sender()
 	if not multiplayer.is_server() or not _is_owner(peer):
 		return
-	_zguns_state.rpc(not guns_locked)
-	print("[server] %s %s everyone's weapons" % [_player_name(peer), "locked" if guns_locked else "unlocked"])
+	allowed_weapons = mask & ALL_WEAPONS
+	_send_state()
+	print("[server] %s set allowed weapons to %s" % [_player_name(peer), String.num_int64(allowed_weapons, 2)])
+
+
+@rpc("any_peer", "reliable")
+func _zgoto(target: int) -> void:
+	var peer := _sender()
+	if not multiplayer.is_server() or _level(peer) < 1 or target == peer:
+		return
+	var arena := _arena()
+	var there: Node3D = arena.call("player_ball", target) if arena else null
+	if there:
+		arena.call("teleport_player", peer, there.global_position + Vector3(0, 2.0, 4.0))
+
+
+@rpc("any_peer", "reliable")
+func _zslay(target: int) -> void:
+	var peer := _sender()
+	if not multiplayer.is_server() or not _may_act_on(target):
+		return
+	var arena := _arena()
+	if arena:
+		arena.call("staff_kill", target, peer)
+		print("[server] %s slew %s" % [_player_name(peer), _player_name(target)])
+
+
+@rpc("any_peer", "reliable")
+func _zfreeze(target: int, on: bool) -> void:
+	var peer := _sender()
+	if not multiplayer.is_server():
+		return
+	var ids: Array = []
+	if target == 0:
+		if not _is_owner(peer):
+			return
+		ids = _net.get("players").keys()
+		ids.erase(peer)
+	elif _may_act_on(target):
+		ids = [target]
+	for id in ids:
+		if on and not frozen.has(id):
+			frozen.append(id)
+		elif not on:
+			frozen.erase(id)
+	_send_state()
+	print("[server] %s %s %s" % [_player_name(peer), "froze" if on else "unfroze", "everyone" if target == 0 else _player_name(target)])
+
+
+@rpc("any_peer", "reliable")
+func _zmute(target: int, on: bool) -> void:
+	var peer := _sender()
+	if not multiplayer.is_server() or not _may_act_on(target):
+		return
+	if on and not muted.has(target):
+		muted.append(target)
+	elif not on:
+		muted.erase(target)
+	_send_state()
+	print("[server] %s %s %s" % [_player_name(peer), "muted" if on else "unmuted", _player_name(target)])
+
+
+@rpc("any_peer", "reliable")
+func _zannounce(text: String) -> void:
+	var peer := _sender()
+	if not multiplayer.is_server() or _level(peer) < 2:
+		return
+	text = text.replace("\n", " ").strip_edges().substr(0, 100)
+	if text != "":
+		print("[server] %s announced: %s" % [_player_name(peer), text])
+		_zannounced.rpc(text, _player_name(peer))
+
+
+@rpc("any_peer", "reliable")
+func _zheal_all() -> void:
+	var peer := _sender()
+	var arena := _arena()
+	if multiplayer.is_server() and _is_owner(peer) and arena:
+		for id in _net.get("players"):
+			arena.call("staff_heal", id)
+
+
+@rpc("any_peer", "reliable")
+func _zlaunch(target: int) -> void:
+	var peer := _sender()
+	var arena := _arena()
+	if multiplayer.is_server() and _is_owner(peer) and arena and target != peer:
+		arena.call("staff_launch", target)
+
+
+@rpc("any_peer", "reliable")
+func _zgravity() -> void:
+	var peer := _sender()
+	if not multiplayer.is_server() or not _is_owner(peer):
+		return
+	low_gravity = not low_gravity
+	_send_state()
+	print("[server] %s turned low gravity %s" % [_player_name(peer), "ON" if low_gravity else "OFF"])
+
+
+## Server: the staff state, to everyone.
+func _send_state() -> void:
+	if multiplayer.is_server() and _net.get("online"):
+		_zstate.rpc({"weapons": allowed_weapons, "gravity": low_gravity, "frozen": frozen, "muted": muted})
 
 
 @rpc("authority", "call_local", "reliable")
-func _zguns_state(locked: bool) -> void:
-	guns_locked = locked
+func _zstate(state: Dictionary) -> void:
+	allowed_weapons = int(state.get("weapons", ALL_WEAPONS))
+	low_gravity = bool(state.get("gravity", false))
+	frozen = state.get("frozen", []).duplicate()
+	muted = state.get("muted", []).duplicate()
+	var g: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+	PhysicsServer3D.area_set_param(get_viewport().world_3d.space, PhysicsServer3D.AREA_PARAM_GRAVITY,
+		g * (LOW_GRAVITY_SCALE if low_gravity else 1.0))
 	mod_changed.emit()
+
+
+@rpc("authority", "call_local", "reliable")
+func _zannounced(text: String, by: String) -> void:
+	announced.emit(text, by)
 
 
 func _is_owner(peer: int) -> bool:
 	return _net.get("players").get(peer, {}).get("role", "") == "owner"
+
+
+## A peer's staff level on this server (a player-hosted game's host counts as a mod).
+func _level(peer: int) -> int:
+	var lvl := level_of(_net.get("players").get(peer, {}).get("role", ""))
+	if peer == 1 and not _net.get("dedicated"):
+		lvl = maxi(lvl, 2)
+	return lvl
 
 
 func _arena() -> Node:
@@ -510,6 +714,8 @@ func _on_peer_disconnected(id: int) -> void:
 	_mods.erase(id)
 	_attempts.erase(id)
 	_devices.erase(id)
+	frozen.erase(id)
+	muted.erase(id)
 
 
 ## Who sent the RPC being handled (the host's own direct calls count as peer 1).

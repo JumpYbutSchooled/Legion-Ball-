@@ -68,6 +68,10 @@ func _post(text: String, global: bool) -> void:
 	var players: Dictionary = _net.get("players")
 	if not players.has(peer):
 		return
+	# Muted by a moderator (moderation.gd).
+	var mod := get_tree().root.get_node_or_null("Mod")
+	if mod and mod.call("is_muted", peer):
+		return
 	# Rate limit: drop anything past BURST messages in WINDOW seconds.
 	var now := Time.get_ticks_msec() / 1000.0
 	var times: Array = _sent.get(peer, []).filter(func(t: float) -> bool: return now - t < WINDOW)

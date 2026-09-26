@@ -653,6 +653,18 @@ func staff_kill(victim: int, by: int) -> void:
 	_on_killed.rpc(victim, by)
 
 
+## Host: the owner healed `id` to full.
+func staff_heal(id: int) -> void:
+	if multiplayer.is_server() and alive.get(id, false):
+		_set_health.rpc(id, MAX_HEALTH)
+
+
+## Host: the owner flung `id` into the sky.
+func staff_launch(id: int) -> void:
+	if multiplayer.is_server() and alive.get(id, false):
+		_to_peer(id, "_apply_push", [Vector3.UP * 75.0])
+
+
 ## Staff brought us to `pos`.
 @rpc("authority", "reliable")
 func _zzteleport(pos: Vector3) -> void:

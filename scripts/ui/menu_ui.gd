@@ -590,25 +590,36 @@ func _mod() -> Node:
 
 func _update_mod_nav() -> void:
 	var mod := _mod()
-	var on: bool = mod != null and mod.call("can_moderate")
+	# Testers get the page too (with just their own tools).
+	var on: bool = mod != null and int(mod.call("my_level")) >= 1
 	_nav_buttons["moderation"].visible = on
 	if not on and _current_page == "moderation":
 		_show_page("armory")
+	elif on and _current_page == "moderation" and is_inside_tree():
+		# Staff state changed (a freeze, a weapon lock...): show it.
+		_show_page("moderation", true)
 
 
 ## Keeps the player list on the moderation page current.
 func _on_roster_changed() -> void:
 	if _current_page == "moderation" and is_inside_tree():
-		_show_page("moderation")
+		_show_page("moderation", true)
 
 
+## Staff tools, by level: testers (1) jump to players; moderators (2) also bring, slay,
+## freeze, mute, kick, ban, announce, end the match and switch maps; the owner (3) also
+## launches players, kills or heals everyone, freezes everyone, low gravity, and picks
+## which weapons everyone may use. The server checks every request itself.
 func _build_moderation(box: VBoxContainer) -> void:
-	_header(box, "MODERATION", "BRING, KICK OR BAN PLAYERS  //  SWITCH MAPS")
+	_header(box, "MODERATION", "STAFF TOOLS  //  WHAT YOU SEE DEPENDS ON YOUR ROLE")
 	var mod := _mod()
 	var net := get_tree().root.get_node_or_null("Net")
-	if not mod or not net or not mod.call("can_moderate"):
-		box.add_child(UIStyle.label("Moderator tools are not active.", 15, UIStyle.TEXT_DIM))
+	var level: int = mod.call("my_level") if mod else 0
+	if not mod or not net or level < 1:
+		box.add_child(UIStyle.label("Staff tools are not active.", 15, UIStyle.TEXT_DIM))
 		return
+	var owner_tools: bool = level >= 3 and mod.call("is_owner")
+	var gold := Color(1.0, 0.78, 0.25)
 	var players: Dictionary = net.get("players")
 	var me: int = net.call("local_id")
 	var ids := players.keys()
@@ -625,53 +636,103 @@ func _build_moderation(box: VBoxContainer) -> void:
 		swatch.custom_minimum_size = Vector2(10, 18)
 		row.add_child(swatch)
 		var name_label := UIStyle.label(String(players[id]["name"]), 16, UIStyle.TEXT)
-		name_label.custom_minimum_size = Vector2(200, 0)
+		name_label.custom_minimum_size = Vector2(170, 0)
 		row.add_child(name_label)
 		var title := ModScript.title_of(players[id])
 		var title_label := UIStyle.label("[%s]" % title[0] if not title.is_empty() else "", 14, title[1] if not title.is_empty() else UIStyle.TEXT)
-		title_label.custom_minimum_size = Vector2(90, 0)
+		title_label.custom_minimum_size = Vector2(80, 0)
 		row.add_child(title_label)
-		row.add_child(_small_button("BRING", func() -> void: mod.call("bring", id)))
-		if mod.call("can_act_on", players[id]):
-			row.add_child(_small_button("KICK", func() -> void: mod.call("kick", id)))
-			row.add_child(_small_button("BAN", func() -> void: mod.call("ban", id)))
+		var buttons := HFlowContainer.new()
+		buttons.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		buttons.add_theme_constant_override("h_separation", 8)
+		buttons.add_theme_constant_override("v_separation", 6)
+		row.add_child(buttons)
+		buttons.add_child(_small_button("GOTO", func() -> void: mod.call("goto", id)))
+		if level >= 2:
+			buttons.add_child(_small_button("BRING", func() -> void: mod.call("bring", id)))
+			if mod.call("can_act_on", players[id]):
+				var is_frozen: bool = mod.call("is_frozen", id)
+				var is_muted: bool = mod.call("is_muted", id)
+				buttons.add_child(_small_button("SLAY", func() -> void: mod.call("slay", id)))
+				buttons.add_child(_small_button("UNFREEZE" if is_frozen else "FREEZE", func() -> void: mod.call("set_frozen", id, not is_frozen)))
+				buttons.add_child(_small_button("UNMUTE" if is_muted else "MUTE", func() -> void: mod.call("set_muted", id, not is_muted)))
+				buttons.add_child(_small_button("KICK", func() -> void: mod.call("kick", id)))
+				buttons.add_child(_small_button("BAN", func() -> void: mod.call("ban", id)))
+		if owner_tools:
+			var launch := _small_button("LAUNCH", func() -> void: mod.call("launch", id))
+			launch.add_theme_color_override("font_color", gold)
+			buttons.add_child(launch)
 		box.add_child(row)
 	if others == 0:
 		box.add_child(UIStyle.label("No other players on this server.", 15, UIStyle.TEXT_DIM))
-	var actions := HFlowContainer.new()
-	actions.add_theme_constant_override("h_separation", 10)
-	actions.add_theme_constant_override("v_separation", 8)
-	box.add_child(actions)
-	actions.add_child(_small_button("END MATCH", func() -> void: mod.call("end_match")))
-	actions.add_child(_small_button("BRING ALL", func() -> void: mod.call("bring", 0)))
-	# Owner only: strike everyone down, and lock or unlock everyone's weapons.
-	if mod.call("is_owner"):
-		var gold := Color(1.0, 0.78, 0.25)
-		var kill := _small_button("KILL ALL", func() -> void: mod.call("kill_all"))
-		kill.add_theme_color_override("font_color", gold)
-		actions.add_child(kill)
-		var guns := _small_button("GUNS: %s" % ("LOCKED" if mod.get("guns_locked") else "ON"), func() -> void: pass)
-		guns.add_theme_color_override("font_color", gold)
-		guns.pressed.connect(func() -> void:
-			mod.call("toggle_guns")
-			# The server answers in a moment; show what it'll be.
-			guns.text = "[ GUNS: %s ]" % ("ON" if mod.get("guns_locked") else "LOCKED"))
-		actions.add_child(guns)
-	box.add_child(UIStyle.label("\nSWITCH MAP  (now: %s)" % NetScript.MAP_NAMES.get(net.get("map_scene"), "?"), 13, UIStyle.TEXT_DIM))
-	var maps := HFlowContainer.new()
-	maps.add_theme_constant_override("h_separation", 10)
-	maps.add_theme_constant_override("v_separation", 8)
-	box.add_child(maps)
-	for path in NetScript.MAP_NAMES:
-		maps.add_child(_small_button(NetScript.MAP_NAMES[path], func() -> void: mod.call("switch_map", path)))
-	var help := "END MATCH resets everyone's score and starts a new round.\n" \
-		+ "BRING teleports a player (or everyone) to you.\n" \
-		+ "SWITCH MAP moves everyone to that map now (scores reset).\n"
-	if mod.call("is_owner"):
-		help += "KILL ALL takes out everyone else (scores unchanged).\n" \
-			+ "GUNS locks or unlocks everyone else's weapons.\n"
-	box.add_child(UIStyle.label(help + "Bans last until this server restarts or goes to sleep.", 12, UIStyle.TEXT_DIM))
 
+	var help := "GOTO jumps you to a player.\n"
+	if level >= 2:
+		var actions := _flow(box)
+		actions.add_child(_small_button("END MATCH", func() -> void: mod.call("end_match")))
+		actions.add_child(_small_button("BRING ALL", func() -> void: mod.call("bring", 0)))
+		# Announcement: a banner on everyone's screen.
+		var say := HBoxContainer.new()
+		say.add_theme_constant_override("separation", 10)
+		box.add_child(say)
+		var text := LineEdit.new()
+		text.placeholder_text = "announcement for everyone on the server..."
+		text.max_length = 100
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		say.add_child(text)
+		var send := func() -> void:
+			mod.call("announce", text.text)
+			text.text = ""
+		text.text_submitted.connect(func(_t: String) -> void: send.call())
+		say.add_child(_small_button("ANNOUNCE", send))
+		help += "BRING / SLAY / FREEZE / MUTE act on one player; BRING ALL on everyone.\n" \
+			+ "SLAY kills without changing scores. MUTE keeps them out of chat.\n" \
+			+ "END MATCH resets scores and starts a new round.\n"
+	if owner_tools:
+		box.add_child(UIStyle.label("\nOWNER", 13, gold))
+		var powers := _flow(box)
+		var low: bool = mod.get("low_gravity")
+		for entry in [
+			["KILL ALL", func() -> void: mod.call("kill_all")],
+			["HEAL ALL", func() -> void: mod.call("heal_all")],
+			["FREEZE ALL", func() -> void: mod.call("set_frozen", 0, true)],
+			["UNFREEZE ALL", func() -> void: mod.call("set_frozen", 0, false)],
+			["LOW GRAVITY: %s" % ("ON" if low else "OFF"), func() -> void: mod.call("toggle_low_gravity")],
+		]:
+			var b := _small_button(entry[0], entry[1])
+			b.add_theme_color_override("font_color", gold)
+			powers.add_child(b)
+		# Weapon lock: pick exactly which weapons everyone else may use.
+		var mask: int = mod.get("allowed_weapons")
+		box.add_child(UIStyle.label("ALLOWED WEAPONS  (click to lock / unlock; yours always work)", 13, UIStyle.TEXT_DIM))
+		var guns := _flow(box)
+		for slot in 8:
+			var info := WeaponInfo.get_entry(slot)
+			var allowed := (mask & (1 << slot)) != 0
+			var b := _small_button("%d %s: %s" % [slot + 1, info["name"], "ON" if allowed else "LOCKED"],
+				func() -> void: mod.call("set_weapons", mask ^ (1 << slot)))
+			b.add_theme_color_override("font_color", info["color"] if allowed else Color(1.0, 0.3, 0.3))
+			guns.add_child(b)
+		guns.add_child(_small_button("ALL ON", func() -> void: mod.call("set_weapons", ModScript.ALL_WEAPONS)))
+		guns.add_child(_small_button("ALL LOCKED", func() -> void: mod.call("set_weapons", 0)))
+		help += "LAUNCH flings a player skyward. KILL ALL / HEAL ALL / FREEZE ALL affect everyone else.\n" \
+			+ "Locked weapons holster and can't be picked; lock all to disarm everyone.\n"
+	if level >= 2:
+		box.add_child(UIStyle.label("\nSWITCH MAP  (now: %s)" % NetScript.MAP_NAMES.get(net.get("map_scene"), "?"), 13, UIStyle.TEXT_DIM))
+		var maps := _flow(box)
+		for path in NetScript.MAP_NAMES:
+			maps.add_child(_small_button(NetScript.MAP_NAMES[path], func() -> void: mod.call("switch_map", path)))
+		help += "SWITCH MAP moves everyone to that map now (scores reset).\n" \
+			+ "Bans, mutes and freezes last until this server restarts or goes to sleep.\n"
+	box.add_child(UIStyle.label(help, 12, UIStyle.TEXT_DIM))
+
+
+func _flow(box: Control) -> HFlowContainer:
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 10)
+	flow.add_theme_constant_override("v_separation", 8)
+	box.add_child(flow)
+	return flow
 
 func _small_button(text: String, action: Callable) -> Button:
 	var b := Button.new()
