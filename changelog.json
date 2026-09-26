@@ -1,5 +1,10 @@
 [
     {
+        "version":  "0.8.7",
+        "date":  "2026-09-25",
+        "notes":  "New UPDATES page in the menu with every past update, and a what\u0027s-new message the first time you open a new version."
+    },
+    {
         "version":  "0.8.6",
         "date":  "2026-09-26",
         "notes":  "Fix: falling into the void now counts as one death instead of several."
