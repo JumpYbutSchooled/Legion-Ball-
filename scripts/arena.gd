@@ -31,6 +31,8 @@ const SPAWN_RADIUS := 55.0
 const SPAWN_COUNT := 8
 
 const MAX_HEALTH := 100.0
+## The owner's max health (max_health_of).
+const OWNER_HEALTH := 1000.0
 const RESPAWN_TIME := 3.0
 ## After respawning, hits are ignored for this long.
 const SPAWN_PROTECT := 2.0
@@ -193,6 +195,16 @@ func refresh_god_shields() -> void:
 
 
 ## Host: the owner's gold shield is up, so nothing touches them.
+## Full health for id: OWNER_HEALTH for the owner, MAX_HEALTH for everyone else.
+func max_health_of(id: int) -> float:
+	var role: String = _roster().get(id, {}).get("role", "")
+	if not is_online() and id == multiplayer.get_unique_id():
+		var mod := get_tree().root.get_node_or_null("Mod")
+		if mod:
+			role = mod.call("staff_role")
+	return OWNER_HEALTH if role == "owner" else MAX_HEALTH
+
+
 func _is_god(id: int) -> bool:
 	var net := _net()
 	return net != null and net.get("players").get(id, {}).get("god", false)
@@ -212,7 +224,7 @@ func _spawn(id: int, index: int) -> void:
 	_players_root.add_child(ball)
 	_apply_set_perks(id)
 	_players[id] = ball
-	health[id] = MAX_HEALTH
+	health[id] = max_health_of(id)
 	alive[id] = true
 	# Nobody can be hit while their map is still building in (map_intro.gd), and a
 	# moment after.
@@ -431,7 +443,7 @@ func _deal(victim: int, attacker: int, amount: float) -> void:
 	amount *= _perk_damage(victim, attacker)
 	if attacker != victim:
 		_last_hit[victim] = [attacker, Time.get_ticks_msec()]
-	var hp: float = health.get(victim, MAX_HEALTH) - amount
+	var hp: float = health.get(victim, max_health_of(victim)) - amount
 	_set_health.rpc(victim, hp)
 	if hp <= 0.0:
 		_kill(victim, attacker)
@@ -486,7 +498,7 @@ func _kill(victim: int, attacker: int) -> void:
 	_last_hit.erase(victim)
 	_respawn_timers[victim] = RESPAWN_TIME
 	if attacker != victim and alive.get(attacker, false):
-		_set_health.rpc(attacker, minf(health.get(attacker, MAX_HEALTH) + KILL_HEAL, MAX_HEALTH))
+		_set_health.rpc(attacker, minf(health.get(attacker, max_health_of(attacker)) + KILL_HEAL, max_health_of(attacker)))
 	_on_killed.rpc(victim, attacker)
 	if credited and int(roster[attacker]["kills"]) >= KILLS_TO_WIN:
 		_on_match_over.rpc(attacker)
@@ -512,7 +524,7 @@ func _physics_process(delta: float) -> void:
 			if _players.has(id) and not match_done:
 				_protect[id] = SPAWN_PROTECT
 				_respawned_msec[id] = Time.get_ticks_msec()
-				_set_health.rpc(id, MAX_HEALTH)
+				_set_health.rpc(id, max_health_of(id))
 				_on_respawn.rpc(id, _safest_spawn())
 	if not match_done:
 		_heal_holstered(delta)
@@ -580,8 +592,9 @@ func _heal_holstered(delta: float) -> void:
 		var ball: Node = _players[id]
 		var weapon := ball.get_node_or_null("Weapon")
 		var sync := ball.get_node_or_null("Sync")
-		var hp: float = health.get(id, MAX_HEALTH)
-		if not alive.get(id, false) or hp >= HEAL_CAP or not weapon or not sync or weapon.call("is_drawn"):
+		var hp: float = health.get(id, max_health_of(id))
+		var cap := HEAL_CAP / MAX_HEALTH * max_health_of(id)
+		if not alive.get(id, false) or hp >= cap or not weapon or not sync or weapon.call("is_drawn"):
 			_heal_pending.erase(id)
 			continue
 		var speed: float = (sync.call("net_velocity") as Vector3).length() * SPEEDO_SCALE
@@ -590,7 +603,7 @@ func _heal_holstered(delta: float) -> void:
 		if pending >= 1.0:
 			var whole := floorf(pending)
 			pending -= whole
-			_set_health.rpc(id, minf(hp + whole, HEAL_CAP))
+			_set_health.rpc(id, minf(hp + whole, cap))
 		_heal_pending[id] = pending
 
 
@@ -759,7 +772,7 @@ func staff_kill(victim: int, by: int) -> void:
 ## Host: the owner healed `id` to full.
 func staff_heal(id: int) -> void:
 	if multiplayer.is_server() and alive.get(id, false):
-		_set_health.rpc(id, MAX_HEALTH)
+		_set_health.rpc(id, max_health_of(id))
 
 
 ## Host: the owner flung `id` into the sky.

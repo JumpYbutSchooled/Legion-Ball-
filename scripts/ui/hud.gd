@@ -255,7 +255,8 @@ func _refresh_vote() -> void:
 func _on_health(id: int, hp: float) -> void:
 	if id != multiplayer.get_unique_id():
 		return
-	var k := clampf(hp / 100.0, 0.0, 1.0)
+	var full: float = arena.call("max_health_of", id) if arena else 100.0
+	var k := clampf(hp / full, 0.0, 1.0)
 	var goal_color := UIStyle.ACCENT.lerp(Color(1.0, 0.25, 0.2), 1.0 - k)
 	var hurt := 260.0 * k < _health_fill.size.x
 	# The bar slides to its new length; taking damage flashes it white first.
