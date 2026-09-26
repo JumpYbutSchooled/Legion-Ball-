@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.3.3",
+        "date":  "2026-09-26",
+        "notes":  "Owner: set anyone\u0027s max health and speed (including your own) from the moderation page. Fixed flickering (z-fighting) on Trench Run, City, Castle, The House, Gotham, Military Base and Atlantis. Talladega/Daytona stand roofs no longer float, and Daytona\u0027s lake is back. Arbalest: shoves much harder and pins targets to any wall behind them (up to 14 m)."
+    },
+    {
         "version":  "1.3.2",
         "date":  "2026-09-26",
         "notes":  "Players can now turn bots off (or back on) for the whole server from the pause menu: [ BOTS: ON/OFF ]."
