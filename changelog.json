@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.4.0",
+        "date":  "2026-09-26",
+        "notes":  "Big graphics and quality-of-life update. GRAPHICS: quality presets (Low to Ultra), sun shadows, anti-aliasing, ambient occlusion, reflections, render scale, frame cap, and glowing speed trails. COMBAT FEEDBACK: hit markers and kill markers on the crosshair, red arrows showing where hits come from, and a red screen edge at low health. AUDIO: Master and Effects volume sliders. Also: FPS / ping counter, invert mouse Y, and a reorganised Settings page."
+    },
+    {
         "version":  "1.3.4",
         "date":  "2026-09-26",
         "notes":  "Coliseum, The Box, Thunder Dome, City, Daytona 500, Atlantis, El Dorado, Military Base, The House, Trench Run, Enterprise, Gotham and Chess Board are now twice as big. Ramps out of the Atlantis canals and the Trench Run trench (no more getting stuck)."
