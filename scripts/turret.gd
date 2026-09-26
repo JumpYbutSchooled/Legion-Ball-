@@ -12,6 +12,11 @@ var manager: Node
 ## Where the head is looking (world space); the head eases toward it.
 var aim_at := Vector3.ZERO
 var alive := true
+## Turrets are off unless staff (or anyone, in practice) switch them on: then hidden,
+## solid to nothing and not a target.
+var enabled := false
+## Seconds left stunned (Nova, or a parried shot): the head droops and the eye flickers gold.
+var stunned := 0.0
 
 var _head: Node3D
 var _eye: MeshInstance3D
@@ -39,6 +44,34 @@ func _ready() -> void:
 	_shape.position = Vector3(0, 2.0, 0)
 	add_child(_shape)
 	aim_at = global_position + Vector3(0, 3.1, -10)
+	_refresh()
+
+
+func set_enabled(on: bool) -> void:
+	enabled = on
+	_refresh()
+
+
+func set_alive(on: bool) -> void:
+	alive = on
+	_refresh()
+
+
+func stun(duration: float) -> void:
+	stunned = maxf(stunned, duration)
+
+
+## Visible, solid and lockable only while switched on; the head only while alive.
+func _refresh() -> void:
+	if not _head:
+		return
+	visible = enabled
+	_shape.set_deferred("disabled", not enabled)
+	_head.visible = alive
+	if enabled and alive:
+		add_to_group("lock_targets")
+	else:
+		remove_from_group("lock_targets")
 
 
 func _mesh(parent: Node3D, pos: Vector3, size: Vector3, mat: Material) -> MeshInstance3D:
@@ -53,16 +86,29 @@ func _mesh(parent: Node3D, pos: Vector3, size: Vector3, mat: Material) -> MeshIn
 
 
 func _process(delta: float) -> void:
-	if not alive:
+	stunned = maxf(stunned - delta, 0.0)
+	if not alive or not enabled:
 		return
 	var from := _head.global_position
-	var to := aim_at - from
-	if to.length() < 0.5:
-		return
-	var goal := Basis.looking_at(to.normalized(), Vector3.UP)
+	var goal: Basis
+	if stunned > 0.0:
+		# Knocked out: the head sags toward the floor and the eye sputters gold.
+		var flat := -_head.global_basis.z
+		flat.y = 0.0
+		if flat.length() < 0.1:
+			flat = Vector3.FORWARD
+		goal = Basis.looking_at((flat.normalized() + Vector3.DOWN * 0.8).normalized(), Vector3.UP)
+		_eye_mat.emission = Color(1.0, 0.8, 0.2)
+		_eye_mat.emission_energy_multiplier = 1.0 + 4.0 * float(randf() < 0.5)
+	else:
+		var to := aim_at - from
+		if to.length() < 0.5:
+			return
+		goal = Basis.looking_at(to.normalized(), Vector3.UP)
+		_eye_mat.emission = Color(1.0, 0.15, 0.1)
+		# The eye pulses while it's hunting.
+		_eye_mat.emission_energy_multiplier = 4.0 + 2.0 * sin(Time.get_ticks_msec() / 80.0)
 	_head.global_basis = _head.global_basis.slerp(goal, 1.0 - exp(-TURN_RATE * delta)).orthonormalized()
-	# The eye pulses faster while it has someone.
-	_eye_mat.emission_energy_multiplier = 4.0 + 2.0 * sin(Time.get_ticks_msec() / 80.0)
 
 
 ## Where shots leave from.
@@ -74,19 +120,10 @@ func head_position() -> Vector3:
 	return _head.global_position
 
 
-func set_alive(on: bool) -> void:
-	alive = on
-	_head.visible = on
-	if on:
-		add_to_group("lock_targets")
-	else:
-		remove_from_group("lock_targets")
-
-
 # --- Lock target interface (see ball.gd PvP) ------------------------------------------
 
 func is_alive() -> bool:
-	return alive
+	return alive and enabled
 
 
 func get_aim_point() -> Vector3:
@@ -95,7 +132,7 @@ func get_aim_point() -> Vector3:
 
 ## Damage in the same units as players (practice-tuned weapon damage x PVP_DAMAGE_SCALE).
 func take_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
-	if alive and manager:
+	if alive and enabled and manager:
 		manager.call("request_hit", index, amount * 4.0)
 
 
@@ -105,7 +142,7 @@ func take_unblockable_hit(amount: float, pos: Vector3, dir: Vector3) -> void:
 
 ## Nova's stagger shuts it down for a moment.
 func stagger(duration: float) -> void:
-	if alive and manager:
+	if alive and enabled and manager:
 		manager.call("request_stagger", index, duration)
 
 

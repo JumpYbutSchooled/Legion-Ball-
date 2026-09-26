@@ -76,6 +76,9 @@ var status := ""
 var dedicated := false
 ## The map matches load. Set by the server (_use_map) before it loads anyone in.
 var map_scene := ARENA_SCENE
+## AI turrets on (scripts/turrets.gd). Off by default. The host's copy is the real one
+## (staff switch it with Mod.toggle_turrets); offline it's the practice setting.
+var turrets_on := false
 ## This game's version (res://version.txt, updated with every patch). Players must match
 ## the server's exactly to join.
 var version := ""

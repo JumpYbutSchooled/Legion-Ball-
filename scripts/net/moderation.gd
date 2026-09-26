@@ -137,6 +137,42 @@ func end_match() -> void:
 		_end_match.rpc_id(1)
 
 
+## Who may switch the AI turrets on and off: anyone in practice; online, staff (owner,
+## mod or tester) or the host of a player-hosted game.
+func can_toggle_turrets() -> bool:
+	if not _net or not _net.get("online"):
+		return true
+	return staff_role() != "" or (_net.call("is_host") and not _net.get("dedicated"))
+
+
+## Switches the AI turrets on or off (for the whole server when online).
+func toggle_turrets() -> void:
+	if not _net.get("online"):
+		_apply_turrets(not _net.get("turrets_on"))
+	elif multiplayer.is_server():
+		_toggle_turrets()
+	else:
+		_toggle_turrets.rpc_id(1)
+
+
+## Whether turrets are on right now, as far as this game knows (the arena's turrets, or
+## the practice setting).
+func turrets_enabled() -> bool:
+	var scene := get_tree().current_scene
+	var turrets := scene.get_node_or_null("Turrets") if scene else null
+	if turrets:
+		return turrets.get("enabled")
+	return _net.get("turrets_on")
+
+
+func _apply_turrets(on: bool) -> void:
+	_net.set("turrets_on", on)
+	var scene := get_tree().current_scene
+	var turrets := scene.get_node_or_null("Turrets") if scene else null
+	if turrets:
+		turrets.call("set_enabled", on)
+
+
 ## Moves everyone on the server to map `path` straight away (scores reset).
 func switch_map(path: String) -> void:
 	if multiplayer.is_server():
@@ -315,6 +351,21 @@ func _switch_map(path: String) -> void:
 	if multiplayer.is_server() and _is_moderator(_sender()) and _net.MAP_NAMES.has(path):
 		print("[server] %s switched the map to %s" % [_player_name(_sender()), _net.MAP_NAMES[path]])
 		_net.call("change_map", path)
+
+
+## Staff (owner, mod or tester) or a player-hosted game's host: turrets on/off for
+## everyone. (Named to sort after the other RPCs.)
+@rpc("any_peer", "reliable")
+func _toggle_turrets() -> void:
+	if not multiplayer.is_server():
+		return
+	var peer := _sender()
+	var staff: String = _net.get("players").get(peer, {}).get("role", "")
+	if staff == "" and not (peer == 1 and not _net.get("dedicated")):
+		return
+	var on: bool = not _net.get("turrets_on")
+	_apply_turrets(on)
+	print("[server] %s turned the turrets %s" % [_player_name(peer), "ON" if on else "OFF"])
 
 
 func _refresh_god_shields() -> void:

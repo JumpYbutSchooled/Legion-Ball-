@@ -86,6 +86,16 @@ func _ready() -> void:
 		if net:
 			net.connect("roster_changed", _on_roster_changed)
 	if pause_mode:
+		# AI turrets on/off: anyone in practice; online, staff or a LAN game's host.
+		_nav(nav, "turrets", "TURRETS: OFF", func() -> void:
+			var m := _mod()
+			if m:
+				m.call("toggle_turrets"))
+		var mod := _mod()
+		_nav_buttons["turrets"].visible = mod != null and mod.call("can_toggle_turrets")
+		if mod:
+			mod.connect("mod_changed", func() -> void:
+				_nav_buttons["turrets"].visible = mod.call("can_toggle_turrets"))
 		var leave_text := "LEAVE MATCH" if online else "ABORT TO MAIN MENU"
 		_nav(nav, "menu", leave_text, func() -> void: main_menu_pressed.emit())
 	else:
@@ -110,6 +120,15 @@ func _ready() -> void:
 	visibility_changed.connect(func() -> void:
 		if is_visible_in_tree():
 			_intro())
+
+
+## Keeps the turrets button showing whether they're on (the server may take a moment).
+func _process(_delta: float) -> void:
+	var b: Button = _nav_buttons.get("turrets")
+	if b and b.visible and is_visible_in_tree():
+		var mod := _mod()
+		var on: bool = mod != null and mod.call("turrets_enabled")
+		b.text = "[ TURRETS: %s ]" % ("ON" if on else "OFF")
 
 
 ## With a controller, menus are driven by focus: put it on the first action.
@@ -341,6 +360,17 @@ const MAP_BLURBS := {
 
 func _build_practice(box: VBoxContainer) -> void:
 	_header(box, "PRACTICE", "SOLO  //  PICK A MAP  //  NOTHING CAN HURT YOU HERE")
+	# AI turrets on the combat maps (also switchable from the pause menu).
+	var net := get_tree().root.get_node_or_null("Net")
+	if net:
+		var turrets := _small_button("", func() -> void: pass)
+		var label := func() -> void:
+			turrets.text = "[ AI TURRETS: %s ]" % ("ON" if net.get("turrets_on") else "OFF")
+		label.call()
+		turrets.pressed.connect(func() -> void:
+			net.set("turrets_on", not net.get("turrets_on"))
+			label.call())
+		box.add_child(turrets)
 	for path in MAP_BLURBS:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 16)

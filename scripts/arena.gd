@@ -315,12 +315,21 @@ func _unblockable_hit(victim: int, amount: float) -> void:
 		_deal(victim, attacker, amount)
 
 
-## Host: an AI turret (scripts/turrets.gd) hit `victim`. Shields and god mode stop it;
-## a kill is nobody's (attacker -1).
-func turret_hit(victim: int, amount: float) -> void:
-	if not multiplayer.is_server() or match_done or _blocks.has(victim) or _is_god(victim):
-		return
+## Host: an AI turret (scripts/turrets.gd) at `from` hit `victim`. On a raised shield it's
+## parried like a player's shot (the victim is launched and strikes back at the turret):
+## returns true so the turret takes the strike. Otherwise it's damage, and a kill is
+## nobody's (attacker -1). God mode ignores it.
+func turret_shot(victim: int, amount: float, from: Vector3) -> bool:
+	if not multiplayer.is_server() or match_done or not alive.get(victim, false) or _is_god(victim):
+		return false
+	if _blocks.has(victim):
+		if _parried.has(victim):
+			return false
+		_parried[victim] = true
+		_to_peer(victim, "_zzparry_at", [from])
+		return true
 	_deal(victim, -1, amount)
+	return false
 
 
 ## The sender fell off the map: a death, credited to whoever hit them in the last
@@ -624,6 +633,14 @@ func _zvote_open(options: Array) -> void:
 @rpc("authority", "call_local", "reliable")
 func _zvote_tally(counts: Array) -> void:
 	vote_counts.emit(counts)
+
+
+## Our shield parried a turret's shot from `from`. (Named to sort last.)
+@rpc("authority", "reliable")
+func _zzparry_at(from: Vector3) -> void:
+	var ball: Node3D = _players.get(multiplayer.get_unique_id())
+	if ball and not ball.get("dead"):
+		ball.call("on_parried", from)
 
 
 @rpc("authority", "reliable")
