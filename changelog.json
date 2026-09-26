@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.2.1",
+        "date":  "2026-09-26",
+        "notes":  "The owner now has 1000 health."
+    },
+    {
         "version":  "1.2.0",
         "date":  "2026-09-26",
         "notes":  "Bigger blades (1.4x) that now wrap AROUND the ball instead of through it. Bigger ranges and areas on the new weapons. Lock-on for long-range weapons: Frost Lance, Gravity Well, Prism Cage, Echo Rifle, Splinter Bomb, Skylance, Shard Mortar, Beam Lance, Piercer, Arbalest, Ricochet Disc, Velocity Cannon and Hunter\u0027s Sigil."
