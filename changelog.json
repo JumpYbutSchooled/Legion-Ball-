@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.0.0",
+        "date":  "2026-09-25",
+        "notes":  "LEGION BALL 1.0: LOADOUTS. Build your own kit in the Armory: drag six weapons into your slots (keys 1-6), grouped into seven combo groups - equip three from one group for its set bonus. Thirty new weapons are previewed as NOT BUILT YET. Every weapon now has its own colour and blade layout; god weapons are the only white ones."
+    },
+    {
         "version":  "0.8.9",
         "date":  "2026-09-25",
         "notes":  "Tears of an Angel now flies straight through walls, and Tears and Rain of God leave a white ripple and warp on both sides of every wall they pass through."
