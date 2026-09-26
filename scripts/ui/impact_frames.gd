@@ -65,6 +65,8 @@ var _implode := 12
 ## Solid stand-ins for the see-through blades and shields: [real mesh, stand-in, params].
 var _proxies: Array = []
 var _playing_slot := -1
+## Where the kill happened, re-projected every frame (the camera may turn).
+var _kill_world := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -142,20 +144,29 @@ func trigger(world_pos: Vector3, color: Color, slot := -1, hitstop := true) -> v
 	_frame = -1
 	_jolt_now = Vector2.ZERO
 	_jolt_goal = Vector2.ZERO
-	var center := Vector2(0.5, 0.5)
-	var kill := world_pos
-	if camera.is_position_behind(world_pos):
-		kill = camera.global_position - camera.global_basis.z * 10.0
-	else:
-		center = camera.unproject_position(world_pos) / get_viewport().get_visible_rect().size
-	_mat.set_shader_parameter("center", center)
-	_mat.set_shader_parameter("kill_pos", kill)
+	_kill_world = world_pos
+	_aim_at_kill(camera)
 	_mat.set_shader_parameter("tint", color)
 	_start_usec = Time.get_ticks_usec()
 	if hitstop:
 		Engine.time_scale = hitstop_scale
 	_set_hud_hidden(true)
 	_add_proxies()
+
+
+## Points the effect at the kill as seen from the camera right now. Called every frame
+## while it plays, so turning the camera keeps the blast on the kill instead of leaving it
+## stuck where it first appeared on screen.
+func _aim_at_kill(camera: Camera3D) -> void:
+	var center := Vector2(0.5, 0.5)
+	var kill := _kill_world
+	if camera.is_position_behind(_kill_world):
+		# Behind us: centre it on a point just ahead, so it still plays round the view.
+		kill = camera.global_position - camera.global_basis.z * 10.0
+	else:
+		center = camera.unproject_position(_kill_world) / get_viewport().get_visible_rect().size
+	_mat.set_shader_parameter("center", center)
+	_mat.set_shader_parameter("kill_pos", kill)
 
 
 ## Weapon blades and shields are see-through, so they're missing from the depth and
@@ -253,6 +264,9 @@ func _process(_delta: float) -> void:
 		_clear_proxies()
 		return
 	_quad.visible = true
+	var camera := _quad.get_parent() as Camera3D
+	if camera:
+		_aim_at_kill(camera)
 	# Keep the stand-ins moving with the real blades and shields.
 	for entry in _proxies:
 		if is_instance_valid(entry[0]) and is_instance_valid(entry[1]):

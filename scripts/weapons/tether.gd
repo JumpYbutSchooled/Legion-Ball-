@@ -252,6 +252,8 @@ func _try_attach(hit: Dictionary) -> void:
 		_anchor_body = null
 		_anchor_local = pos
 	_attached = true
+	# Everyone else draws the rope too.
+	manager.broadcast_tether(self, true, String(_anchor_body.get_path()) if _on_body else "", _anchor_local)
 	# The rope starts exactly as long as the gap, then winds in from there.
 	_rope_length = pos.distance_to(manager.ball.global_position)
 	kick(0)
@@ -304,6 +306,8 @@ func _airborne(point: Vector3, target: Node3D) -> bool:
 func _detach() -> void:
 	if _attached:
 		_rehook = rehook_delay
+		if manager and manager.is_multiplayer_authority():
+			manager.broadcast_tether(self, false, "", Vector3.ZERO)
 	_attached = false
 	_hook_time = 0.0
 	_on_body = false
@@ -311,6 +315,26 @@ func _detach() -> void:
 	tension = 0.0
 	if _line:
 		_line.visible = false
+
+
+## Another player's Tether hooked or let go (weapon.gd broadcast_tether): draw their rope
+## to the same spot, following the hooked body if it moves. They do all the pulling.
+func apply_net_tether(attached: bool, path: String, anchor: Vector3) -> void:
+	if not attached:
+		_attached = false
+		_on_body = false
+		_anchor_body = null
+		if _line:
+			_line.visible = false
+		return
+	var body := get_node_or_null(path) as Node3D if path != "" else null
+	if path != "" and not body:
+		return  # Hooked something we don't have: skip the rope.
+	_on_body = body != null
+	_anchor_body = body
+	_anchor_local = anchor
+	_attached = true
+	kick(0)
 
 
 func _anchor_world() -> Vector3:

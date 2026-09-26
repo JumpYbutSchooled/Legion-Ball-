@@ -502,6 +502,21 @@ func _net_rail_bolt(props: Dictionary) -> void:
 	spawn_rail_bolt(props, true)
 
 
+## The Tether hooked something (or let go): other players draw the same rope. `path` is
+## the hooked body ("" for the static map) and `anchor` the hook point in its local space
+## (world space on the map).
+func broadcast_tether(weapon: Node, attached: bool, path: String, anchor: Vector3) -> void:
+	if _broadcasting():
+		_net_ztether.rpc(weapons.find(weapon), attached, path, anchor)
+
+
+## (Named to sort after the other RPCs.)
+@rpc("authority", "reliable")
+func _net_ztether(slot: int, attached: bool, path: String, anchor: Vector3) -> void:
+	if slot >= 0 and slot < weapons.size() and weapons[slot].has_method("apply_net_tether"):
+		weapons[slot].call("apply_net_tether", attached, path, anchor)
+
+
 ## A blade jolted by a shot; other players see it too.
 func broadcast_kick(weapon: Node, index: int) -> void:
 	if _broadcasting():
