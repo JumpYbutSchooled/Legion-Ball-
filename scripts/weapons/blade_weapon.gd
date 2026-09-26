@@ -18,7 +18,7 @@ const Sfx := preload("res://scripts/sfx.gd")
 const WAVE_END := 1.4  # Wave position where every facet has fully broken/joined.
 ## Every weapon's blades are built this much bigger than their shapes are written (the
 ## maps are huge; the weapons should look it).
-const BLADE_SCALE := 1.4
+const BLADE_SCALE := 1.15
 
 @export var color := Color(0.3, 0.8, 1.0)
 ## Seconds for the enter/exit wave to run the length of the blades.

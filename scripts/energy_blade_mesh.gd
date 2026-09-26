@@ -63,7 +63,10 @@ const BladeShader := preload("res://shaders/blade_warp.gdshader")
 ## The ball's radius plus a gap: no part of a blade comes closer to the ball's centre
 ## than this (plus half the blade's own width), so blades wrap AROUND the ball, never
 ## through it.
-const BALL_CLEAR := 0.62
+const BALL_CLEAR := 0.56
+## The arc round the ball is pulled in this much tighter than its written radius, so
+## blades hug the ball (the clearance still keeps them outside it).
+const ARC_TIGHT := 0.8
 ## Seed for the jag, so each blade is chipped differently but consistently.
 @export var jag_seed := 1:
 	set(value):
@@ -165,7 +168,7 @@ func _build_path() -> PackedVector3Array:
 	var mirror := Vector3(side, 1.0, 1.0)
 	var pts := PackedVector3Array()
 	var arc_steps := segments / 2
-	var radius := arc_radius * scale_factor
+	var radius := arc_radius * scale_factor * ARC_TIGHT
 	# Semicircle round the ball's side.
 	for i in arc_steps:
 		var a := deg_to_rad(lerpf(arc_start_deg, arc_end_deg, float(i) / arc_steps))
