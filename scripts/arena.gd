@@ -72,6 +72,8 @@ var _parried := {}
 var _end_timer := -1.0
 ## Host: who last damaged each player, and when: {victim: [attacker, msec]}.
 var _last_hit := {}
+## Host: when each player last respawned (msec), to ignore stale fall reports.
+var _respawned_msec := {}
 ## Host: healing built up but not yet sent (health goes out in whole points).
 var _heal_pending := {}
 ## The map vote: its choices (every peer) and each voter's pick (host).
@@ -341,6 +343,9 @@ func _zfell() -> void:
 	var victim := _sender()
 	if not alive.get(victim, false):
 		return
+	# A report sent from where they died, arriving just after they respawned: not a new fall.
+	if Time.get_ticks_msec() - int(_respawned_msec.get(victim, -100000)) < 1000:
+		return
 	var attacker := victim
 	var last: Array = _last_hit.get(victim, [])
 	if not last.is_empty() and Time.get_ticks_msec() - int(last[1]) <= FALL_CREDIT_TIME * 1000.0 \
@@ -432,6 +437,7 @@ func _physics_process(delta: float) -> void:
 			_respawn_timers.erase(id)
 			if _players.has(id) and not match_done:
 				_protect[id] = SPAWN_PROTECT
+				_respawned_msec[id] = Time.get_ticks_msec()
 				_set_health.rpc(id, MAX_HEALTH)
 				_on_respawn.rpc(id, _safest_spawn())
 	if not match_done:

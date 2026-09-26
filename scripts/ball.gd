@@ -155,7 +155,11 @@ func _physics_process(delta: float) -> void:
 			mod.call("toggle_god_shield")
 
 	var fell := global_position.y < fall_reset_height
-	if fell and _online() and not dead:
+	if fell and _online() and not dead and _reset_requested:
+		# Respawning: we're still down where we died until the next physics step moves us.
+		# (Reporting now counted a second fall, so every void death happened twice.)
+		pass
+	elif fell and _online() and not dead:
 		# Online, falling off is a death (the host credits whoever hit us last). If the
 		# host never answers (the match just ended), put the ball back once it's far down.
 		if not _fall_reported:
@@ -271,7 +275,6 @@ func set_dead(is_dead: bool) -> void:
 func respawn_at(pos: Vector3) -> void:
 	_start_position = pos
 	_reset_requested = true
-	_fall_reported = false
 	# Come back with every weapon loaded, cooled and off cooldown.
 	var weapon := get_node_or_null("Weapon")
 	if weapon:
@@ -418,6 +421,8 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		state.linear_velocity = Vector3.ZERO
 		state.angular_velocity = Vector3.ZERO
 		reset_physics_interpolation()
+		# Back up top: a fall from here on is a new one.
+		_fall_reported = false
 		respawned.emit.call_deferred()
 		return
 
