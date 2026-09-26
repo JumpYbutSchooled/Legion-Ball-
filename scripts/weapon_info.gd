@@ -300,7 +300,7 @@ const WEAPONS := {
 		"summary": "3-round hitscan bursts that punch through every player in a line.",
 		"combo": "Line them up with GRAVITY WELL."},
 	"arbalest": {"built": true, "script": "res://scripts/weapons/arbalest.gd",
-		"usage": ["LMB  fire a heavy bolt that shoves hard", "Very fast bolt that homes on the lock", "Knocked into a wall: PINNED for 1.5s", "0.9s cooldown"],
+		"usage": ["LMB  fire a heavy bolt that shoves hard", "Very fast bolt that homes on the lock and shoves hard", "A wall behind them (14m): slammed into it and PINNED for 1.5s", "0.9s cooldown"],
 		"name": "ARBALEST", "tag": "HEAVY BOLT", "group": "marksman",
 		"color": Color(0.7, 0.35, 0.1), "layout": "A crossbow: a horizontal bow of two blades over one straight stock.",
 		"summary": "A heavy bolt; anyone it knocks into a wall is pinned there (staggered).",

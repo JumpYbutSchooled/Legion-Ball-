@@ -207,6 +207,12 @@ func launch(id: int) -> void:
 	_to_server("_zlaunch", [id])
 
 
+## Owner: set player `id`'s max health and speed (1 = normal), anyone including yourself.
+## A max health of 0 and speed of 1 put them back to normal.
+func set_stats(id: int, max_hp: float, speed: float) -> void:
+	_to_server("_zzstats", [id, max_hp, speed])
+
+
 ## Owner: low gravity for everyone, on or off.
 func toggle_low_gravity() -> void:
 	_to_server("_zgravity", [])
@@ -624,6 +630,30 @@ func _zlaunch(target: int) -> void:
 	var arena := _arena()
 	if multiplayer.is_server() and _is_owner(peer) and arena and target != peer:
 		arena.call("staff_launch", target)
+
+
+## Server: the owner's stat change. Stored in the roster (everyone applies it: the arena
+## reads max health from it, and each ball's speed on its owner's computer).
+@rpc("any_peer", "reliable")
+func _zzstats(target: int, max_hp: float, speed: float) -> void:
+	var peer := _sender()
+	var players: Dictionary = _net.get("players")
+	if not multiplayer.is_server() or not _is_owner(peer) or not players.has(target):
+		return
+	if max_hp > 0.0:
+		players[target]["max_hp"] = clampf(max_hp, 1.0, 100000.0)
+	else:
+		players[target].erase("max_hp")
+	if absf(speed - 1.0) > 0.001:
+		players[target]["speed"] = clampf(speed, 0.1, 10.0)
+	else:
+		players[target].erase("speed")
+	_net.call("push_roster")
+	# Topped up to the new max straight away.
+	var arena := _arena()
+	if arena:
+		arena.call("staff_heal", target)
+	print("[server] %s set %s: max health %s, speed x%.2f" % [_player_name(peer), _player_name(target), str(players[target].get("max_hp", "normal")), float(players[target].get("speed", 1.0))])
 
 
 @rpc("any_peer", "reliable")

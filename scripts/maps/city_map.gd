@@ -113,7 +113,8 @@ func _garage(c: Vector2) -> void:
 	var top := FLOORS * FLOOR_HEIGHT
 	for px: float in [-1.0, 0.0, 1.0]:
 		for pz: float in [-1.0, 1.0]:
-			box(Vector3(c.x + px * (h - 1.0), top / 2.0, c.y + pz * (h - 1.0)), Vector3(2, top, 2), _concrete_dark)
+			# (Set in a touch from the slab edges, so their faces don't flicker against them.)
+			box(Vector3(c.x + px * (h - 1.1), (top - 0.1) / 2.0, c.y + pz * (h - 1.1)), Vector3(2, top - 0.1, 2), _concrete_dark)
 	# Roof parapet (low, so you can jump off).
 	for side: float in [-1.0, 1.0]:
 		box(Vector3(c.x, top + 0.6, c.y + side * (h - 0.3)), Vector3(h * 2.0, 1.2, 0.6), _rail)

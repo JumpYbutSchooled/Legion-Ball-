@@ -1,7 +1,7 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## ARBALEST (Marksman / Long Range): a crossbow: a horizontal bow of two blades over one
-## straight stock. Fires a heavy bolt that shoves hard; anyone it knocks into a wall
-## (within 3.5m behind them) is PINNED there for 1.5s.
+## straight stock. Fires a heavy bolt that shoves its target hard; if there's a wall behind
+## them (within 14 m, along the shove) they're slammed into it and PINNED there for 1.5s.
 
 
 func _build() -> void:
@@ -25,7 +25,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 	var from := tip(2)
 	var dir: Vector3 = (target_point() - from).normalized()
 	spawn("res://scripts/weapons/crystal_shot.gd", {
-		"position": from, "velocity": dir * 520.0, "target_path": lock_path(), "turn_rate": 3.0, "gravity": 2.0, "damage": 8.0, "impulse": 45.0,
+		"position": from, "velocity": dir * 520.0, "target_path": lock_path(), "turn_rate": 3.0, "gravity": 2.0, "damage": 8.0, "impulse": 120.0,
 		"pin": 1.5, "lifetime": 5.0, "size": 0.2, "color": color,
 	})
 	flash_at(from, dir, 1.0)

@@ -541,6 +541,52 @@ func _show_weapon_id(id: String) -> void:
 		detail.add_child(UIStyle.label("WORKS WITH", 13, UIStyle.TEXT_DIM))
 		detail.add_child(_wrapped(UIStyle.label("  " + ", ".join(PackedStringArray(names)), 14, UIStyle.TEXT)))
 
+## Owner: every player's max health and speed (you too), set with SET, or RESET to normal.
+func _build_player_stats(box: VBoxContainer, mod: Node, net: Node, gold: Color) -> void:
+	box.add_child(UIStyle.label("PLAYER STATS  (max health, speed %)", 13, gold))
+	var arena := get_tree().current_scene
+	var players: Dictionary = net.get("players")
+	var ids := players.keys()
+	ids.sort()
+	for id in ids:
+		# Wraps onto a second line when the page is narrow.
+		var row := HFlowContainer.new()
+		row.add_theme_constant_override("h_separation", 10)
+		row.add_theme_constant_override("v_separation", 6)
+		box.add_child(row)
+		var swatch := ColorRect.new()
+		swatch.color = net.call("player_color", id)
+		swatch.custom_minimum_size = Vector2(10, 18)
+		row.add_child(swatch)
+		var me: bool = id == int(net.call("local_id"))
+		var name_label := UIStyle.label(String(players[id]["name"]) + (" (YOU)" if me else ""), 15, UIStyle.TEXT)
+		name_label.custom_minimum_size = Vector2(160, 0)
+		row.add_child(name_label)
+		row.add_child(UIStyle.label("HP", 13, UIStyle.TEXT_DIM))
+		var hp := SpinBox.new()
+		hp.min_value = 1
+		hp.max_value = 100000
+		hp.step = 1
+		hp.custom_arrow_step = 10
+		hp.value = arena.call("max_health_of", id) if arena and arena.has_method("max_health_of") else 100.0
+		hp.custom_minimum_size = Vector2(105, 0)
+		row.add_child(hp)
+		row.add_child(UIStyle.label("SPEED %", 13, UIStyle.TEXT_DIM))
+		var speed := SpinBox.new()
+		speed.min_value = 10
+		speed.max_value = 1000
+		speed.step = 1
+		speed.custom_arrow_step = 10
+		speed.value = roundf(float(players[id].get("speed", 1.0)) * 100.0)
+		speed.custom_minimum_size = Vector2(95, 0)
+		row.add_child(speed)
+		var set_button := _small_button("SET", func() -> void:
+			mod.call("set_stats", id, hp.value, speed.value / 100.0))
+		set_button.add_theme_color_override("font_color", gold)
+		row.add_child(set_button)
+		row.add_child(_small_button("RESET", func() -> void: mod.call("set_stats", id, 0.0, 1.0)))
+
+
 ## Lets a label wrap instead of widening its container.
 func _wrapped(label: Label) -> Label:
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -961,6 +1007,7 @@ func _build_moderation(box: VBoxContainer) -> void:
 			var b := _small_button(entry[0], entry[1])
 			b.add_theme_color_override("font_color", gold)
 			powers.add_child(b)
+		_build_player_stats(box, mod, net, gold)
 		# Weapon lock: pick exactly which weapons everyone else may use.
 		var locked: Array = mod.get("locked_ids")
 		box.add_child(UIStyle.label("ALLOWED WEAPONS  (click to lock / unlock; yours always work)", 13, UIStyle.TEXT_DIM))
@@ -981,6 +1028,8 @@ func _build_moderation(box: VBoxContainer) -> void:
 			guns.add_child(b)
 		guns.add_child(_small_button("ALL ON", func() -> void: mod.call("set_locked", [])))
 		guns.add_child(_small_button("ALL LOCKED", func() -> void: mod.call("set_locked", lockable)))
+		help += "PLAYER STATS: max health and speed for anyone, you included (SET applies and refills
+			health; RESET puts them back to normal).\n"
 		help += "LAUNCH flings a player skyward. KILL ALL / HEAL ALL / FREEZE ALL affect everyone else.\n" \
 			+ "Locked weapons holster and can't be picked; lock all to disarm everyone.\n"
 	if level >= 2:

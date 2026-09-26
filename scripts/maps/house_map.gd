@@ -68,7 +68,7 @@ func _floors() -> void:
 	# Kitchen and bathroom tiles, living room rug, bedroom carpet (thin layers on top).
 	deco(Vector3(45.0, 0.02, -33.0), Vector3(70.0, 0.04, 54.0), _tile)
 	deco(Vector3(2.5, 0.02, 33.0), Vector3(35.0, 0.04, 54.0), _tile)
-	deco(Vector3(-45.0, 0.02, 33.0), Vector3(66.0, 0.04, 50.0), _carpet)
+	deco(Vector3(-46.0, 0.02, 33.0), Vector3(62.0, 0.04, 50.0), _carpet)
 	deco(Vector3(-35.0, 0.03, -33.0), Vector3(40.0, 0.04, 30.0), solid(Color(0.6, 0.2, 0.15)))
 
 
@@ -85,18 +85,21 @@ func _walls() -> void:
 	# Hallway walls: doors and the duct branches' holes.
 	# North side (z = -HALL): living room door at x -40, kitchen door at 45; duct holes at
 	# x -72 (over the bookshelf) and 72 (over the fridge).
+	var dw := DUCT_W + 1.2
+	var d0 := DUCT_Y - 0.6
+	var d1 := DUCT_Y + DUCT_H + 0.6
 	_wall_x(-HALL, [[-40.0, DOOR_W, 0.0, DOOR_H], [45.0, DOOR_W, 0.0, DOOR_H],
-		[-72.0, DUCT_W, DUCT_Y, DUCT_Y + DUCT_H], [72.0, DUCT_W, DUCT_Y, DUCT_Y + DUCT_H]])
+		[-72.0, dw, d0, d1], [72.0, dw, d0, d1]])
 	# South side (z = HALL): bedroom door -45, bathroom door 0, office door 50; ducts over
 	# the wardrobe (-50... its branch runs to -60), the bathroom cabinet (8) and the
 	# office shelves (72).
 	_wall_x(HALL, [[-40.0, DOOR_W, 0.0, DOOR_H], [0.0, DOOR_W, 0.0, DOOR_H], [50.0, DOOR_W, 0.0, DOOR_H],
-		[-60.0, DUCT_W, DUCT_Y, DUCT_Y + DUCT_H], [12.0, DUCT_W, DUCT_Y, DUCT_Y + DUCT_H], [72.0, DUCT_W, DUCT_Y, DUCT_Y + DUCT_H]])
+		[-60.0, dw, d0, d1], [12.0, dw, d0, d1], [72.0, dw, d0, d1]])
 	# Between the living room and kitchen: a wide archway. Between bedroom/bathroom and
 	# bathroom/office: walls with a floor vent each.
 	_wall_z(10.0, -HZ, -HALL, [[-33.0, 22.0, 0.0, DOOR_H]])
-	_wall_z(-15.0, HALL, HZ, [[33.0, 5.0, 0.0, 4.0]])
-	_wall_z(20.0, HALL, HZ, [[40.0, 5.0, 0.0, 4.0]])
+	_wall_z(-15.0, HALL, HZ, [[33.0, 6.2, 0.0, 4.6]])
+	_wall_z(20.0, HALL, HZ, [[40.0, 6.2, 0.0, 4.6]])
 	# Grilles over the floor vents (bars you can see, with gaps to roll through... the
 	# vent is 5 wide, the bars thin).
 	for v in [Vector2(-15.0, 33.0), Vector2(20.0, 40.0)]:
@@ -104,7 +107,7 @@ func _walls() -> void:
 			for b in 3:
 				deco(Vector3(v.x + side * (WALL / 2.0 + 0.1), 3.0 - b * 1.2, v.y), Vector3(0.1, 0.25, 5.0), _grille)
 		# A short square duct through the wall, poking out both sides.
-		_duct_run(Vector3(v.x - 4.0, 0.0, v.y), Vector3(v.x + 4.0, 0.0, v.y), 5.0, 4.0)
+		_duct_run(Vector3(v.x - 4.0, 0.0, v.y), Vector3(v.x + 4.0, 0.0, v.y), 5.0, 4.0, true, false)
 
 
 ## A wall along x at `z` (full house width) with `holes`: [centre x, width, bottom, top].
@@ -147,7 +150,7 @@ func _wall_piece(a: Vector2, along_x: bool, s0: float, s1: float, y0: float, y1:
 
 ## A square duct (floor, roof, two sides) from a to b: a and b are points on the middle of
 ## its floor. It can slope.
-func _duct_run(a: Vector3, b: Vector3, width := DUCT_W, height := DUCT_H, with_sides := true) -> void:
+func _duct_run(a: Vector3, b: Vector3, width := DUCT_W, height := DUCT_H, with_sides := true, with_floor := true) -> void:
 	var along := (b - a).normalized()
 	var side := along.cross(Vector3.UP).normalized()
 	var up := side.cross(along).normalized()
@@ -155,7 +158,9 @@ func _duct_run(a: Vector3, b: Vector3, width := DUCT_W, height := DUCT_H, with_s
 	var length := a.distance_to(b)
 	var mid := (a + b) / 2.0
 	var t := 0.6
-	box_basis(basis, mid - up * t / 2.0, Vector3(width + t * 2.0, t, length), _duct, false)
+	# (A floor-level vent rolls on the room's own floor: a duct floor there would flicker.)
+	if with_floor:
+		box_basis(basis, mid - up * t / 2.0, Vector3(width + t * 2.0, t, length), _duct, false)
 	box_basis(basis, mid + up * (height + t / 2.0), Vector3(width + t * 2.0, t, length), _duct, false)
 	if not with_sides:
 		return
@@ -230,7 +235,7 @@ func _kitchen() -> void:
 	# Stove top and sink on the counter.
 	for i in 4:
 		deco(Vector3(30.0 + (i % 2) * 4.0, 9.12, -HZ + 2.5 + (i / 2) * 3.0), Vector3(2.5, 0.05, 2.5), glow(Color(1.0, 0.3, 0.1), 0.8))
-	box(Vector3(55.0, 8.4, -HZ + 3.5), Vector3(8.0, 1.2, 5.0), _steel)
+	box(Vector3(55.0, 8.55, -HZ + 3.5), Vector3(8.0, 1.2, 5.0), _steel)
 	# Fridge by the hallway wall under the duct (x 72), 18 tall.
 	box(Vector3(73.0, 9.0, -BRANCH_END - 4.0), Vector3(9.0, 18.0, 8.0), _steel)
 	# Island in the middle.

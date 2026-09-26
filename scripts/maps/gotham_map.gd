@@ -110,7 +110,7 @@ func _low_building(c: Vector2) -> void:
 		box(Vector3(x, y + rise - 0.3, c.y + dir * 14.5), Vector3(5.0, 0.6, 7.0), _iron)
 		y += rise
 	# The last landing reaches over the parapet onto the roof.
-	box(Vector3(x - 3.5, y - 0.3, c.y), Vector3(7.0, 0.6, 6.0), _iron)
+	box(Vector3(x - 3.5, y - 0.2, c.y), Vector3(7.0, 0.6, 6.0), _iron)
 
 
 ## The tallest tower, right of centre: glass-black with a lit crown and a mast.
@@ -133,7 +133,7 @@ func _police_hq(c: Vector2) -> void:
 	var h := 24.0
 	box(Vector3(c.x, h / 2.0, c.y), Vector3(w, h, w), _stone)
 	ramp(Vector3(c.x - w / 2.0 - 3.0, 0.0, c.y + w / 2.0 + 3.0), Vector3(c.x - w / 2.0 - 3.0, h, c.y - w / 2.0 + 4.0), 5.0, _iron)
-	box(Vector3(c.x - w / 2.0 - 0.5, h - 0.3, c.y - w / 2.0 + 2.0), Vector3(6.0, 0.6, 5.0), _iron)
+	box(Vector3(c.x - w / 2.0 - 0.5, h - 0.24, c.y - w / 2.0 + 2.0), Vector3(6.0, 0.6, 5.0), _iron)
 	# The signal: a housing, its glowing lens, and a real spotlight tipped up.
 	box(Vector3(c.x + 6.0, h + 2.0, c.y + 6.0), Vector3(5.0, 4.0, 5.0), _iron)
 	deco(Vector3(c.x + 6.0, h + 4.2, c.y + 6.0), Vector3(4.2, 0.4, 4.2), _signal)
@@ -166,7 +166,7 @@ func _train_loop(half: float) -> void:
 		var foot := out * r + side * (r - 40.0 - 70.0)
 		var head := out * r + side * (r - 40.0)
 		ramp(Vector3(foot.x, 0.0, foot.z) - out * 9.0, Vector3(head.x, TRAIN_Y, head.z) - out * 9.0, 8.0, _stone)
-		box(Vector3(head.x, TRAIN_Y - 0.5, head.z) - out * 5.5, Vector3(10.0, 1.0, 10.0), _stone, yaw)
+		box(Vector3(head.x, TRAIN_Y - 0.56, head.z) - out * 5.5, Vector3(10.0, 1.0, 10.0), _stone, yaw)
 	# A train stopped on the east side: three cars (cover up on the line).
 	for i in 3:
 		box(Vector3(r, TRAIN_Y + 3.0, -40.0 + i * 22.0), Vector3(6.0, 6.0, 20.0), panel(Color(0.3, 0.32, 0.3), Color(1.0, 0.8, 0.4), 2.0, 0.0, 0.5))

@@ -36,7 +36,7 @@ func _build() -> void:
 	_ring_slab(LAND_1 - 1.0, CANAL_2 + 1.0, -CANAL_DEPTH, _canal_bed)
 	# Canal walls (quay sides), so the trenches have edges.
 	for r in [ISLAND, CANAL_1, LAND_1, CANAL_2]:
-		ring(Vector2.ZERO, r, 40, -CANAL_DEPTH, CANAL_DEPTH, 1.2, _marble_dark)
+		ring(Vector2.ZERO, r, 40, -CANAL_DEPTH, CANAL_DEPTH - 0.1, 1.2, _marble_dark)
 	_bridges()
 	_temple()
 	_ruins()
@@ -78,7 +78,7 @@ func _bridges() -> void:
 			var length: float = span[1] - span[0]
 			var c := Vector2.from_angle(a) * r
 			# A low arch: flat deck on two piers down in the canal.
-			box(Vector3(c.x, -0.5, c.y), Vector3(length, 1.0, 12.0), _marble, -a)
+			box(Vector3(c.x, -0.35, c.y), Vector3(length, 1.0, 12.0), _marble, -a)
 			for s: float in [-0.3, 0.3]:
 				var pier := Vector2.from_angle(a) * (r + s * length)
 				pillar(pier, -CANAL_DEPTH, 4.0, CANAL_DEPTH - 1.0, _marble_dark, -a)

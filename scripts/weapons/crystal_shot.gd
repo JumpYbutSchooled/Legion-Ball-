@@ -34,8 +34,12 @@ var split_props: Dictionary = {}
 var spawn_script := ""
 var spawn_props: Dictionary = {}
 var carry := false
-## Arbalest: a target knocked into a wall within 3.5 m behind it is pinned this long.
+## Arbalest: a target shoved into a wall (one within PIN_REACH behind it, along the shove)
+## is pinned to it for this long, the moment it would get there.
 var pin := 0.0
+const PIN_REACH := 14.0
+## Roughly how fast a shoved target flies (m/s): when the pin lands.
+const PIN_FLIGHT_SPEED := 35.0
 ## Only leave spawn_script behind if it struck something (Prism Cage).
 var spawn_on_hit := false
 var lifetime := 4.0
@@ -174,12 +178,20 @@ func _strike(collider: Object, pos: Vector3) -> void:
 	if status != "":
 		manager.apply_status(collider, status, status_time, status_data)
 	if pin > 0.0 and collider is CollisionObject3D:
-		var query := PhysicsRayQueryParameters3D.create(pos, pos + velocity.normalized() * 3.5)
+		# The shove is mostly sideways: look for a wall along it behind the target.
+		var shove := Vector3(velocity.x, 0.0, velocity.z)
+		shove = shove.normalized() if shove.length() > 0.1 else velocity.normalized()
+		var query := PhysicsRayQueryParameters3D.create(pos, pos + shove * PIN_REACH)
 		query.exclude = [(collider as CollisionObject3D).get_rid(), manager.ball.get_rid()]
 		var wall := get_world_3d().direct_space_state.intersect_ray(query)
 		if not wall.is_empty() and not (wall["collider"] as Object).has_method("take_hit"):
-			manager.apply_status(collider, "pin", pin)
-			manager.call("spawn_beam", wall["position"], wall["normal"], 1.5, 0.8, 0.3, 20.0, color)
+			# Pinned when they'd slam into it (this bolt is gone by then: the manager does it).
+			var delay := maxf(pos.distance_to(wall["position"]) / PIN_FLIGHT_SPEED, 0.05)
+			var timer := get_tree().create_timer(delay)
+			timer.timeout.connect(manager.apply_status.bind(collider, "pin", pin))
+			timer.timeout.connect(manager.spawn_beam.bind(wall["position"], wall["normal"], 2.5, 1.2, 0.4, 24.0, color))
+			timer.timeout.connect(manager.spawn_warp.bind(wall["position"], 0.25, 4.0))
+			timer.timeout.connect(manager.play_sound.bind("impact_boom", wall["position"], -2.0))
 
 
 func _stick_to(node: Node3D, pos: Vector3) -> void:

@@ -163,6 +163,9 @@ func _sync_players() -> void:
 			_players[id].queue_free()
 			_players.erase(id)
 	refresh_god_shields()
+	# Stats the owner changed (speed) take effect straight away.
+	for id in _players:
+		_apply_set_perks(id)
 
 
 ## A player's loadout (weapon ids for keys 1-6) from the roster.
@@ -191,11 +194,16 @@ func _apply_set_perks(id: int) -> void:
 	if not ball:
 		return
 	if not ball.has_meta("base_air_control"):
-		ball.set_meta("base_air_control", ball.get("air_control"))
-		ball.set_meta("base_top_speed", ball.get("top_speed"))
+		for stat in ["air_control", "top_speed", "max_speed", "push_force", "roll_torque", "dash_speed"]:
+			ball.set_meta("base_" + stat, ball.get(stat))
 	var perks := perks_of(id)
+	# The owner can speed anyone up or slow them down (moderation.gd set_stats): rolling
+	# speed, top speed, acceleration and dash all scale together.
+	var speed := float(_roster().get(id, {}).get("speed", 1.0))
 	ball.set("air_control", float(ball.get_meta("base_air_control")) * (1.2 if perks.has("skyborne") else 1.0))
-	ball.set("top_speed", float(ball.get_meta("base_top_speed")) * (1.1 if perks.has("momentum") else 1.0))
+	ball.set("top_speed", float(ball.get_meta("base_top_speed")) * (1.1 if perks.has("momentum") else 1.0) * speed)
+	for stat in ["max_speed", "push_force", "roll_torque", "dash_speed"]:
+		ball.set(stat, float(ball.get_meta("base_" + stat)) * speed)
 
 
 ## Shows the owner's gold shield on whoever has it on (the roster's "god" flag online,
@@ -213,6 +221,10 @@ func refresh_god_shields() -> void:
 ## Host: the owner's gold shield is up, so nothing touches them.
 ## Full health for id: OWNER_HEALTH for the owner, MAX_HEALTH for everyone else.
 func max_health_of(id: int) -> float:
+	# The owner can set anyone's max health (moderation.gd set_stats).
+	var custom := float(_roster().get(id, {}).get("max_hp", 0.0))
+	if custom > 0.0:
+		return custom
 	var role: String = _roster().get(id, {}).get("role", "")
 	if not is_online() and id == multiplayer.get_unique_id():
 		var mod := get_tree().root.get_node_or_null("Mod")

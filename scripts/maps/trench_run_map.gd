@@ -46,7 +46,8 @@ func _surface() -> void:
 		box(Vector3(x, -PLATE / 2.0, 0.0), Vector3(side_w, PLATE, HALF_Z * 2.0), _hull)
 	# The trench walls, all the way down to its floor.
 	for s: float in [-1.0, 1.0]:
-		box(Vector3(s * (TRENCH_W / 2.0 + 1.0), -TRENCH_D / 2.0, 0.0), Vector3(2.0, TRENCH_D, HALF_Z * 2.0), _hull_dark)
+		# Its face stands a hair proud of the plate's edge, so the two don't flicker.
+		box(Vector3(s * (TRENCH_W / 2.0 + 0.95), -TRENCH_D / 2.0 - 0.1, 0.0), Vector3(2.0, TRENCH_D - 0.2, HALF_Z * 2.0), _hull_dark)
 	# The trench floor, and a lip at each end.
 	box(Vector3(0.0, -TRENCH_D - PLATE / 2.0, 0.0), Vector3(TRENCH_W + 2.0, PLATE, HALF_Z * 2.0), _hull_dark)
 	for s: float in [-1.0, 1.0]:

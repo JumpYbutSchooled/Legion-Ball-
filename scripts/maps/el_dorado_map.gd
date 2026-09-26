@@ -65,7 +65,7 @@ func _pyramid() -> void:
 		for k in 4:
 			var yaw := TAU * k / 4.0
 			var out := Vector3(sin(yaw), 0.0, cos(yaw))
-			deco(out * (size / 2.0 + 0.05) + Vector3.UP * (y + TIER_RISE - 0.4), Vector3(size, 0.8, 0.3), _gold, yaw)
+			deco(out * (size / 2.0 + 0.2) + Vector3.UP * (y + TIER_RISE - 0.4), Vector3(size, 0.8, 0.3), _gold, yaw)
 	var top := PYRAMID_TIERS * TIER_RISE
 	var top_size := BASE - (PYRAMID_TIERS - 1) * 13.0
 	# Stairways: one ramp per face from the plaza to the top tier.

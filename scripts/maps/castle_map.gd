@@ -70,7 +70,7 @@ func _ground_and_moat() -> void:
 		var yaw := TAU * k / 4.0
 		var out := Vector3(sin(yaw), 0.0, cos(yaw))
 		for r in [MOAT_IN, moat_out]:
-			box(out * r + Vector3.DOWN * 2.75, Vector3(r * 2.0, 5.5, 1.0), _rock, yaw)
+			box(out * r + Vector3.DOWN * 2.85, Vector3(r * 2.0, 5.5, 1.0), _rock, yaw)
 
 
 func _curtain_walls() -> void:
@@ -110,7 +110,7 @@ func _curtain_walls() -> void:
 	# Gatehouse: two squat towers either side of the gate, a lintel over it, and the
 	# drawbridge across the moat.
 	for s: float in [-1.0, 1.0]:
-		pillar(Vector2(s * 14.0, WALL_HALF), 0.0, 12.0, WALL_HEIGHT + 8.0, _stone_dark)
+		pillar(Vector2(s * 14.0, WALL_HALF), 0.0, 12.4, WALL_HEIGHT + 8.0, _stone_dark)
 	box(Vector3(0, WALL_HEIGHT + 2.0, WALL_HALF), Vector3(gate + 4.0, 8.0, WALL_THICK + 2.0), _stone_dark)
 	var bridge_len := MOAT_IN + MOAT_WIDTH - WALL_HALF + 4.0
 	box(Vector3(0, 0.3, WALL_HALF + bridge_len / 2.0), Vector3(14.0, 1.0, bridge_len), _wood)

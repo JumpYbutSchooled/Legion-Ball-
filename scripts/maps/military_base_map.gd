@@ -68,7 +68,7 @@ func _runway() -> void:
 	# Centre-line dashes and edge lights.
 	for i in 24:
 		var x := lerpf(-HALF_X + 30.0, HALF_X - 30.0, i / 23.0)
-		deco(Vector3(x, 0.25, z), Vector3(8.0, 0.05, 0.8), glow(Color(0.95, 0.95, 0.9), 1.5))
+		deco(Vector3(x, 0.32, z), Vector3(8.0, 0.1, 0.8), glow(Color(0.95, 0.95, 0.9), 1.5))
 		for s: float in [-1.0, 1.0]:
 			deco(Vector3(x, 0.4, z + s * 19.0), Vector3(0.8, 0.5, 0.8), _runway_light)
 	# A parked jet: fuselage, wings and tail (solid: good cover and a ramp).
@@ -146,9 +146,11 @@ func _container_yard() -> void:
 			var z := 95.0 + row * 17.0
 			var yaw := 0.0 if _rng.randf() < 0.7 else PI / 2.0
 			var stack := 1 if _rng.randf() < 0.6 else (2 if _rng.randf() < 0.8 else 3)
+			# Slightly different heights, so neighbours' roofs never sit exactly level (flicker).
+			var ch := _rng.randf_range(3.05, 3.4)
 			for s in stack:
 				var tint: Color = _container_colors[_rng.randi() % _container_colors.size()]
-				box(Vector3(x, 1.6 + s * 3.2, z), Vector3(18.0, 3.2, 3.2), panel(tint, tint.darkened(0.3), 1.0), yaw + _rng.randf_range(-0.05, 0.05))
+				box(Vector3(x, ch / 2.0 + s * ch, z), Vector3(18.0, ch, 3.2), panel(tint, tint.darkened(0.3), 1.0), yaw + _rng.randf_range(-0.05, 0.05))
 	for i in 8:
 		var p := Vector2(_rng.randf_range(-220.0, 220.0), _rng.randf_range(-20.0, 80.0))
 		if absf(p.x) < 50.0 and p.y > 5.0:

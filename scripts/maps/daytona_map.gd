@@ -18,11 +18,11 @@ func _setup() -> void:
 func _decorate() -> void:
 	# Lake Lloyd: a sunken pool in the back half of the infield with a sandy rim.
 	var water := glow(Color(0.1, 0.45, 0.8), 0.6)
-	box(Vector3(20.0, -1.4, -40.0), Vector3(200.0, 1.0, 90.0), water)
+	box(Vector3(20.0, 0.15, -40.0), Vector3(200.0, 0.3, 90.0), water)
 	for side: float in [-1.0, 1.0]:
-		box(Vector3(20.0, 0.2, -40.0 + side * 47.0), Vector3(204.0, 1.2, 4.0), solid(Color(0.8, 0.72, 0.5)))
+		box(Vector3(20.0, 0.6, -40.0 + side * 47.0), Vector3(204.0, 1.2, 4.0), solid(Color(0.8, 0.72, 0.5)))
 	for side: float in [-1.0, 1.0]:
-		box(Vector3(20.0 + side * 102.0, 0.2, -40.0), Vector3(4.0, 1.2, 94.0), solid(Color(0.8, 0.72, 0.5)))
+		box(Vector3(20.0 + side * 102.0, 0.6, -40.0), Vector3(4.0, 1.2, 94.0), solid(Color(0.8, 0.72, 0.5)))
 	# Pit road: a lane inside the front stretch with the pit wall, and garages behind.
 	var pit_z := turn_radius - track_width / 2.0 - 22.0
 	box(Vector3(0.0, 0.05, pit_z), Vector3(straight * 0.8, 0.3, 16.0), _apron)

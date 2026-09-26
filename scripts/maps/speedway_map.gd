@@ -116,13 +116,15 @@ func _grandstands() -> void:
 		var h := 6.0 + t * 3.2
 		box(Vector3(0.0, h / 2.0, z0 + t * 6.0 + 3.0), Vector3(length, h, 6.0), _stand)
 	var back := z0 + stand_tiers * 6.0
-	var top := 6.0 + stand_tiers * 3.2
-	box(Vector3(0.0, top + 14.0, back - 12.0), Vector3(length, 1.0, 34.0), _wall, 0.0, 0.0, false)
+	# The top tier's height: the roof's columns stand on it.
+	var top := 6.0 + (stand_tiers - 1) * 3.2
+	var roof_y := top + 14.0
+	box(Vector3(0.0, roof_y + 0.5, back - 12.0), Vector3(length, 1.0, 34.0), _wall, 0.0, 0.0, false)
 	for i in 9:
 		var x := lerpf(-length / 2.0 + 4.0, length / 2.0 - 4.0, i / 8.0)
-		pillar(Vector2(x, back - 2.0), top, 1.6, 14.0, _stand)
-	# Press box: a glass-fronted block on top.
-	box(Vector3(0.0, top + 20.0, back - 14.0), Vector3(90.0, 10.0, 14.0), panel(Color(0.18, 0.2, 0.26), Color(0.4, 0.6, 1.0), 3.0, 0.6, 0.5), 0.0, 0.0, false)
+		pillar(Vector2(x, back - 3.0), top, 1.6, 14.0, _stand)
+	# Press box: a glass-fronted block sitting on the roof.
+	box(Vector3(0.0, roof_y + 6.0, back - 14.0), Vector3(90.0, 10.0, 14.0), panel(Color(0.18, 0.2, 0.26), Color(0.4, 0.6, 1.0), 3.0, 0.6, 0.5), 0.0, 0.0, false)
 
 
 ## A stock car: body and cabin in a racing colour. Solid, so it's cover.
