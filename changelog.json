@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.2.2",
+        "date":  "2026-09-26",
+        "notes":  "Balance pass. NERFS: Echo Rifle (lower damage, half-damage echo, 5-round magazine + reload), Beam Lance, Frost Lance; every lock-on now uses a small Gatling-size circle. BUFFS: Stasis Mine, Gravity Well (stronger pull, no dashing out), Splinter Bomb, Shard Mortar, bigger Crystal Wall, Arc Pylon and Spike Carpet 6x range, Thorn Burst, Piercer, faster Arbalest, homing Ricochet Disc, Meteor Drop, Executioner 69 damage, longer Saber deflect, real Winglets glide, Hunter\u0027s Sigil tags on the minimap, Mirage decoys steal enemy locks. Time Dilator fixed: enemies inside move and fire slowly, turrets stop. Melee weapons (Saber, Shock Knuckle, Buzzsaw) kill in one hit. Tears of an Angel back to Swarm-style wings."
+    },
+    {
         "version":  "1.2.1",
         "date":  "2026-09-26",
         "notes":  "The owner now has 1000 health."
