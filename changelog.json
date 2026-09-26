@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.4.2",
+        "date":  "2026-09-26",
+        "notes":  "Bots now always hold the gun they fire (weapon locks were leaving them stuck on the Gatling). New PRACTICE ADMIN page in the practice pause menu: gold shield, low gravity, launch yourself, and set your own speed."
+    },
+    {
         "version":  "1.4.1",
         "date":  "2026-09-26",
         "notes":  "Fixed a crash when leaving a server (or when the server drops you)."
