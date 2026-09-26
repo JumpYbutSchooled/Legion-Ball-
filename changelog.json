@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.3.4",
+        "date":  "2026-09-26",
+        "notes":  "Coliseum, The Box, Thunder Dome, City, Daytona 500, Atlantis, El Dorado, Military Base, The House, Trench Run, Enterprise, Gotham and Chess Board are now twice as big. Ramps out of the Atlantis canals and the Trench Run trench (no more getting stuck)."
+    },
+    {
         "version":  "1.3.3",
         "date":  "2026-09-26",
         "notes":  "Owner: set anyone\u0027s max health and speed (including your own) from the moderation page. Fixed flickering (z-fighting) on Trench Run, City, Castle, The House, Gotham, Military Base and Atlantis. Talladega/Daytona stand roofs no longer float, and Daytona\u0027s lake is back. Arbalest: shoves much harder and pins targets to any wall behind them (up to 14 m)."
