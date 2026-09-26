@@ -1,5 +1,10 @@
 [
     {
+        "version":  "0.8.9",
+        "date":  "2026-09-25",
+        "notes":  "Tears of an Angel now flies straight through walls, and Tears and Rain of God leave a white ripple and warp on both sides of every wall they pass through."
+    },
+    {
         "version":  "0.8.8",
         "date":  "2026-09-25",
         "notes":  "New staff weapon for mods and the owner: TEARS OF AN ANGEL (slot 8), a white Swarm with unlimited range and locks, missiles that fire one by one at twice the speed, deal 25 damage and steer round walls - but a parried tear kills you. Pillars of God moves to slot 9."
