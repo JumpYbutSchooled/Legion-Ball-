@@ -38,6 +38,7 @@ const Sfx := preload("res://scripts/sfx.gd")
 const DamageNumber := preload("res://scripts/damage_number.gd")
 const BallScript := preload("res://scripts/ball.gd")
 const InputSetup := preload("res://scripts/input_setup.gd")
+const WallRipple := preload("res://scripts/wall_ripple.gd")
 ## How fast the weapon turns to follow the aim (higher = snappier).
 const TURN_RATE := 30.0
 
@@ -502,6 +503,20 @@ func spawn_rail_bolt(props: Dictionary, visual_only := false) -> void:
 @rpc("authority", "reliable")
 func _net_rail_bolt(props: Dictionary) -> void:
 	spawn_rail_bolt(props, true)
+
+
+## A shot from `from` to `to` passed through walls: white ripples on every face it went
+## in and out of (wall_ripple.gd). Everyone works out the crossings on their own map.
+func spawn_ripples(from: Vector3, to: Vector3) -> void:
+	WallRipple.pierce(ball.get_parent(), get_world_3d().direct_space_state, from, to, [ball.get_rid()])
+	if _broadcasting():
+		_net_zripples.rpc(from, to)
+
+
+## (Named to sort after the other RPCs.)
+@rpc("authority", "unreliable")
+func _net_zripples(from: Vector3, to: Vector3) -> void:
+	WallRipple.pierce(ball.get_parent(), get_world_3d().direct_space_state, from, to, [ball.get_rid()])
 
 
 ## The Tether hooked something (or let go): other players draw the same rope. `path` is

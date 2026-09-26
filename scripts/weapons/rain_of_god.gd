@@ -89,9 +89,12 @@ func _fire(hit: Dictionary) -> void:
 	var target_hit := {}
 	var aim: Vector3 = manager.aim_point
 	if lock_target and is_instance_valid(lock_target):
-		# Straight to the target, through anything in the way.
+		# Straight to the target, through anything in the way; every third bolt ripples
+		# the walls it passes through (fifty a second would be a blur).
 		aim = lock_target.call("get_aim_point")
 		target_hit = {"collider": lock_target, "position": aim, "normal": (tip - aim).normalized()}
+		if _shots % 3 == 0:
+			manager.spawn_ripples(tip, aim)
 	elif not hit.is_empty():
 		aim = hit["position"]
 		target_hit = hit

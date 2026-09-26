@@ -123,7 +123,7 @@ const WEAPONS := [
 			"No lock limit: stack as many missiles on a target as you want",
 			"The crosshair counts your locks",
 			"RELEASE  missiles leave one by one in quick succession",
-			"Twice Swarm's speed, 25 damage each, they steer round walls",
+			"Twice Swarm's speed, 25 damage each, straight THROUGH WALLS",
 			"PARRYABLE, and a parried tear KILLS YOU instantly",
 		],
 		"combo": "Lock, lock, lock, release. Don't aim it at a shield.",

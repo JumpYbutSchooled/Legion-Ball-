@@ -5,6 +5,8 @@ extends Node3D
 ## contact with anything (or near its target), marking targets in the blast.
 ## Set position and velocity before adding it to the tree. Frees itself.
 
+const WallRipple := preload("res://scripts/wall_ripple.gd")
+
 @export var speed := 95.0
 ## How fast it can turn toward its target, in radians per second (ramps up after launch).
 @export var turn_rate := 18.0
@@ -17,9 +19,9 @@ extends Node3D
 @export var blast_radius := 2.5
 @export var mark_time := 4.0
 @export var color := Color(0.6, 0.35, 1.0)
-## Tears of an Angel: steer round walls (and glance off them) instead of exploding on
-## them, only detonating on its target or something that can be hit.
-@export var avoid_walls := false
+## Tears of an Angel: fly straight through walls (a white ripple and warp on both faces
+## of each one, wall_ripple.gd), only detonating on its target or something hittable.
+@export var phase_walls := false
 ## Deal `damage` straight to what it hits (the blast is just for show) instead of
 ## splash damage.
 @export var direct_hit := false
@@ -91,51 +93,49 @@ func _physics_process(delta: float) -> void:
 			if axis.length() > 0.0001:
 				dir = dir.rotated(axis.normalized(), minf(angle, rate * delta))
 		velocity = dir * speed
-		if avoid_walls:
-			velocity = _steer_round_walls(velocity, delta)
 		if global_position.distance_to(goal) < fuse_distance:
 			_explode(global_position, target if is_instance_valid(target) else null)
 			return
 
 	var step := velocity * delta
-	var query := PhysicsRayQueryParameters3D.create(global_position, global_position + step)
+	var from := global_position
+	var space := get_world_3d().direct_space_state
+	if phase_walls:
+		# Walls don't stop it: only something hittable does. Ripples where it goes in and
+		# where it comes out (every computer draws its own copy's).
+		var struck := _first_hittable(space, from, from + step)
+		WallRipple.pierce(get_parent(), space, from, from + step, _exclude)
+		if not struck.is_empty():
+			_explode(struck["position"], struck["collider"])
+			return
+		global_position += step
+		_face_velocity()
+		return
+	var query := PhysicsRayQueryParameters3D.create(from, from + step)
 	query.exclude = _exclude
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var hit := space.intersect_ray(query)
 	if not hit.is_empty():
 		var normal: Vector3 = hit["normal"]
-		var collider: Object = hit["collider"]
-		if avoid_walls and not collider.has_method("take_hit"):
-			# A wall: glance off it and keep hunting.
-			velocity = velocity.bounce(normal)
-			global_position = hit["position"] + normal * 0.3
-			_face_velocity()
-			return
-		_explode(hit["position"] + normal * 0.2, collider)
+		_explode(hit["position"] + normal * 0.2, hit["collider"])
 		return
 	global_position += step
 	_face_velocity()
 
 
-## Looks ahead; if a wall is coming (and it isn't the target), slides along it toward
-## the goal and lifts a little, so it goes round or over instead of into it.
-func _steer_round_walls(v: Vector3, _delta: float) -> Vector3:
-	var ahead := v.normalized() * minf(speed * 0.3, 60.0)
-	var query := PhysicsRayQueryParameters3D.create(global_position, global_position + ahead)
-	query.exclude = _exclude
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if hit.is_empty() or hit["collider"] == target or (hit["collider"] as Object).has_method("take_hit"):
-		return v
-	var n: Vector3 = hit["normal"]
-	var dir := v.normalized()
-	var slide := dir - n * dir.dot(n)
-	if slide.length() < 0.05:
-		slide = n.cross(Vector3.UP)
-		if slide.length() < 0.05:
-			slide = Vector3.RIGHT
-	# Closer walls push harder.
-	var near := 1.0 - global_position.distance_to(hit["position"]) / ahead.length()
-	var steered := (slide.normalized() + n * (0.3 + near) + Vector3.UP * 0.25).normalized()
-	return steered * speed
+## The first thing along the segment that can take a hit (players, targets), looking
+## past any walls in the way; {} if none.
+func _first_hittable(space: PhysicsDirectSpaceState3D, a: Vector3, b: Vector3) -> Dictionary:
+	var skip: Array[RID] = _exclude.duplicate()
+	for i in 6:
+		var query := PhysicsRayQueryParameters3D.create(a, b)
+		query.exclude = skip
+		var hit := space.intersect_ray(query)
+		if hit.is_empty():
+			return {}
+		if (hit["collider"] as Object).has_method("take_hit"):
+			return hit
+		skip.append(hit["rid"])
+	return {}
 
 
 func _face_velocity() -> void:

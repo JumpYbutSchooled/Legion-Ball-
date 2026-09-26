@@ -3,8 +3,8 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## Hold fire to lock targets anywhere on screen: no range limit and no line of sight
 ## needed, and no cap (a target can be locked again and again). The crosshair counts
 ## the locks. Release and the missiles leave one by one in quick succession, each on
-## its own, alternating blades. They fly twice as fast as Swarm's, steer and glance
-## round walls to reach their target, and each hit does 25 damage.
+## its own, alternating blades. They fly twice as fast as Swarm's, straight through walls
+## (a white ripple and warp on both faces of each wall), and each hit does 25 damage.
 ## Parryable, but a parried tear kills whoever fired it (scripts/arena.gd).
 
 ## Twice Swarm's missile speed.
@@ -168,7 +168,7 @@ func _launch_one(target: Node3D, aim: Vector3) -> void:
 		"lifetime": missile_lifetime,
 		"damage": missile_damage,
 		"mark_time": 0.0,
-		"avoid_walls": true,
+		"phase_walls": true,
 		"direct_hit": true,
 		"parry_kills": true,
 		"aim_point": goal,
