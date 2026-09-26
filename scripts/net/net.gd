@@ -39,6 +39,17 @@ const MAP_NAMES := {
 	"res://scenes/arena_thunderdome.tscn": "THUNDER DOME",
 	"res://scenes/arena_tunnels.tscn": "TUNNELS",
 	"res://scenes/arena_city.tscn": "CITY",
+	"res://scenes/arena_castle.tscn": "CASTLE",
+	"res://scenes/arena_daytona.tscn": "DAYTONA 500",
+	"res://scenes/arena_talladega.tscn": "TALLADEGA",
+	"res://scenes/arena_atlantis.tscn": "ATLANTIS",
+	"res://scenes/arena_el_dorado.tscn": "EL DORADO",
+	"res://scenes/arena_military_base.tscn": "MILITARY BASE",
+	"res://scenes/arena_house.tscn": "THE HOUSE",
+	"res://scenes/arena_trench_run.tscn": "TRENCH RUN",
+	"res://scenes/arena_enterprise.tscn": "ENTERPRISE",
+	"res://scenes/arena_gotham.tscn": "GOTHAM",
+	"res://scenes/arena_chess.tscn": "CHESS BOARD",
 }
 ## The combat maps: what end-of-match votes, moderators and hosts choose between.
 const COMBAT_MAPS := [
@@ -48,17 +59,45 @@ const COMBAT_MAPS := [
 	"res://scenes/arena_thunderdome.tscn",
 	"res://scenes/arena_tunnels.tscn",
 	"res://scenes/arena_city.tscn",
+	"res://scenes/arena_castle.tscn",
+	"res://scenes/arena_daytona.tscn",
+	"res://scenes/arena_talladega.tscn",
+	"res://scenes/arena_atlantis.tscn",
+	"res://scenes/arena_el_dorado.tscn",
+	"res://scenes/arena_military_base.tscn",
+	"res://scenes/arena_house.tscn",
+	"res://scenes/arena_trench_run.tscn",
+	"res://scenes/arena_enterprise.tscn",
+	"res://scenes/arena_gotham.tscn",
+	"res://scenes/arena_chess.tscn",
 ]
 ## The map each online server runs, in the same order as SERVER_URLS. A server finds its
 ## own entry from Render's RENDER_EXTERNAL_HOSTNAME; a MAP env var ("sprawl" or
 ## "training") overrides it.
 const SERVER_MAPS := [ARENA_SCENE, ARENA_SCENE, TRAINING_SCENE, TRAINING_SCENE]
+## CLASSIC servers (0-based: SERVER 3 and 4): everyone plays the original six weapons.
+const CLASSIC_SERVERS := [2, 3]
 const MENU_SCENE := "res://scenes/menu.tscn"
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const CONNECT_TIMEOUT := 8.0
 ## A sleeping free-tier server takes up to about a minute to wake; keep retrying this long.
 const SERVER_WAKE_TIMEOUT := 100.0
 const SERVER_RETRY_DELAY := 3.0
+
+## Game modes: every man for himself, or two teams (no friendly fire, team kills win).
+const MODES := ["ffa", "teams"]
+const MODE_NAMES := {"ffa": "FREE FOR ALL", "teams": "TEAM DEATHMATCH"}
+const TEAM_NAMES := ["RED", "BLUE"]
+const TEAM_COLORS := [Color(1.0, 0.32, 0.26), Color(0.28, 0.58, 1.0)]
+
+## AI pilots (scripts/bot_brain.gd): while a match has fewer than BOT_FILL people, the
+## host adds bots to make it up (never more than MAX_BOTS), and drops them as people join.
+## They live in the roster like players, with "bot": true and negative ids from BOT_ID_BASE
+## down (real peer ids are positive and can be anything up to 2^31, and -1 is a turret).
+const BOT_FILL := 4
+const MAX_BOTS := 3
+const BOT_ID_BASE := -1000
+const BOT_NAMES := ["VOLT", "HALO", "RIFT", "NOVA", "ECHO", "GLINT", "SHARD", "PRISM"]
 
 ## Trim colours handed out to players in join order.
 const COLORS := [
@@ -77,9 +116,14 @@ var status := ""
 var dedicated := false
 ## The map matches load. Set by the server (_use_map) before it loads anyone in.
 var map_scene := ARENA_SCENE
+## The mode matches are played in (MODES). Set by the server with the map.
+var game_mode := "ffa"
 ## AI turrets on (scripts/turrets.gd). Off by default. The host's copy is the real one
 ## (staff switch it with Mod.toggle_turrets); offline it's the practice setting.
 var turrets_on := false
+## A CLASSIC server: every loadout is the original six (DEFAULT_LOADOUT). Set on the
+## server itself, and sent to each player as they join (_zzclassic).
+var classic := false
 ## This game's version (res://version.txt, updated with every patch). Players must match
 ## the server's exactly to join.
 var version := ""
@@ -107,6 +151,52 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
 
+## True for an AI pilot's roster id.
+static func is_bot(id: int) -> bool:
+	return id <= BOT_ID_BASE
+
+
+## How many real people are in the roster.
+func human_count() -> int:
+	var n := 0
+	for id in players:
+		if not is_bot(id):
+			n += 1
+	return n
+
+
+## Host: add or drop bots so a match with few people still has BOT_FILL pilots (even in
+## a team game). No people, no bots. Returns true if the roster changed.
+func update_bots() -> bool:
+	if not is_host() or OS.get_environment("BOTS") == "0":
+		return false
+	var humans := human_count()
+	var want := 0
+	if humans > 0 and humans < BOT_FILL:
+		want = mini(BOT_FILL - humans, MAX_BOTS)
+		if game_mode == "teams" and (humans + want) % 2 == 1 and want < MAX_BOTS:
+			want += 1
+	want = mini(want, MAX_PLAYERS - humans)
+	var bots: Array = players.keys().filter(func(id: int) -> bool: return is_bot(id))
+	bots.sort()
+	var changed := false
+	while bots.size() > want:
+		players.erase(bots.pop_back())
+		changed = true
+	var n := 1
+	while bots.size() < want:
+		while players.has(BOT_ID_BASE - n):
+			n += 1
+		var id := BOT_ID_BASE - n
+		players[id] = _new_player("BOT " + String(BOT_NAMES[(n - 1) % BOT_NAMES.size()]), _free_color())
+		players[id]["bot"] = true
+		if game_mode == "teams":
+			players[id]["team"] = _smaller_team()
+		bots.append(id)
+		changed = true
+	return changed
+
+
 func is_host() -> bool:
 	return online and multiplayer.is_server()
 
@@ -123,12 +213,44 @@ func local_name() -> String:
 
 
 func player_color(id: int) -> Color:
+	# In a team game everyone wears their team's colour.
+	var team := team_of(id)
+	if team >= 0:
+		return TEAM_COLORS[team]
 	var info: Dictionary = players.get(id, {})
 	return COLORS[int(info.get("color", 0)) % COLORS.size()]
 
 
+## A player's team (0 red, 1 blue), or -1 when it isn't a team game.
+func team_of(id: int) -> int:
+	if game_mode != "teams":
+		return -1
+	return int(players.get(id, {}).get("team", -1))
+
+
+## Host: split everyone into two even teams for a new round (or clear teams in FFA).
+func assign_teams() -> void:
+	var ids := players.keys()
+	ids.shuffle()
+	for i in ids.size():
+		if game_mode == "teams":
+			players[ids[i]]["team"] = i % 2
+		else:
+			players[ids[i]].erase("team")
+
+
+## Host: the team with fewer players (a late joiner goes there).
+func _smaller_team() -> int:
+	var counts := [0, 0]
+	for id in players:
+		var t := int(players[id].get("team", -1))
+		if t >= 0:
+			counts[t] += 1
+	return 0 if counts[0] <= counts[1] else 1
+
+
 func player_name(id: int) -> String:
-	if id < 0:
+	if id < 0 and not players.has(id):
 		return "TURRET"  # AI turrets (scripts/turrets.gd) deal damage as id -1.
 	return players.get(id, {}).get("name", "PLAYER %d" % id)
 
@@ -230,6 +352,11 @@ func host_dedicated(port := SERVER_PORT) -> Error:
 	in_match = true
 	players = {}
 	map_scene = _dedicated_map()
+	classic = CLASSIC_SERVERS.has(server_index()) or OS.get_environment("CLASSIC") == "1"
+	# The first round's mode (after that, the end-of-match vote decides).
+	var mode_env := OS.get_environment("GAME_MODE").strip_edges().to_lower()
+	if MODES.has(mode_env):
+		game_mode = mode_env
 	print("[server] listening on port %d, map %s" % [port, MAP_NAMES.get(map_scene, map_scene)])
 	# Server 1 relays global chat between the servers (scripts/net/global_relay.gd).
 	var relay := get_tree().root.get_node_or_null("GlobalChat")
@@ -301,6 +428,8 @@ func leave() -> void:
 	_retry_timer = -1.0
 	_rejected_reason = ""
 	map_scene = ARENA_SCENE
+	game_mode = "ffa"
+	classic = false
 	players.clear()
 	input_blocked = false
 	roster_changed.emit()
@@ -311,6 +440,10 @@ func start_match() -> void:
 	if not is_host():
 		return
 	in_match = true
+	update_bots()
+	assign_teams()
+	_sync_roster.rpc(players)
+	_zzuse_mode.rpc(game_mode)
 	_use_map.rpc(map_scene)
 	_load_arena.rpc()
 
@@ -323,8 +456,11 @@ func change_map(path: String) -> void:
 	for id in players:
 		players[id]["kills"] = 0
 		players[id]["deaths"] = 0
+	update_bots()
+	assign_teams()
 	_sync_roster.rpc(players)
 	in_match = true
+	_zzuse_mode.rpc(game_mode)
 	_use_map.rpc(map_scene)
 	_load_arena.rpc()
 
@@ -343,11 +479,19 @@ func end_match() -> void:
 	for id in players:
 		players[id]["kills"] = 0
 		players[id]["deaths"] = 0
+	update_bots()
+	assign_teams()
 	_sync_roster.rpc(players)
 	if dedicated:
+		_zzuse_mode.rpc(game_mode)
 		_use_map.rpc(map_scene)
 		_load_arena.rpc()
 	else:
+		# Back to a LAN lobby: the bots go home.
+		for id in players.keys():
+			if is_bot(id):
+				players.erase(id)
+		_sync_roster.rpc(players)
 		_back_to_lobby.rpc()
 
 
@@ -420,6 +564,8 @@ func _on_peer_disconnected(id: int) -> void:
 	if dedicated:
 		print("[server] %s left" % players[id]["name"])
 	players.erase(id)
+	if in_match:
+		update_bots()
 	_sync_roster.rpc(players)
 
 
@@ -455,17 +601,23 @@ func _register(player_name_in: String) -> void:
 		_turned_away.rpc_id(id, reason)
 		get_tree().create_timer(0.5).timeout.connect(_drop_peer.bind(id))
 		return
-	if players.size() >= MAX_PLAYERS:
+	if human_count() >= MAX_PLAYERS:
 		# Tell them why, then drop them once the message has had time to arrive.
 		_turned_away.rpc_id(id, "Server is full (%d/%d). Try another server." % [MAX_PLAYERS, MAX_PLAYERS])
 		get_tree().create_timer(0.5).timeout.connect(_drop_peer.bind(id))
 		return
 	players[id] = _new_player(player_name_in.strip_edges().substr(0, 16), _free_color())
-	players[id]["loadout"] = WeaponInfo.valid_loadout(_peer_loadouts.get(id, []))
+	players[id]["loadout"] = _allowed_loadout(_peer_loadouts.get(id, []))
+	if game_mode == "teams":
+		players[id]["team"] = _smaller_team()
+	_zzclassic.rpc_id(id, classic)
 	if dedicated:
-		print("[server] %s joined (%d online)" % [players[id]["name"], players.size()])
+		print("[server] %s joined (%d online)" % [players[id]["name"], human_count()])
+	if in_match:
+		update_bots()
 	_sync_roster.rpc(players)
 	if in_match:
+		_zzuse_mode.rpc_id(id, game_mode)
 		_use_map.rpc_id(id, map_scene)
 		_load_arena.rpc_id(id)
 
@@ -557,12 +709,30 @@ func _zset_loadout(ids: Array) -> void:
 	var id := multiplayer.get_remote_sender_id()
 	if id == 0:
 		id = 1
-	var clean := WeaponInfo.valid_loadout(ids)
+	var clean := _allowed_loadout(ids)
 	if players.has(id):
 		players[id]["loadout"] = clean
 		_sync_roster.rpc(players)
 	else:
 		_peer_loadouts[id] = clean
+
+
+## The loadout a player gets here: their own, or the original six on a CLASSIC server.
+func _allowed_loadout(ids: Array) -> Array:
+	return WeaponInfo.DEFAULT_LOADOUT.duplicate() if classic else WeaponInfo.valid_loadout(ids)
+
+
+## The mode the next match is played in (sent just before _use_map).
+@rpc("authority", "reliable")
+func _zzuse_mode(mode: String) -> void:
+	if MODES.has(mode):
+		game_mode = mode
+
+
+## The server tells a joining player whether it's a CLASSIC server (the Armory says so).
+@rpc("authority", "reliable")
+func _zzclassic(on: bool) -> void:
+	classic = on
 
 
 func _drop_peer(id: int) -> void:

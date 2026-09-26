@@ -52,7 +52,7 @@ func _chop() -> void:
 func _low_health(t: Node) -> bool:
 	var scene := get_tree().current_scene
 	if t.has_method("is_blocking") and scene and "health" in scene:
-		var id := t.get_multiplayer_authority()
+		var id: int = t.call("player_id") if t.has_method("player_id") else t.get_multiplayer_authority()
 		var full: float = scene.call("max_health_of", id) if scene.has_method("max_health_of") else 100.0
 		return float(scene.get("health").get(id, full)) < full * 0.3
 	if "_health" in t and "max_health" in t:

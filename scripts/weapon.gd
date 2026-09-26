@@ -319,8 +319,13 @@ func targets_on_screen(radius_px: float, max_distance := INF, need_sight := fals
 		return found
 	var center := camera.get_viewport().get_visible_rect().size / 2.0
 	var ball_pos := ball.global_position
+	var scene := get_tree().current_scene
+	var teams: bool = scene != null and scene.has_method("is_team_game") and scene.call("is_team_game")
 	for target in get_tree().get_nodes_in_group("lock_targets"):
 		if not target.call("is_alive"):
+			continue
+		# Team game: no locking onto teammates.
+		if teams and target.has_method("player_id") and scene.call("_same_team", ball.call("player_id"), target.call("player_id")):
 			continue
 		var p: Vector3 = target.call("get_aim_point")
 		if camera.is_position_behind(p) or p.distance_to(ball_pos) > max_distance:
@@ -357,11 +362,11 @@ func _redirect_to_decoys(found: Array, center: Vector2) -> void:
 		return
 	for entry in found:
 		var t: Node = entry["target"]
-		if not t is RigidBody3D or not by_owner.has(t.get_multiplayer_authority()):
+		if not t is RigidBody3D or not t.has_method("player_id") or not by_owner.has(t.call("player_id")):
 			continue
 		var best: Node3D = null
 		var best_off := INF
-		for d in by_owner[t.get_multiplayer_authority()]:
+		for d in by_owner[t.call("player_id")]:
 			var off := camera.unproject_position(d.global_position).distance_to(center)
 			if off < best_off:
 				best = d

@@ -39,6 +39,9 @@ var tip_open := 0.0
 
 var _blades: Array[MeshInstance3D] = []
 var _bases: Array[Basis] = []
+## Seconds until it can fire again. Counts down every frame, equipped or not, so a weapon
+## you've switched away from is ready when you come back.
+var _cooldown := 0.0
 var _kicks := PackedFloat32Array()
 var _wave := -1.0
 var _flash := 0.0
@@ -139,6 +142,11 @@ func flash(c: Color) -> void:
 
 
 func _process(delta: float) -> void:
+	# Inside an enemy Time Dilator it counts down slower (ball.gd weapon_time_scale).
+	var time_scale := 1.0
+	if manager and manager.get("ball") and manager.ball.has_method("weapon_time_scale"):
+		time_scale = manager.ball.call("weapon_time_scale")
+	_cooldown = maxf(_cooldown - delta * time_scale, 0.0)
 	var settle := 1.0 - exp(-kick_recover * delta)
 	for i in _blades.size():
 		_kicks[i] = lerpf(_kicks[i], 0.0, settle)

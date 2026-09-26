@@ -81,6 +81,8 @@ func _own_status() -> Dictionary:
 	var names: Array = []
 	for id in net.get("players"):
 		var p: Dictionary = net.get("players")[id]
+		if p.get("bot", false):
+			continue  # Only real people count as "online".
 		var title := ModScript.title_of(p)
 		names.append(("[%s] " % title[0] if not title.is_empty() else "") + String(p["name"]))
 	return {"players": names, "map": net.MAP_NAMES.get(net.get("map_scene"), "")}

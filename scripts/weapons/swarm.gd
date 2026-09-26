@@ -22,7 +22,6 @@ const MISSILE_SPEED := 95.0
 var painted: Array[Node3D] = []
 var _painting := false
 var _paint_timer := 0.0
-var _cooldown := 0.0
 var _was_pressed := false
 var _next_blade := 0
 
@@ -40,7 +39,6 @@ func _build() -> void:
 
 
 func handle_fire(pressed: bool, _hit: Dictionary, delta: float) -> void:
-	_cooldown = maxf(_cooldown - delta, 0.0)
 	var released := _was_pressed and not pressed
 	_was_pressed = pressed
 	_prune()

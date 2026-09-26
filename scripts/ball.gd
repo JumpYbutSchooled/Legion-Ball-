@@ -104,6 +104,29 @@ var _dilate_timer := 0.0
 var _dilate_mult := 1.0
 ## Crystal Saber: shots parried while this runs deflect without launching us.
 var deflect_timer := 0.0
+## An AI pilot (bot_brain.gd, on the host): it steers with bot_move (world direction),
+## looks along bot_look, and presses buttons with bot_press() instead of the keyboard.
+var bot := false
+var bot_move := Vector3.ZERO
+var bot_look := Vector3.FORWARD
+var _bot_pressed := {}
+
+
+## This player's roster id (a bot's ball is owned by the host, so it isn't the authority).
+func player_id() -> int:
+	return int(get_meta("player_id", get_multiplayer_authority()))
+
+
+## A bot presses ction (jump, dash, block) for the next physics step.
+func bot_press(action: String) -> void:
+	_bot_pressed[action] = true
+
+
+## Pressed this step: the keyboard/controller, or a bot's bot_press().
+func _pressed(action: String) -> bool:
+	if bot:
+		return _bot_pressed.erase(action)
+	return Input.is_action_just_pressed(action)
 
 
 func _ready() -> void:
@@ -161,15 +184,15 @@ func _physics_process(delta: float) -> void:
 	# Frozen by staff (moderation.gd): held in place like a stagger, for as long as it lasts.
 	if _mod == null:
 		_mod = get_tree().root.get_node_or_null("Mod")
-	if _mod and _mod.call("is_frozen", multiplayer.get_unique_id()):
+	if _mod and _mod.call("is_frozen", player_id()):
 		_stagger_timer = maxf(_stagger_timer, 0.1)
 	var controls := _controls_enabled()
 
-	if controls and _block_cd == 0.0 and Input.is_action_just_pressed("block"):
+	if controls and _block_cd == 0.0 and _pressed("block"):
 		_start_block()
 
 	# Owner only: the gold shield (the server checks and applies it; moderation.gd).
-	if controls and Input.is_action_just_pressed("god_shield"):
+	if controls and not bot and Input.is_action_just_pressed("god_shield"):
 		var mod := get_tree().root.get_node_or_null("Mod")
 		if mod:
 			mod.call("toggle_god_shield")
@@ -186,10 +209,13 @@ func _physics_process(delta: float) -> void:
 			_fall_reported = true
 			var arena := _arena()
 			if arena:
-				arena.call("request_fall")
+				if bot:
+					arena.call("bot_fell", player_id())
+				else:
+					arena.call("request_fall")
 		if global_position.y < fall_reset_height - 400.0:
 			_reset_requested = true
-	elif (controls and Input.is_action_just_pressed("reset_ball")) or fell:
+	elif (controls and not bot and Input.is_action_just_pressed("reset_ball")) or fell:
 		_reset_requested = true
 
 	var grounded := _is_grounded()
@@ -208,13 +234,13 @@ func _physics_process(delta: float) -> void:
 
 	_update_skid(grounded, dir, delta)
 
-	if controls and grounded and _jump_timer == 0.0 and Input.is_action_just_pressed("jump"):
+	if controls and grounded and _jump_timer == 0.0 and _pressed("jump"):
 		_jump_timer = jump_cooldown
 		apply_central_impulse(Vector3.UP * jump_impulse)
 		jumped.emit()
 		Sfx.play_flat(get_tree(), "jump", -8.0)
 
-	if controls and _dash_timer == 0.0 and _pull_timer <= 0.0 and Input.is_action_just_pressed("dash"):
+	if controls and _dash_timer == 0.0 and _pull_timer <= 0.0 and _pressed("dash"):
 		_dash_timer = dash_cooldown
 		_dash_requested = true
 
@@ -223,6 +249,8 @@ func _physics_process(delta: float) -> void:
 func _controls_enabled() -> bool:
 	if dead or _stagger_timer > 0.0:
 		return false
+	if bot:
+		return true  # The host's menus don't stop its bots.
 	var net := get_tree().root.get_node_or_null("Net")
 	return not (net and net.get("input_blocked"))
 
@@ -252,7 +280,7 @@ func take_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
 		_shield.call("hit_flash")
 	var arena := _arena()
 	if arena:
-		arena.call("request_hit", get_multiplayer_authority(), amount * PVP_DAMAGE_SCALE)
+		arena.call("request_hit", player_id(), amount * PVP_DAMAGE_SCALE)
 
 
 ## A Tears of an Angel missile: an ordinary hit, except that parrying it kills whoever
@@ -262,7 +290,7 @@ func take_tears_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
 		_shield.call("hit_flash")
 	var arena := _arena()
 	if arena:
-		arena.call("request_tears_hit", get_multiplayer_authority(), amount * PVP_DAMAGE_SCALE)
+		arena.call("request_tears_hit", player_id(), amount * PVP_DAMAGE_SCALE)
 
 
 ## A hit that goes straight through the shield and can't be parried (staff weapons).
@@ -271,7 +299,7 @@ func take_tears_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
 func take_status(kind: String, duration: float, data := Vector3.ZERO) -> void:
 	var arena := _arena()
 	if arena:
-		arena.call("request_status", get_multiplayer_authority(), kind, duration, data)
+		arena.call("request_status", player_id(), kind, duration, data)
 
 
 ## Local player only: a status the host approved.
@@ -301,25 +329,25 @@ func weapon_time_scale() -> float:
 func take_unblockable_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
 	var arena := _arena()
 	if arena:
-		arena.call("request_unblockable_hit", get_multiplayer_authority(), amount * PVP_DAMAGE_SCALE)
+		arena.call("request_unblockable_hit", player_id(), amount * PVP_DAMAGE_SCALE)
 
 
 func receive_impulse(impulse: Vector3) -> void:
 	var arena := _arena()
 	if arena:
-		arena.call("request_push", get_multiplayer_authority(), impulse * PVP_PUSH_SCALE)
+		arena.call("request_push", player_id(), impulse * PVP_PUSH_SCALE)
 
 
 func mark(duration: float) -> void:
 	var arena := _arena()
 	if arena:
-		arena.call("request_mark", get_multiplayer_authority(), duration)
+		arena.call("request_mark", player_id(), duration)
 
 
 func stagger(duration: float) -> void:
 	var arena := _arena()
 	if arena:
-		arena.call("request_stagger", get_multiplayer_authority(), duration)
+		arena.call("request_stagger", player_id(), duration)
 
 
 ## Hidden, untouchable and uncontrollable while dead.
@@ -377,7 +405,10 @@ func _start_block() -> void:
 	_show_block(block_time)
 	var arena := _arena()
 	if arena:
-		arena.call("request_block", block_time)
+		if bot:
+			arena.call("bot_block", player_id(), block_time)
+		else:
+			arena.call("request_block", block_time)
 	if _online():
 		_net_block.rpc(block_time)
 
@@ -424,7 +455,8 @@ func on_parried(shooter_pos := Vector3.INF) -> void:
 			"position": global_position,
 			"color": Color(0.55, 0.4, 1.0),
 			"radius": 16.0,
-			"damage": 10.0,
+			# A bot's parry blast is just for show: its damage couldn't be credited properly.
+			"damage": 0.0 if bot else 10.0,
 			"force": 70.0,
 			"spark_count": 500,
 			"spark_speed": 40.0,
@@ -666,6 +698,8 @@ func _get_dash_direction(velocity: Vector3) -> Vector3:
 func _get_move_direction() -> Vector3:
 	if not _controls_enabled():
 		return Vector3.ZERO
+	if bot:
+		return Vector3(bot_move.x, 0.0, bot_move.z).limit_length(1.0)
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	if input == Vector2.ZERO:
 		return Vector3.ZERO
@@ -677,11 +711,16 @@ func _get_move_direction() -> Vector3:
 
 ## Where the local camera is looking (straight ahead if there's none).
 func _camera_look() -> Vector3:
+	if bot:
+		return bot_look.normalized()
 	var camera := get_viewport().get_camera_3d()
 	return -camera.global_basis.z if camera else _get_camera_forward()
 
 
 func _get_camera_forward() -> Vector3:
+	if bot:
+		var flat := Vector3(bot_look.x, 0.0, bot_look.z)
+		return flat.normalized() if flat.length() > 0.01 else Vector3.FORWARD
 	var basis := camera_rig.global_basis if camera_rig else Basis.IDENTITY
 	return Vector3(-basis.z.x, 0.0, -basis.z.z).normalized()
 

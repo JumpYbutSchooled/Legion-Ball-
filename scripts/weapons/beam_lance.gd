@@ -36,7 +36,6 @@ func _crosshair_extra(info: Dictionary) -> void:
 func _fire(pressed: bool, _just: bool, _released: bool, _hit: Dictionary, delta: float) -> void:
 	_firing = pressed and can_fire()
 	if not _firing:
-		heat = maxf(heat - delta / burn_time, 0.0)
 		_ramp = 1.0
 		_last = null
 		return
@@ -66,7 +65,12 @@ func _fire(pressed: bool, _just: bool, _released: bool, _hit: Dictionary, delta:
 	manager.spawn_light(end, 10.0 + _ramp * 6.0, 4.0, tick, color)
 
 
-func _update(_delta: float) -> void:
+## Cools off whenever it isn't firing, equipped or not.
+func _update(delta: float) -> void:
+	if not is_ready():
+		_firing = false
+	if not _firing:
+		heat = maxf(heat - delta / burn_time, 0.0)
 	_set_param("charge_glow", heat * 2.0 if _firing else 0.0)
 
 

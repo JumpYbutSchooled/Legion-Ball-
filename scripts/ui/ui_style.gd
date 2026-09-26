@@ -1,12 +1,32 @@
 extends RefCounted
 ## Shared look for the "combat simulation" UI: monospace type, dark translucent panels
-## with thin cyan borders, bracketed buttons.
+## with thin borders in the accent colour, bracketed buttons.
 
-const ACCENT := Color(0.35, 0.9, 1.0)
-const ACCENT_DIM := Color(0.35, 0.9, 1.0, 0.35)
+## The accent colours the player can pick (Settings "ui_color"), cyan by default.
+const ACCENTS := {
+	"CYAN": Color(0.35, 0.9, 1.0),
+	"MAGENTA": Color(1.0, 0.35, 0.85),
+	"LIME": Color(0.6, 1.0, 0.3),
+	"AMBER": Color(1.0, 0.72, 0.25),
+	"CRIMSON": Color(1.0, 0.33, 0.33),
+	"VIOLET": Color(0.7, 0.52, 1.0),
+	"WHITE": Color(0.93, 0.96, 1.0),
+}
+## The current accent (set_accent), and a see-through version of it for borders.
+static var ACCENT := Color(0.35, 0.9, 1.0)
+static var ACCENT_DIM := Color(0.35, 0.9, 1.0, 0.35)
+## Border colour meaning "use ACCENT_DIM" (panel_box's default).
+const _DEFAULT := Color(-1, -1, -1, -1)
 const TEXT := Color(0.85, 0.95, 1.0)
 const TEXT_DIM := Color(0.55, 0.7, 0.78)
 const PANEL_BG := Color(0.02, 0.05, 0.08, 0.82)
+
+
+## Switch every menu and HUD built from now on to accent `name` (a key of ACCENTS).
+static func set_accent(name: String) -> void:
+	var c: Color = ACCENTS.get(name, ACCENTS["CYAN"])
+	ACCENT = c
+	ACCENT_DIM = Color(c, 0.35)
 
 
 static func font(bold := false) -> SystemFont:
@@ -17,10 +37,10 @@ static func font(bold := false) -> SystemFont:
 	return f
 
 
-static func panel_box(border := ACCENT_DIM, bg := PANEL_BG) -> StyleBoxFlat:
+static func panel_box(border := _DEFAULT, bg := PANEL_BG) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
-	sb.border_color = border
+	sb.border_color = ACCENT_DIM if border == _DEFAULT else border
 	sb.set_border_width_all(1)
 	sb.set_content_margin_all(14)
 	return sb
@@ -37,14 +57,14 @@ static func make_theme() -> Theme:
 	normal.set_content_margin_all(10)
 	normal.content_margin_left = 16
 	var hover := normal.duplicate() as StyleBoxFlat
-	hover.bg_color = Color(0.35, 0.9, 1.0, 0.16)
+	hover.bg_color = Color(ACCENT, 0.16)
 	hover.border_color = ACCENT
 	var pressed := hover.duplicate() as StyleBoxFlat
-	pressed.bg_color = Color(0.35, 0.9, 1.0, 0.3)
+	pressed.bg_color = Color(ACCENT, 0.3)
 	# Focus (controller / keyboard): a bright outline just outside the button.
 	var focus := StyleBoxFlat.new()
 	focus.draw_center = false
-	focus.border_color = Color(0.7, 1.0, 1.0)
+	focus.border_color = ACCENT.lerp(Color.WHITE, 0.5)
 	focus.set_border_width_all(2)
 	focus.set_expand_margin_all(3)
 	theme.set_stylebox("normal", "Button", normal)
@@ -79,7 +99,7 @@ static func make_theme() -> Theme:
 
 	# Slim sliders: a thin rail, a cyan fill and a small square grabber.
 	var rail := StyleBoxFlat.new()
-	rail.bg_color = Color(0.35, 0.9, 1.0, 0.15)
+	rail.bg_color = Color(ACCENT, 0.15)
 	rail.content_margin_top = 2
 	rail.content_margin_bottom = 2
 	var fill := rail.duplicate() as StyleBoxFlat

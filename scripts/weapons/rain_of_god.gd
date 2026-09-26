@@ -18,7 +18,6 @@ var lock_target: Node3D = null
 var lock_screen_pos := Vector2.ZERO
 
 var _next := 0
-var _cooldown := 0.0
 var _shots := 0
 
 
@@ -34,7 +33,6 @@ func _build() -> void:
 
 
 func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
-	_cooldown = maxf(_cooldown - delta, 0.0)
 	_update_lock()
 	if not pressed or not is_ready():
 		return
@@ -63,7 +61,7 @@ func _update(_delta: float) -> void:
 ## Peer id of the player locked onto, so they get the red warning (lock_warning.gd).
 func locked_peer() -> int:
 	if lock_target and is_instance_valid(lock_target) and lock_target.has_method("is_blocking"):
-		return lock_target.get_multiplayer_authority()
+		return lock_target.call("player_id") if lock_target.has_method("player_id") else lock_target.get_multiplayer_authority()
 	return 0
 
 

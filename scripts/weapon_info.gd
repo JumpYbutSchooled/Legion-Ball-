@@ -461,8 +461,7 @@ static func slot_ids(loadout: Array) -> Array:
 ## How many slots (from the first) this player may use right now: the loadout, then the
 ## staff weapons their role unlocks (none while hidden with key 0).
 static func unlocked_count(tree: SceneTree) -> int:
-	var mod := tree.root.get_node_or_null("Mod") if tree else null
-	var role: String = mod.call("staff_role") if mod else ""
+	var role := weapon_role(tree)
 	var settings := tree.root.get_node_or_null("Settings") if tree else null
 	var shown: bool = settings.call("get_value", "show_staff_weapons") if settings else true
 	var n := LOADOUT_SIZE
@@ -475,6 +474,14 @@ static func unlocked_count(tree: SceneTree) -> int:
 
 ## True if this player has any staff weapons (whether or not they're toggled on).
 static func has_staff_weapons(tree: SceneTree) -> bool:
+	return ACCESS["mod"].has(weapon_role(tree))
+
+
+## The role that decides which staff weapons this player gets: their staff role online;
+## in singleplayer everyone gets every staff weapon (there's nobody to use them on).
+static func weapon_role(tree: SceneTree) -> String:
+	var net := tree.root.get_node_or_null("Net") if tree else null
+	if net and not net.get("online"):
+		return "owner"
 	var mod := tree.root.get_node_or_null("Mod") if tree else null
-	var role: String = mod.call("staff_role") if mod else ""
-	return ACCESS["mod"].has(role)
+	return mod.call("staff_role") if mod else ""

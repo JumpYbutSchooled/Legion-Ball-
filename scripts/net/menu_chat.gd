@@ -7,7 +7,10 @@ extends Node
 ## Reconnects on its own (the hub may be asleep: it takes up to a minute to wake).
 ## Hangs up when it leaves the tree (leaving the main menu).
 
+## A new message, live.
 signal message_received(entry: Dictionary)
+## The hub (re)sent its recent history (on every connect): old messages, not new ones.
+signal history_loaded
 signal status_changed(text: String)
 
 const NetScript := preload("res://scripts/net/net.gd")
@@ -85,7 +88,8 @@ func _on_auth(_id: int, data: PackedByteArray) -> void:
 			if typeof(entries) == TYPE_ARRAY:
 				for entry in entries:
 					if typeof(entry) == TYPE_DICTIONARY:
-						_add(entry)
+						_add(entry, false)
+			history_loaded.emit()
 		"down":
 			if typeof(msg.get("entry")) == TYPE_DICTIONARY:
 				_add(msg["entry"])
@@ -97,11 +101,12 @@ func _on_auth(_id: int, data: PackedByteArray) -> void:
 			_close.call_deferred()
 
 
-func _add(entry: Dictionary) -> void:
+func _add(entry: Dictionary, live := true) -> void:
 	history.append(entry)
 	while history.size() > HISTORY:
 		history.pop_front()
-	message_received.emit(entry)
+	if live:
+		message_received.emit(entry)
 
 
 func _close() -> void:

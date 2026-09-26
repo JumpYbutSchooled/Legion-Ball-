@@ -22,12 +22,10 @@ var lock_target: Node3D = null
 var lock_screen := Vector2.ZERO
 
 var charge := 0.0
-var _cooldown := 0.0
 var _was_pressed := false
 
 
 func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
-	_cooldown = maxf(_cooldown - delta, 0.0)
 	var just := pressed and not _was_pressed
 	var released := _was_pressed and not pressed
 	_was_pressed = pressed

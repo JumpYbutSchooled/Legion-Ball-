@@ -68,6 +68,12 @@ const JOY_BUTTONS := {
 	"zoom_in": [JOY_BUTTON_DPAD_UP],
 	"zoom_out": [JOY_BUTTON_DPAD_DOWN],
 	"scoreboard": [JOY_BUTTON_BACK],
+	# Menus: A (PlayStation X) presses the focused button, B (PlayStation Circle) backs out.
+	# Godot's defaults have no controller button on either.
+	"ui_accept": [JOY_BUTTON_A],
+	# Motion controls: click the right stick to point the camera back behind the ball.
+	"recenter_camera": [JOY_BUTTON_RIGHT_STICK],
+	"ui_cancel": [JOY_BUTTON_B],
 }
 const JOY_AXES := {
 	"move_forward": [[JOY_AXIS_LEFT_Y, -1.0]],
@@ -78,7 +84,7 @@ const JOY_AXES := {
 	"reload": [[JOY_AXIS_TRIGGER_LEFT, 1.0]],
 }
 ## Controller-only actions (not on the Controls page; keyboard uses the mouse wheel).
-const PAD_ONLY := ["weapon_prev", "weapon_next"]
+const PAD_ONLY := ["weapon_prev", "weapon_next", "recenter_camera"]
 
 ## True while the last input came from a controller (set by camera_rig.gd): firing then
 ## doesn't need a captured mouse.
@@ -91,6 +97,8 @@ const PAD_HELP := [
 	["B", "Shield"], ["Y", "Holster / draw"], ["RT", "Fire"], ["LT", "Reload / vent"],
 	["LB / RB", "Previous / next weapon"], ["D-PAD UP / DOWN", "Zoom"],
 	["BACK", "Scoreboard"], ["START", "Pause menu"],
+	["A / X (menus)", "Select"], ["B / CIRCLE (menus)", "Back"],
+	["TILT (DUALSENSE, MOTION CONTROLS ON)", "Aim the camera"], ["R3 (RIGHT STICK CLICK)", "Recenter camera"],
 ]
 
 ## Everything the player can rebind, in the order the Controls page lists it:

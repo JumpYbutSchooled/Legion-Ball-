@@ -7,6 +7,7 @@ const UIStyle := preload("res://scripts/ui/ui_style.gd")
 const ModScript := preload("res://scripts/net/moderation.gd")
 const Killstreak := preload("res://scripts/ui/killstreak.gd")
 const NetScript := preload("res://scripts/net/net.gd")
+const MapGrid := preload("res://scripts/ui/map_grid.gd")
 const FEED_TIME := 5.0
 const FEED_MAX := 5
 
@@ -26,13 +27,17 @@ var _streak: Control
 var _locked_label: Label
 var _announce: Label
 var _announce_left := 0.0
-## End-of-match map vote: the panel, one label per option, and our own pick.
+## End-of-match vote (map grid + mode): the panel, the grid, the mode buttons, our picks.
 var _vote_box: PanelContainer
-var _vote_labels: Array[Label] = []
-var _vote_counts: Array = []
+var _vote_grid: GridContainer
+var _mode_buttons: Array[Button] = []
+var _vote_options: Array = []
 var _my_vote := -1
+var _my_mode := -1
 var _vote_left := 0.0
 var _vote_title: Label
+## Team game: the score across the top.
+var _team_label: RichTextLabel
 
 
 func _ready() -> void:
@@ -121,13 +126,29 @@ func _ready() -> void:
 	_board_rows.add_theme_constant_override("separation", 6)
 	_board.add_child(_board_rows)
 
-	# Map vote, bottom-centre (shown at the end of a match).
+	# The vote for the next round, filling the lower part of the screen (end of a match).
 	_vote_box = PanelContainer.new()
-	_vote_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_vote_box.custom_minimum_size = Vector2(560, 0)
-	_vote_box.position = Vector2(-280, -210)
+	_vote_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_vote_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_vote_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_vote_box.offset_bottom = -24
 	_vote_box.visible = false
 	root.add_child(_vote_box)
+
+	# Team score, top-centre (team games only).
+	_team_label = RichTextLabel.new()
+	_team_label.bbcode_enabled = true
+	_team_label.fit_content = true
+	_team_label.scroll_active = false
+	_team_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_team_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_team_label.custom_minimum_size = Vector2(420, 0)
+	_team_label.position = Vector2(-210, 8)
+	_team_label.add_theme_font_override("normal_font", UIStyle.font(true))
+	_team_label.add_theme_font_size_override("normal_font_size", 22)
+	_team_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_team_label.visible = false
+	root.add_child(_team_label)
 
 	if arena:
 		arena.connect("health_changed", _on_health)
@@ -135,7 +156,12 @@ func _ready() -> void:
 		arena.connect("player_respawned", _on_respawned)
 		arena.connect("match_over", _on_match_over)
 		arena.connect("vote_opened", _on_vote_opened)
-		arena.connect("vote_counts", _on_vote_counts)
+		arena.connect("vote_state", _on_vote_state)
+		arena.connect("team_scores_changed", _on_team_scores)
+		if arena.call("is_team_game"):
+			_team_label.visible = true
+			_streak.position.y = 50.0
+			_on_team_scores(arena.get("team_scores"))
 
 
 func _process(delta: float) -> void:
@@ -156,10 +182,6 @@ func _process(delta: float) -> void:
 		_center_sub.text = "RESPAWNING IN %.1f" % maxf(_respawn_left, 0.0)
 	if _vote_box.visible:
 		_vote_left = maxf(_vote_left - delta, 0.0)
-		for i in _vote_labels.size():
-			var key := "weapon_%d" % (i + 1)
-			if InputMap.has_action(key) and Input.is_action_just_pressed(key):
-				_vote(i)
 		_refresh_vote()
 
 
@@ -191,66 +213,108 @@ func _on_announced(text: String, by: String) -> void:
 		sfx.call("play_ui", "ui_page", -4.0)
 
 
-## Controller: D-pad left / down / right vote for options 1 / 2 / 3.
-func _input(event: InputEvent) -> void:
-	var pad := event as InputEventJoypadButton
-	if not _vote_box.visible or not pad or not pad.pressed:
-		return
-	var pick := [JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_RIGHT].find(pad.button_index)
-	if pick >= 0 and pick < _vote_labels.size():
-		_vote(pick)
-
-
+## The vote opens: every map as a tile (plus RANDOM), and the two modes above them. Click,
+## or move with the arrows / D-pad and press Enter / A. The mouse is freed to click.
 func _on_vote_opened(options: Array) -> void:
 	for child in _vote_box.get_children():
 		child.queue_free()
-	_vote_labels.clear()
-	_vote_counts = []
+	_vote_options = options
 	_my_vote = -1
+	_my_mode = -1
 	_vote_left = arena.call("get_rules").get("end_delay", 12.0)
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 6)
+	column.add_theme_constant_override("separation", 10)
 	_vote_box.add_child(column)
-	_vote_title = UIStyle.label("", 14, UIStyle.ACCENT, true)
-	column.add_child(_vote_title)
-	var names: Dictionary = NetScript.MAP_NAMES
-	var here: String = _net.get("map_scene") if _net else ""
-	for i in options.size():
-		var label := UIStyle.label("", 17, UIStyle.TEXT)
-		label.set_meta("map", String(names.get(options[i], options[i])) + ("  (STAY)" if options[i] == here else ""))
-		column.add_child(label)
-		_vote_labels.append(label)
-	column.add_child(UIStyle.label("KEYS 1 / 2 / 3   //   D-PAD LEFT / DOWN / RIGHT", 11, UIStyle.TEXT_DIM))
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 16)
+	column.add_child(head)
+	_vote_title = UIStyle.label("", 16, UIStyle.ACCENT, true)
+	_vote_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(_vote_title)
+	_mode_buttons.clear()
+	for i in NetScript.MODES.size():
+		var b := Button.new()
+		b.text = "[ %s ]" % NetScript.MODE_NAMES[NetScript.MODES[i]]
+		b.pressed.connect(_vote_mode.bind(i))
+		head.add_child(b)
+		_mode_buttons.append(b)
+	var grid := MapGrid.new()
+	grid.maps = options
+	grid.columns = 6
+	grid.tile_size = Vector2(150, 88)
+	grid.picked.connect(func(path: String) -> void: _vote(options.find(path)))
+	column.add_child(grid)
+	_vote_grid = grid
+	column.add_child(UIStyle.label("CLICK A MAP AND A MODE  //  ARROWS OR D-PAD + ENTER / A", 11, UIStyle.TEXT_DIM))
 	_vote_box.visible = true
+	_center_sub.text = ""  # The vote panel says it all (and would cover it).
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var here: String = _net.get("map_scene") if _net else ""
+	var first := grid.tile(here) if grid.tile(here) else grid.tile(options[0])
+	if first:
+		first.grab_focus.call_deferred()
 	_refresh_vote()
 
 
-func _on_vote_counts(counts: Array) -> void:
-	_vote_counts = counts
-	_refresh_vote()
+func _on_vote_state(map_votes: Dictionary, mode_votes: Dictionary) -> void:
+	if not _vote_grid or not is_instance_valid(_vote_grid):
+		return
+	var tokens := {}
+	for peer in map_votes:
+		var i: int = map_votes[peer]
+		if i >= 0 and i < _vote_options.size():
+			var path: String = _vote_options[i]
+			if not tokens.has(path):
+				tokens[path] = []
+			tokens[path].append(_net.call("player_color", peer) if _net else Color.WHITE)
+	_vote_grid.call("set_tokens", tokens)
+	var counts := [0, 0]
+	for peer in mode_votes:
+		var m: int = mode_votes[peer]
+		if m >= 0 and m < counts.size():
+			counts[m] += 1
+	for i in _mode_buttons.size():
+		_mode_buttons[i].text = "[ %s ]%s" % [NetScript.MODE_NAMES[NetScript.MODES[i]], "  " + "■".repeat(counts[i]) if counts[i] > 0 else ""]
 
 
 func _vote(index: int) -> void:
-	if _my_vote == index:
+	if index < 0 or _my_vote == index:
 		return
 	_my_vote = index
 	arena.call("cast_vote", index)
+	if _vote_grid:
+		_vote_grid.call("select", _vote_options[index])
+	_click()
+
+
+func _vote_mode(index: int) -> void:
+	if _my_mode == index:
+		return
+	_my_mode = index
+	arena.call("cast_mode_vote", index)
+	for i in _mode_buttons.size():
+		_mode_buttons[i].add_theme_color_override("font_color", UIStyle.ACCENT if i == index else UIStyle.TEXT)
+	_click()
+
+
+func _click() -> void:
 	var sfx := get_tree().root.get_node_or_null("Sfx")
 	if sfx:
 		sfx.call("play_ui", "ui_click", -8.0)
-	_refresh_vote()
 
 
 func _refresh_vote() -> void:
 	if _vote_title:
-		_vote_title.text = "// VOTE: NEXT MAP   %ds" % ceili(_vote_left)
-	for i in _vote_labels.size():
-		var n: int = _vote_counts[i] if i < _vote_counts.size() else 0
-		var mine := i == _my_vote
-		var bar := "■".repeat(n)
-		_vote_labels[i].text = "%s [%d]  %s   %s" % [">" if mine else " ", i + 1, _vote_labels[i].get_meta("map"), bar]
-		_vote_labels[i].add_theme_color_override("font_color", UIStyle.ACCENT if mine else UIStyle.TEXT)
+		_vote_title.text = "// NEXT ROUND: PICK A MAP AND A MODE   %ds" % ceili(_vote_left)
 
+
+## Team game: "RED 12 — 9 BLUE" across the top.
+func _on_team_scores(scores: Array) -> void:
+	if scores.size() < 2:
+		return
+	var red := NetScript.TEAM_COLORS[0].to_html(false)
+	var blue := NetScript.TEAM_COLORS[1].to_html(false)
+	_team_label.text = "[center][color=#%s]RED %d[/color]  [color=#%s]—[/color]  [color=#%s]%d BLUE[/color][/center]" % [red, scores[0], UIStyle.TEXT_DIM.to_html(false), blue, scores[1]]
 
 func _on_health(id: int, hp: float) -> void:
 	if id != multiplayer.get_unique_id():
@@ -324,6 +388,11 @@ func _on_match_over(winner: int) -> void:
 	_respawn_left = 0.0
 	var me := winner == multiplayer.get_unique_id()
 	_center.text = "VICTORY" if me else _name(winner) + " WINS"
+	if winner == -1 or winner == -2:
+		# A team won (-1 red, -2 blue; bots' ids are -1000 and below).
+		var team := -1 - winner
+		me = _net != null and int(_net.call("team_of", multiplayer.get_unique_id())) == team
+		_center.text = "VICTORY" if me else "%s TEAM WINS" % NetScript.TEAM_NAMES[team]
 	_center.add_theme_color_override("font_color", UIStyle.ACCENT if me else Color.WHITE)
 	var dedicated_server: bool = _net != null and not _net.call("is_host")
 	_center_sub.text = "VOTE FOR THE NEXT MAP" if dedicated_server else "RETURNING TO LOBBY..."
@@ -335,29 +404,45 @@ func _on_match_over(winner: int) -> void:
 func _rebuild_board() -> void:
 	for child in _board_rows.get_children():
 		child.queue_free()
-	_board_rows.add_child(UIStyle.label("// SCOREBOARD   FIRST TO %d" % int(arena.call("get_rules")["kills_to_win"]), 16, UIStyle.ACCENT, true))
+	var rules: Dictionary = arena.call("get_rules")
+	var teams: bool = rules.get("mode", "ffa") == "teams"
+	var time := int(arena.call("match_time"))
+	_board_rows.add_child(UIStyle.label("// SCOREBOARD  //  %s  //  FIRST TO %d" % [NetScript.MODE_NAMES["teams" if teams else "ffa"], int(rules["kills_to_win"])], 16, UIStyle.ACCENT, true))
+	_board_rows.add_child(UIStyle.label("MATCH TIME  %02d:%02d" % [time / 60, time % 60], 14, UIStyle.TEXT))
 	if not _net:
 		return
 	var roster: Dictionary = _net.get("players")
 	var ids := roster.keys()
 	ids.sort_custom(func(a: int, b: int) -> bool: return int(roster[a]["kills"]) > int(roster[b]["kills"]))
-	for id in ids:
-		var row := HBoxContainer.new()
-		var swatch := ColorRect.new()
-		swatch.color = _net.call("player_color", id)
-		swatch.custom_minimum_size = Vector2(8, 18)
-		row.add_child(swatch)
-		var name_label := UIStyle.label("  " + String(roster[id]["name"]), 16, Color.WHITE if id == multiplayer.get_unique_id() else UIStyle.TEXT)
-		name_label.custom_minimum_size = Vector2(210, 0)
-		row.add_child(name_label)
-		# Staff title in its own colour (gold OWNER, cyan MOD, green TESTER).
-		var title := ModScript.title_of(roster[id])
-		var title_label := UIStyle.label("[%s]" % title[0] if not title.is_empty() else "", 13, title[1] if not title.is_empty() else UIStyle.TEXT)
-		title_label.custom_minimum_size = Vector2(90, 0)
-		row.add_child(title_label)
-		row.add_child(UIStyle.label("%3d K   %3d D" % [int(roster[id]["kills"]), int(roster[id]["deaths"])], 16, UIStyle.TEXT))
-		_board_rows.add_child(row)
+	if not teams:
+		for id in ids:
+			_board_row(id, roster)
+		return
+	var scores: Array = arena.get("team_scores")
+	for team in 2:
+		_board_rows.add_child(UIStyle.label("%s TEAM  %d" % [NetScript.TEAM_NAMES[team], scores[team]], 15, NetScript.TEAM_COLORS[team], true))
+		for id in ids:
+			if int(_net.call("team_of", id)) == team:
+				_board_row(id, roster)
 
+
+func _board_row(id: int, roster: Dictionary) -> void:
+	var row := HBoxContainer.new()
+	var swatch := ColorRect.new()
+	swatch.color = _net.call("player_color", id)
+	swatch.custom_minimum_size = Vector2(8, 18)
+	row.add_child(swatch)
+	var name_label := UIStyle.label("  " + String(roster[id]["name"]), 16, Color.WHITE if id == multiplayer.get_unique_id() else UIStyle.TEXT)
+	name_label.custom_minimum_size = Vector2(210, 0)
+	row.add_child(name_label)
+	# Staff title in its own colour (gold OWNER, cyan MOD, green TESTER), or BOT.
+	var title := ModScript.title_of(roster[id])
+	var tag := "[%s]" % title[0] if not title.is_empty() else ("[BOT]" if roster[id].get("bot", false) else "")
+	var title_label := UIStyle.label(tag, 13, title[1] if not title.is_empty() else UIStyle.TEXT_DIM)
+	title_label.custom_minimum_size = Vector2(90, 0)
+	row.add_child(title_label)
+	row.add_child(UIStyle.label("%3d K   %3d D" % [int(roster[id]["kills"]), int(roster[id]["deaths"])], 16, UIStyle.TEXT))
+	_board_rows.add_child(row)
 
 func _name(id: int) -> String:
 	return _net.call("player_name", id) if _net else "?"

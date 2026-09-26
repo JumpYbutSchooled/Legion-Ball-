@@ -8,6 +8,7 @@ extends Node3D
 ##   _turrets  where AI turrets stand           -> turret_points()
 ##   _outline  the boundary, for the minimap    -> outline()
 ##   _ceiling  height where rising bleeds off   -> ceiling()   (ball.gd max_height)
+##   _fall     height below which you've fallen off -> fall_height() (ball.gd fall_reset_height)
 ## Randomness must come from a fixed seed (_rng) so every computer builds the same map.
 ## Builds in _ready, which runs before the parent Map's, so Map's particle colliders
 ## cover all of it.
@@ -19,6 +20,7 @@ var _spawns: Array[Vector3] = []
 var _turrets: Array[Vector3] = []
 var _outline := PackedVector2Array()
 var _ceiling := 120.0
+var _fall := -20.0
 var _rng := RandomNumberGenerator.new()
 var _phys := PhysicsMaterial.new()
 
@@ -47,6 +49,10 @@ func outline() -> PackedVector2Array:
 
 func ceiling() -> float:
 	return _ceiling
+
+
+func fall_height() -> float:
+	return _fall
 
 
 # --- Pieces ---------------------------------------------------------------------------
@@ -125,6 +131,47 @@ func ground(rect: Rect2, mat: Material) -> void:
 	var c := rect.get_center()
 	box(Vector3(c.x, -0.5, c.y), Vector3(rect.size.x, 1.0, rect.size.y), mat)
 
+
+## A flat round slab (top at `top`): rings of blocks, like the Coliseum's tiers.
+func disc(center: Vector3, radius: float, thick: float, mat: Material, rings := 4, minimap := true) -> void:
+	var inner := radius / rings
+	box(Vector3(center.x, center.y - thick / 2.0, center.z), Vector3(inner * 1.42, thick, inner * 1.42), mat, 0.0, 0.0, minimap)
+	for i in range(1, rings):
+		var r0 := radius * i / rings
+		var r1 := radius * (i + 1) / rings
+		var sides := maxi(12, int(TAU * r1 / 14.0))
+		var step := TAU / sides
+		for s in sides:
+			var mid := step * (s + 0.5)
+			var c := Vector2.from_angle(mid) * (r0 + r1) / 2.0
+			box(Vector3(center.x + c.x, center.y - thick / 2.0, center.z + c.y), Vector3(r1 - r0 + 0.6, thick, 2.0 * r1 * sin(step / 2.0) + 0.4), mat, -mid, 0.0, minimap)
+
+
+## A square column from the ground (y0) up `height`.
+func pillar(p: Vector2, y0: float, width: float, height: float, mat: Material, yaw := 0.0) -> StaticBody3D:
+	return box(Vector3(p.x, y0 + height / 2.0, p.y), Vector3(width, height, width), mat, yaw)
+
+
+## Steps from `low` (x, z at y) climbing `count` steps of `rise` each toward `dir`.
+func stairs(low: Vector3, dir: Vector2, count: int, rise: float, tread: float, width: float, mat: Material) -> void:
+	var d := dir.normalized()
+	for i in count:
+		var p := Vector2(low.x, low.z) + d * tread * (i + 0.5)
+		var h := rise * (i + 1)
+		box(Vector3(p.x, low.y + h / 2.0, p.y), Vector3(width, h, tread), mat, atan2(d.x, d.y))
+
+
+## One piece of banked track: a slab `width` across and `length` along, centred on the
+## track's centre line at `p` (x, z), with `outward` pointing to the outside of the
+## turn. It's tilted `bank` radians so the outside edge is raised; the inside edge sits
+## at `base_y`. Returns the height of the outside edge (for the wall on top of it).
+func bank_box(p: Vector2, outward: Vector2, width: float, length: float, bank: float, base_y: float, mat: Material, thick := 1.2) -> float:
+	var u := Vector3(outward.x, 0.0, outward.y).normalized()
+	# Local X across (towards the outside), Y up, Z along the track; then tipped about Z.
+	var basis := Basis(u, Vector3.UP, u.cross(Vector3.UP).normalized()) * Basis(Vector3(0, 0, 1), bank)
+	var top_mid := base_y + width / 2.0 * sin(bank)
+	box_basis(basis, Vector3(p.x, top_mid, p.y) - basis.y * thick / 2.0, Vector3(width, thick, length), mat)
+	return base_y + width * sin(bank)
 
 ## A regular polygon outline (for round maps).
 static func circle_outline(radius: float, sides: int) -> PackedVector2Array:

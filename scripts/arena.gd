@@ -12,9 +12,12 @@ signal health_changed(id: int, hp: float)
 signal player_killed(victim: int, attacker: int)
 signal player_respawned(id: int)
 signal match_over(winner: int)
-## End-of-match map vote: the choices (scene paths) opened, and the running counts.
+## End-of-match vote: the map choices (scene paths, plus "random") opened, and who has
+## voted for what: {peer: map index} and {peer: mode index} (Net.MODES).
 signal vote_opened(options: Array)
-signal vote_counts(counts: Array)
+signal vote_state(map_votes: Dictionary, mode_votes: Dictionary)
+## Team game: the two teams' kill totals changed.
+signal team_scores_changed(scores: Array)
 
 const Services := preload("res://scripts/services.gd")
 const PlayerScene := preload("res://scenes/player.tscn")
@@ -25,6 +28,8 @@ const MapIntro := preload("res://scripts/map_intro.gd")
 const Turrets := preload("res://scripts/turrets.gd")
 const SettingsScript := preload("res://scripts/settings.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
+const NetScript := preload("res://scripts/net/net.gd")
+const BotBrain := preload("res://scripts/bot_brain.gd")
 
 ## Spawn points spread round the middle of the map, facing inward.
 const SPAWN_RADIUS := 55.0
@@ -44,6 +49,8 @@ const PARRY_STUN := 5.0
 ## Health the killer gets back for each kill (capped at MAX_HEALTH).
 const KILL_HEAL := 30.0
 const KILLS_TO_WIN := 15
+## Team game: the first team to this many kills wins.
+const TEAM_KILLS_TO_WIN := 30
 ## Seconds the winner banner (and the vote for the next map) shows before the next round.
 const END_DELAY := 12.0
 ## Maps offered in the end-of-match vote.
@@ -82,6 +89,11 @@ var _heal_pending := {}
 ## The map vote: its choices (every peer) and each voter's pick (host).
 var vote_options: Array = []
 var _votes := {}
+var _mode_votes := {}
+## Team game: kills per team (red, blue). The host counts; everyone gets a copy.
+var team_scores := [0, 0]
+## When this round started (msec), for the match clock on the scoreboard.
+var _match_start := 0
 
 
 func _ready() -> void:
@@ -100,6 +112,10 @@ func _ensure_then_spawn() -> void:
 
 
 func _start(net: Node) -> void:
+	_match_start = Time.get_ticks_msec()
+	# Joining a match that's already going: ask the host for its clock and team scores.
+	if net.get("online") and not multiplayer.is_server():
+		_zzhello.rpc_id(1)
 	if net.get("online"):
 		# Cubes and practice targets only exist offline for now (not network-synced).
 		for practice in ["Targets", "LockTargets"]:
@@ -213,16 +229,28 @@ func _is_god(id: int) -> bool:
 func _spawn(id: int, index: int) -> void:
 	var ball: RigidBody3D = PlayerScene.instantiate()
 	ball.name = "P%d" % id
-	ball.set_multiplayer_authority(id)
+	# AI pilots are simulated by the host (bot_brain.gd): it owns their balls.
+	var bot := is_online() and NetScript.is_bot(id)
+	ball.set_meta("player_id", id)
+	ball.set("bot", bot)
+	ball.set_multiplayer_authority(1 if bot else id)
 	ball.position = spawn_point(index)
 	# Maps can set their own height ceiling (Map/Layout.ceiling()).
 	var layout := get_node_or_null("Map/Layout")
 	if layout and layout.has_method("ceiling"):
 		ball.set("max_height", layout.call("ceiling"))
+	# ...and how far down counts as falling off (deep maps like the Trench Run go lower).
+	if layout and layout.has_method("fall_height"):
+		ball.set("fall_reset_height", layout.call("fall_height"))
 	# Their own weapons (the roster's loadout), built when the ball is added.
 	ball.get_node("Weapon").set("loadout", loadout_of(id))
 	_players_root.add_child(ball)
 	_apply_set_perks(id)
+	if bot and multiplayer.is_server():
+		var brain := BotBrain.new()
+		brain.arena = self
+		brain.bot_id = id
+		ball.add_child(brain)
 	_players[id] = ball
 	health[id] = max_health_of(id)
 	alive[id] = true
@@ -275,7 +303,37 @@ func is_online() -> bool:
 
 
 func get_rules() -> Dictionary:
-	return {"respawn_time": RESPAWN_TIME, "kills_to_win": KILLS_TO_WIN, "max_health": MAX_HEALTH, "end_delay": END_DELAY}
+	var teams := is_team_game()
+	return {"respawn_time": RESPAWN_TIME, "kills_to_win": _win_target(),
+		"max_health": MAX_HEALTH, "end_delay": END_DELAY, "mode": "teams" if teams else "ffa"}
+
+
+## Kills to win: KILLS_TO_WIN (TEAM_KILLS_TO_WIN in a team game), or a server's
+## SCORE_LIMIT environment variable (a quicker match, or for testing).
+func _win_target() -> int:
+	var env := OS.get_environment("SCORE_LIMIT")
+	if env.is_valid_int() and int(env) > 0:
+		return int(env)
+	return TEAM_KILLS_TO_WIN if is_team_game() else KILLS_TO_WIN
+
+
+func is_team_game() -> bool:
+	var net := _net()
+	return net != null and net.get("online") and net.get("game_mode") == "teams"
+
+
+## Seconds since this round started.
+func match_time() -> float:
+	return (Time.get_ticks_msec() - _match_start) / 1000.0
+
+
+## True if a and b are different players on the same team (no friendly fire).
+func _same_team(a: int, b: int) -> bool:
+	if a == b or not is_team_game():
+		return false
+	var net := _net()
+	var ta: int = net.call("team_of", a)
+	return ta >= 0 and ta == int(net.call("team_of", b))
 
 
 func player_ball(id: int) -> Node3D:
@@ -347,10 +405,21 @@ func _sender() -> int:
 
 @rpc("any_peer", "reliable")
 func _host_hit(victim: int, amount: float) -> void:
-	if not multiplayer.is_server() or match_done:
+	if multiplayer.is_server():
+		_resolve_hit(_sender(), victim, amount)
+
+
+## Host: an AI pilot's shot landed (bot_brain.gd), like a player's hit report.
+func bot_hit(bot: int, victim: int, amount: float) -> void:
+	if multiplayer.is_server():
+		_resolve_hit(bot, victim, amount)
+
+
+## Host: ttacker's hit on ictim: a shield parries it, otherwise it's damage.
+func _resolve_hit(attacker: int, victim: int, amount: float) -> void:
+	if match_done:
 		return
-	var attacker := _sender()
-	if attacker == victim or _is_god(victim):
+	if attacker == victim or _is_god(victim) or _same_team(attacker, victim):
 		return
 	if _blocks.has(victim) and alive.get(victim, false):
 		# Shielded: no damage. The first hit on this shield sets off the parry, which
@@ -373,7 +442,7 @@ func _unblockable_hit(victim: int, amount: float) -> void:
 	if not multiplayer.is_server() or match_done:
 		return
 	var attacker := _sender()
-	if attacker != victim:
+	if attacker != victim and not _same_team(attacker, victim):
 		_deal(victim, attacker, amount)
 
 
@@ -398,9 +467,26 @@ func turret_shot(victim: int, amount: float, from: Vector3) -> bool:
 ## FALL_CREDIT_TIME seconds (or nobody). (Named to sort last, like _unblockable_hit.)
 @rpc("any_peer", "reliable")
 func _zfell() -> void:
-	if not multiplayer.is_server() or match_done:
+	if multiplayer.is_server():
+		_fell(_sender())
+
+
+## Host: a bot fell off the map (its ball runs here).
+func bot_fell(id: int) -> void:
+	if multiplayer.is_server():
+		_fell(id)
+
+
+## Host: a bot raised its shield.
+func bot_block(id: int, duration: float) -> void:
+	if multiplayer.is_server() and alive.get(id, false):
+		_blocks[id] = duration + 0.15
+		_parried.erase(id)
+
+
+func _fell(victim: int) -> void:
+	if match_done:
 		return
-	var victim := _sender()
 	if not alive.get(victim, false):
 		return
 	# A report sent from where they died, arriving just after they respawned: not a new fall.
@@ -451,13 +537,13 @@ func _deal(victim: int, attacker: int, amount: float) -> void:
 
 @rpc("any_peer", "reliable")
 func _host_push(victim: int, impulse: Vector3) -> void:
-	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim) and not _is_god(victim):
+	if multiplayer.is_server() and alive.get(victim, false) and not _same_team(_sender(), victim) and not _blocks.has(victim) and not _is_god(victim):
 		_to_peer(victim, "_apply_push", [impulse])
 
 
 @rpc("any_peer", "reliable")
 func _host_mark(victim: int, duration: float) -> void:
-	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim) and not _is_god(victim):
+	if multiplayer.is_server() and alive.get(victim, false) and not _same_team(_sender(), victim) and not _blocks.has(victim) and not _is_god(victim):
 		# HUNTER set bonus: your marks last 50% longer.
 		if perks_of(_sender()).has("hunter"):
 			duration *= 1.5
@@ -467,7 +553,7 @@ func _host_mark(victim: int, duration: float) -> void:
 
 @rpc("any_peer", "reliable")
 func _host_stagger(victim: int, duration: float) -> void:
-	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim) and not _is_god(victim):
+	if multiplayer.is_server() and alive.get(victim, false) and not _same_team(_sender(), victim) and not _blocks.has(victim) and not _is_god(victim):
 		# FROST set bonus: your staggers (and later slows and freezes) last 30% longer.
 		if perks_of(_sender()).has("frost"):
 			duration *= 1.3
@@ -500,7 +586,18 @@ func _kill(victim: int, attacker: int) -> void:
 	if attacker != victim and alive.get(attacker, false):
 		_set_health.rpc(attacker, minf(health.get(attacker, max_health_of(attacker)) + KILL_HEAL, max_health_of(attacker)))
 	_on_killed.rpc(victim, attacker)
-	if credited and int(roster[attacker]["kills"]) >= KILLS_TO_WIN:
+	if is_team_game():
+		# Team game: the killer's team scores; first to TEAM_KILLS_TO_WIN wins (winner is
+		# sent as -1 for red, -2 for blue).
+		var team: int = net.call("team_of", attacker) if credited else -1
+		if team >= 0:
+			team_scores[team] += 1
+			_zzteam_scores.rpc(team_scores)
+			if team_scores[team] >= _win_target():
+				_on_match_over.rpc(-1 - team)
+				_end_timer = END_DELAY
+				_open_vote()
+	elif credited and int(roster[attacker]["kills"]) >= _win_target():
 		_on_match_over.rpc(attacker)
 		_end_timer = END_DELAY
 		_open_vote()
@@ -535,48 +632,55 @@ func _physics_process(delta: float) -> void:
 			_net().call("end_match")
 
 
-## Host: offer this map and a couple of others to vote on for the next round.
+## Host: open the vote for the next round: every combat map plus RANDOM, and the mode.
 func _open_vote() -> void:
 	var net := _net()
-	var maps: Array = net.COMBAT_MAPS.duplicate()
-	var here: String = net.get("map_scene")
-	maps.erase(here)
-	maps.shuffle()
-	var options: Array = []
-	if net.COMBAT_MAPS.has(here):
-		options.append(here)
-	for path in maps:
-		if options.size() >= VOTE_OPTIONS:
-			break
-		options.append(path)
+	var options: Array = net.COMBAT_MAPS.duplicate()
+	options.append("random")
 	_votes.clear()
+	_mode_votes.clear()
 	_zvote_open.rpc(options)
 
 
-## Host: the most-voted map becomes the next one (ties: the earliest listed, so staying
-## put wins a tie). No votes at all: stay.
+## Host: the most-voted map and mode win. A tie on maps is settled at random among the
+## tied; RANDOM (or no votes at all) picks any map but this one. A tied or empty mode
+## vote keeps the current mode.
 func _close_vote() -> void:
 	if vote_options.is_empty():
 		return
-	var counts := _count_votes()
-	var best := 0
+	var net := _net()
+	var counts := _count(_votes, vote_options.size())
+	var best: int = counts.max()
+	var tied: Array = []
 	for i in counts.size():
-		if counts[i] > counts[best]:
-			best = i
-	_net().set("map_scene", vote_options[best])
+		if counts[i] == best and best > 0:
+			tied.append(i)
+	var pick := "random"
+	if not tied.is_empty():
+		pick = vote_options[tied[randi() % tied.size()]]
+	if pick == "random":
+		var maps: Array = net.COMBAT_MAPS.duplicate()
+		maps.erase(net.get("map_scene"))
+		pick = maps[randi() % maps.size()]
+	net.set("map_scene", pick)
+	var modes := _count(_mode_votes, NetScript.MODES.size())
+	var top: int = modes.max()
+	if top > 0 and modes.count(top) == 1:
+		net.set("game_mode", NetScript.MODES[modes.find(top)])
 
 
-func _count_votes() -> Array:
+## How many (present) players voted for each of `size` choices.
+func _count(votes: Dictionary, size: int) -> Array:
 	var counts: Array = []
-	counts.resize(vote_options.size())
+	counts.resize(size)
 	counts.fill(0)
-	for peer in _votes:
-		if _players.has(peer):
-			counts[_votes[peer]] += 1
+	for peer in votes:
+		if _players.has(peer) and votes[peer] >= 0 and votes[peer] < size:
+			counts[votes[peer]] += 1
 	return counts
 
 
-## Any peer: vote for option `index` (0-based).
+## Any peer: vote for map option `index` (0-based).
 func cast_vote(index: int) -> void:
 	if not is_online() or index < 0 or index >= vote_options.size():
 		return
@@ -585,6 +689,15 @@ func cast_vote(index: int) -> void:
 	else:
 		_zvote_cast.rpc_id(1, index)
 
+
+## Any peer: vote for mode `index` (Net.MODES).
+func cast_mode_vote(index: int) -> void:
+	if not is_online() or index < 0 or index >= NetScript.MODES.size():
+		return
+	if multiplayer.is_server():
+		_zzvote_mode(index)
+	else:
+		_zzvote_mode.rpc_id(1, index)
 
 ## Host: players with their weapon put away heal the faster they go (see HEAL_*).
 func _heal_holstered(delta: float) -> void:
@@ -624,10 +737,35 @@ func _safest_spawn() -> Vector3:
 
 
 func _to_peer(peer: int, method: StringName, args: Array) -> void:
+	if NetScript.is_bot(peer):
+		_bot_call(peer, method, args)
+		return
 	if peer == multiplayer.get_unique_id():
 		callv(method, args)
 	else:
 		callv("rpc_id", [peer, method] + args)
+
+
+## Host: what the host would have sent to a player's computer, done straight to a bot's
+## ball (the host simulates bots).
+func _bot_call(id: int, method: StringName, args: Array) -> void:
+	var ball: Node = _players.get(id)
+	if not ball or ball.get("dead"):
+		return
+	match String(method):
+		"_apply_push":
+			(ball as RigidBody3D).apply_central_impulse(args[0])
+		"_apply_parry":
+			var shooter: Node3D = _players.get(args[0])
+			ball.call("on_parried", shooter.global_position if shooter else Vector3.INF)
+		"_zzparry_at":
+			ball.call("on_parried", args[0])
+		"_apply_stagger":
+			ball.call("stagger_controls", args[0])
+		"_zzapply_status":
+			ball.call("apply_status", args[0], args[1], args[2])
+		"_zzteleport":
+			ball.call("teleport", args[0])
 
 
 # --- Results (run on every peer) -------------------------------------------------------
@@ -677,7 +815,8 @@ func _on_respawn(id: int, pos: Vector3) -> void:
 	var ball: Node3D = _players.get(id)
 	if ball:
 		ball.call("set_dead", false)
-		if id == multiplayer.get_unique_id():
+		# Our own ball, or (on the host) a bot's: back to life at pos.
+		if id == multiplayer.get_unique_id() or (NetScript.is_bot(id) and multiplayer.is_server()):
 			ball.call("respawn_at", pos)
 	player_respawned.emit(id)
 
@@ -716,18 +855,48 @@ func _zvote_cast(index: int) -> void:
 	if not multiplayer.is_server() or vote_options.is_empty() or index < 0 or index >= vote_options.size():
 		return
 	_votes[_sender()] = index
-	_zvote_tally.rpc(_count_votes())
+	_zzvote_state.rpc(_votes, _mode_votes)
+
+
+@rpc("any_peer", "reliable")
+func _zzvote_mode(index: int) -> void:
+	if not multiplayer.is_server() or vote_options.is_empty() or index < 0 or index >= NetScript.MODES.size():
+		return
+	_mode_votes[_sender()] = index
+	_zzvote_state.rpc(_votes, _mode_votes)
+
+
+## Everyone: who has voted for what (for the tokens on the vote screen).
+@rpc("authority", "call_local", "reliable")
+func _zzvote_state(map_votes: Dictionary, mode_votes: Dictionary) -> void:
+	vote_state.emit(map_votes, mode_votes)
+
+
+## A late joiner asks the host for the match clock and the team scores.
+@rpc("any_peer", "reliable")
+func _zzhello() -> void:
+	if multiplayer.is_server():
+		_zzclock.rpc_id(_sender(), match_time(), team_scores)
+
+
+@rpc("authority", "reliable")
+func _zzclock(elapsed: float, scores: Array) -> void:
+	_match_start = Time.get_ticks_msec() - int(elapsed * 1000.0)
+	_zzteam_scores(scores)
+
+
+## Everyone: the team totals (a team game).
+@rpc("authority", "call_local", "reliable")
+func _zzteam_scores(scores: Array) -> void:
+	if scores.size() == 2:
+		team_scores = scores
+		team_scores_changed.emit(team_scores)
 
 
 @rpc("authority", "call_local", "reliable")
 func _zvote_open(options: Array) -> void:
 	vote_options = options.filter(func(p) -> bool: return typeof(p) == TYPE_STRING)
 	vote_opened.emit(vote_options)
-
-
-@rpc("authority", "call_local", "reliable")
-func _zvote_tally(counts: Array) -> void:
-	vote_counts.emit(counts)
 
 
 ## A Tears of an Angel hit. Unshielded: ordinary damage. On a shield: the usual parry for
@@ -738,7 +907,7 @@ func _zztears_hit(victim: int, amount: float) -> void:
 	if not multiplayer.is_server() or match_done:
 		return
 	var attacker := _sender()
-	if attacker == victim or _is_god(victim):
+	if attacker == victim or _is_god(victim) or _same_team(attacker, victim):
 		return
 	if _blocks.has(victim) and alive.get(victim, false):
 		if not _parried.has(victim):
@@ -788,7 +957,7 @@ func _zzstatus(victim: int, kind: String, duration: float, data: Vector3) -> voi
 	if not multiplayer.is_server() or match_done or not kind in ["chill", "freeze", "cage", "pin", "pull", "dilate"]:
 		return
 	var attacker := _sender()
-	if attacker == victim or not alive.get(victim, false) or _blocks.has(victim) or _is_god(victim) \
+	if attacker == victim or not alive.get(victim, false) or _blocks.has(victim) or _is_god(victim) or _same_team(attacker, victim) \
 			or _protect.get(victim, 0.0) > 0.0:
 		return
 	duration = clampf(duration, 0.0, 8.0)

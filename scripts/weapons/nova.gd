@@ -42,7 +42,6 @@ extends "res://scripts/weapons/blade_weapon.gd"
 
 var charge := 0.0
 var _charging := false
-var _cooldown := 0.0
 var _was_pressed := false
 ## The blast pop: the blades fling wide open, then settle.
 var _burst := 0.0
@@ -67,7 +66,6 @@ func _build() -> void:
 
 
 func handle_fire(pressed: bool, _hit: Dictionary, delta: float) -> void:
-	_cooldown = maxf(_cooldown - delta, 0.0)
 	var released := _was_pressed and not pressed
 	_was_pressed = pressed
 	if not is_ready():

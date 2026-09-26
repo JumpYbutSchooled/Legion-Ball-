@@ -7,6 +7,7 @@ extends Node
 signal changed
 
 const PATH := "user://settings.cfg"
+const UIStyle := preload("res://scripts/ui/ui_style.gd")
 const DEFAULTS := {
 	## Multiplier on the base mouse sensitivity.
 	"mouse_sensitivity": 1.0,
@@ -38,6 +39,12 @@ const DEFAULTS := {
 	## Staff weapons shown in the picker and on keys 7-8 (key 0 toggles).
 	"show_staff_weapons": true,
 	"fullscreen": false,
+	## Aim the camera by tilting a controller with a gyro (DualSense, DualShock 4, Switch Pro).
+	"motion_controls": false,
+	"motion_sensitivity": 1.0,
+	"motion_invert_y": false,
+	## Menu and HUD accent colour (ui_style.gd ACCENTS).
+	"ui_color": "CYAN",
 	"vsync": true,
 }
 
@@ -50,6 +57,7 @@ func _ready() -> void:
 		for key in DEFAULTS:
 			_values[key] = file.get_value("settings", key, DEFAULTS[key])
 	_apply_window()
+	UIStyle.set_accent(String(get_value("ui_color")))
 
 
 func get_value(key: String) -> Variant:
@@ -61,6 +69,8 @@ func set_value(key: String, value: Variant) -> void:
 	_save()
 	if key == "fullscreen" or key == "vsync":
 		_apply_window()
+	if key == "ui_color":
+		UIStyle.set_accent(String(value))
 	changed.emit()
 
 
@@ -68,6 +78,7 @@ func reset_defaults() -> void:
 	_values.clear()
 	_save()
 	_apply_window()
+	UIStyle.set_accent(String(get_value("ui_color")))
 	changed.emit()
 
 

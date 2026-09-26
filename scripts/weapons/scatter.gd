@@ -55,7 +55,6 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## 0 cold .. 1 overheated.
 var heat := 0.0
 var overheated := false
-var _cooldown := 0.0
 var _since_shot := 0.0
 ## 1 right after a shot, easing to 0: the crosshair's spread bloom.
 var _bloom := 0.0
@@ -75,7 +74,6 @@ func _build() -> void:
 
 
 func handle_fire(pressed: bool, _hit: Dictionary, delta: float) -> void:
-	_cooldown = maxf(_cooldown - delta, 0.0)
 	if pressed and is_ready() and not overheated and _cooldown == 0.0:
 		_fire()
 

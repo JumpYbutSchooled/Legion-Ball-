@@ -23,9 +23,14 @@ const SettingsScript := preload("res://scripts/settings.gd")
 const MenuChat := preload("res://scripts/net/menu_chat.gd")
 const Changelog := preload("res://scripts/ui/changelog.gd")
 const LoadoutCard := preload("res://scripts/ui/loadout_card.gd")
+const WeaponPicker := preload("res://scripts/ui/weapon_picker.gd")
+const WeaponIcons := preload("res://scripts/ui/weapon_icons.gd")
+const MapGrid := preload("res://scripts/ui/map_grid.gd")
 const GLOBAL_COLOR := Color(1.0, 0.72, 0.3)
 
 var pause_mode := false
+## The page to open when the menu is rebuilt (after changing the UI colour).
+static var _reopen_page := ""
 
 ## Main menu only: the global chat connection, the open chat page's log, and messages
 ## that came in while another page was open.
@@ -38,6 +43,8 @@ var _armory_detail_id := ""
 var _armory_detail: VBoxContainer
 var _held := ""
 var _held_label: Label
+## Renders the weapon pictures for the picker (weapon_icons.gd).
+var _icons: Node
 
 var _page_holder: PanelContainer
 var _scroll: ScrollContainer
@@ -79,6 +86,7 @@ func _ready() -> void:
 		_chat.name = "MenuChat"
 		add_child(_chat)
 		_chat.connect("message_received", _on_chat_message)
+		_chat.connect("history_loaded", _on_chat_history)
 		_chat.connect("status_changed", _on_chat_status)
 	_nav(nav, "armory", "ARMORY", func() -> void: _show_page("armory"))
 	_nav(nav, "controls", "CONTROLS", func() -> void: _show_page("controls"))
@@ -123,7 +131,11 @@ func _ready() -> void:
 	_frame = TechFrame.new()
 	_page_holder.add_child(_frame)
 	# Back from a match (still connected): land on the lobby.
-	_show_page("multiplayer" if online and not pause_mode else "armory", true)
+	var first := "multiplayer" if online and not pause_mode else "armory"
+	if _reopen_page != "":
+		first = _reopen_page
+		_reopen_page = ""
+	_show_page(first, true)
 	_intro.call_deferred()
 	visibility_changed.connect(func() -> void:
 		if is_visible_in_tree():
@@ -301,7 +313,16 @@ func _header(parent: Control, title: String, sub: String) -> void:
 ## onto each other to reorder. Concepts show but can't be equipped yet. Staff weapons
 ## (keys 7-9) are listed separately. Pressing any card shows its briefing on the right.
 func _build_armory(box: VBoxContainer) -> void:
-	_header(box, "ARMORY", "DRAG WEAPONS INTO YOUR SIX SLOTS (KEYS 1-6)  //  STAFF WEAPONS STAY ON 7-9")
+	if not _icons:
+		_icons = WeaponIcons.new()
+		add_child(_icons)
+	# Main menu: start drawing the picker's weapon pictures now, so they're ready when it
+	# opens. (Not in a match's pause menu: they're drawn when the picker first opens.)
+	if not pause_mode:
+		for id in WeaponInfo.pool():
+			if WeaponInfo.is_built(id):
+				_icons.call("request", id)
+	_header(box, "ARMORY", "PRESS A SLOT TO PICK ITS WEAPON, OR DRAG WEAPONS IN (KEYS 1-6)  //  STAFF WEAPONS STAY ON 7-9")
 	var mine := WeaponInfo.local_loadout(get_tree())
 	if _armory_detail_id == "":
 		_armory_detail_id = mine[0]
@@ -395,6 +416,19 @@ func _card_pressed(card: Node) -> void:
 		_update_held_label()
 	elif _held != "":
 		_loadout_drop(slot, {"weapon": _held, "from_slot": -1})
+	else:
+		_open_picker(slot)
+
+
+## A loadout slot pressed with nothing held: the picker window for that slot.
+func _open_picker(slot: int) -> void:
+	var picker := WeaponPicker.new()
+	picker.slot = slot
+	picker.loadout = WeaponInfo.local_loadout(get_tree())
+	picker.icons = _icons
+	picker.picked.connect(func(s: int, id: String) -> void: _loadout_drop(s, {"weapon": id, "from_slot": -1}))
+	add_child(picker)
+	ui_sound(self, "ui_page", -10.0)
 
 
 func _update_held_label() -> void:
@@ -524,6 +558,17 @@ const MAP_BLURBS := {
 	"res://scenes/arena_thunderdome.tscn": "Steel arena under a lightning-struck dome.",
 	"res://scenes/arena_tunnels.tscn": "Underground maze of chambers and corridors. Close quarters.",
 	"res://scenes/arena_city.tscn": "Night city: multi-floor garages, skybridges and towers.",
+	"res://scenes/arena_castle.tscn": "Medieval fortress: curtain walls, corner towers, a keep and a moat.",
+	"res://scenes/arena_daytona.tscn": "Banked superspeedway: 31-degree turns, Lake Lloyd and pit road.",
+	"res://scenes/arena_talladega.tscn": "The biggest, steepest oval, with the Big One strewn across the track.",
+	"res://scenes/arena_atlantis.tscn": "Sunken city of rings: canals, bridges, ruins and Poseidon's temple.",
+	"res://scenes/arena_el_dorado.tscn": "City of Gold: a gold-capped pyramid, temples and jungle.",
+	"res://scenes/arena_military_base.tscn": "Hangars, a runway, radar towers and a container yard.",
+	"res://scenes/arena_house.tscn": "An ordinary house at 10:1. Climb the furniture, crawl the vents.",
+	"res://scenes/arena_trench_run.tscn": "A space-station trench, 700 m long and 32 deep. Stay on target.",
+	"res://scenes/arena_enterprise.tscn": "Fight on a starship's saucer, neck and warp nacelles in deep space.",
+	"res://scenes/arena_gotham.tscn": "Dark gothic city: towers, fire escapes, an elevated train and the signal.",
+	"res://scenes/arena_chess.tscn": "A giant chess board floating in the void, every piece in place.",
 }
 
 
@@ -540,14 +585,17 @@ func _build_practice(box: VBoxContainer) -> void:
 			net.set("turrets_on", not net.get("turrets_on"))
 			label.call())
 		box.add_child(turrets)
-	for path in MAP_BLURBS:
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 16)
-		box.add_child(row)
-		var b := _small_button(NetScript.MAP_NAMES.get(path, path), func() -> void: play_pressed.emit(path))
-		b.custom_minimum_size = Vector2(220, 0)
-		row.add_child(b)
-		row.add_child(_wrapped(UIStyle.label(MAP_BLURBS[path], 14, UIStyle.TEXT_DIM)))
+	# Every map as a tile (Smash-style); hover one for what it is, press it to play.
+	var blurb := _wrapped(UIStyle.label("Hover a map to see what it is. Press it to play.", 14, UIStyle.TEXT_DIM))
+	box.add_child(blurb)
+	var grid := MapGrid.new()
+	grid.maps = MAP_BLURBS.keys()
+	grid.columns = 3
+	grid.tile_size = Vector2(200, 112)
+	grid.picked.connect(func(path: String) -> void: play_pressed.emit(path))
+	grid.hovered.connect(func(path: String) -> void:
+		blurb.text = "%s  //  %s" % [MapGrid.map_name(path), MAP_BLURBS.get(path, "")])
+	box.add_child(grid)
 
 
 # --- GLOBAL CHAT ----------------------------------------------------------------
@@ -595,6 +643,19 @@ func _on_chat_message(entry: Dictionary) -> void:
 	else:
 		_unread += 1
 		_update_chat_nav()
+
+
+## The hub resent its history (a reconnect): redraw the log if it's open. Old messages
+## don't count as unread, so the counter only shows what's new since you last looked.
+func _on_chat_history() -> void:
+	if not _chat_log or not is_instance_valid(_chat_log):
+		return
+	for child in _chat_log.get_children():
+		child.queue_free()
+	for entry in _chat.get("history"):
+		_chat_line(entry)
+	if (_chat.get("history") as Array).is_empty():
+		_chat_log.add_child(UIStyle.label("No messages yet. Say hi.", 14, UIStyle.TEXT_DIM))
 
 
 func _on_chat_status(text: String) -> void:
@@ -947,6 +1008,25 @@ func _build_settings(box: VBoxContainer) -> void:
 	_toggle(grid, s, "IMPACT FRAMES", "impact_frames")
 	_toggle(grid, s, "FULLSCREEN", "fullscreen")
 	_toggle(grid, s, "V-SYNC", "vsync")
+	_toggle(grid, s, "MOTION CONTROLS", "motion_controls")
+	_slider(grid, s, "MOTION SENSITIVITY", "motion_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
+	_toggle(grid, s, "MOTION INVERT Y", "motion_invert_y")
+
+	# Accent colour for the menus and HUD: one swatch per choice.
+	var color_row := HBoxContainer.new()
+	color_row.add_theme_constant_override("separation", 10)
+	box.add_child(color_row)
+	color_row.add_child(UIStyle.label("UI COLOUR", 15, UIStyle.TEXT))
+	for accent in UIStyle.ACCENTS:
+		var swatch := Button.new()
+		swatch.text = accent
+		swatch.add_theme_font_size_override("font_size", 12)
+		swatch.add_theme_color_override("font_color", UIStyle.ACCENTS[accent])
+		swatch.add_theme_color_override("font_hover_color", Color.WHITE)
+		if accent == String(s.call("get_value", "ui_color")):
+			swatch.add_theme_stylebox_override("normal", UIStyle.panel_box(UIStyle.ACCENTS[accent], Color(UIStyle.ACCENTS[accent], 0.18)))
+		swatch.pressed.connect(_set_ui_color.bind(accent))
+		color_row.add_child(swatch)
 
 	# Staff code (owner, moderator or tester): online servers check it when you join.
 	var mod_row := HBoxContainer.new()
@@ -973,6 +1053,27 @@ func _build_settings(box: VBoxContainer) -> void:
 		s.call("reset_defaults")
 		_show_page("settings"))
 	box.add_child(reset)
+
+
+## A new UI colour: the main menu is rebuilt in it straight away (back on this page); in
+## the pause menu the menus change now and the HUD with the next map.
+func _set_ui_color(accent: String) -> void:
+	var s := _settings()
+	if not s:
+		return
+	s.call("set_value", "ui_color", accent)
+	ui_sound(self, "ui_click", -8.0)
+	_reopen_page = "settings"
+	if pause_mode:
+		# Restyle the menu's buttons too (the theme comes from an ancestor).
+		var node: Node = self
+		while node and not (node is Control and (node as Control).theme):
+			node = node.get_parent()
+		if node:
+			(node as Control).theme = UIStyle.make_theme()
+		_show_page("settings", true)
+	else:
+		get_tree().reload_current_scene()
 
 
 func _slider(grid: GridContainer, s: Node, title: String, key: String, lo: float, hi: float, step: float, fmt: String) -> void:

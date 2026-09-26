@@ -23,7 +23,6 @@ extends "res://scripts/weapons/blade_weapon.gd"
 var lock_target: Node3D = null
 var lock_screen_pos := Vector2.ZERO
 
-var _cooldown := 0.0
 var _was_pressed := false
 ## Seconds left until the strike lands (-1 = no strike coming).
 var _strike_timer := -1.0
@@ -55,7 +54,6 @@ func _build() -> void:
 func handle_fire(pressed: bool, _hit: Dictionary, delta: float) -> void:
 	var just_pressed := pressed and not _was_pressed
 	_was_pressed = pressed
-	_cooldown = maxf(_cooldown - delta, 0.0)
 	_update_lock()
 	if _strike_timer >= 0.0:
 		_track_strike(delta)
@@ -83,7 +81,7 @@ func _update(_delta: float) -> void:
 func locked_peer() -> int:
 	var t := _strike_target if _strike_timer >= 0.0 else lock_target
 	if t and is_instance_valid(t) and t.has_method("is_blocking"):
-		return t.get_multiplayer_authority()
+		return t.call("player_id") if t.has_method("player_id") else t.get_multiplayer_authority()
 	return 0
 
 

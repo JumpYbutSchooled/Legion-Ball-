@@ -82,8 +82,8 @@ func _build_connect() -> void:
 	var last: int = _settings.call("get_value", "last_server")
 	_server_labels.clear()
 	for i in NetScript.SERVER_URLS.size():
-		var map_name: String = NetScript.MAP_NAMES.get(NetScript.SERVER_MAPS[i], "")
-		var b := _button("SERVER %d · %s" % [i + 1, map_name], _join_server.bind(i))
+		# Just the number: the map changes every round (end-of-match vote).
+		var b := _button("SERVER %d" % (i + 1), _join_server.bind(i))
 		if i == last:
 			b.add_theme_color_override("font_color", UIStyle.ACCENT)
 		servers.add_child(b)
@@ -165,6 +165,14 @@ func _build_lobby() -> void:
 				picker.select(i)
 		picker.item_selected.connect(func(i: int) -> void: _net.set("map_scene", paths[i]))
 		buttons.add_child(picker)
+		# ...and the mode.
+		var modes := OptionButton.new()
+		for i in NetScript.MODES.size():
+			modes.add_item("MODE: " + NetScript.MODE_NAMES[NetScript.MODES[i]], i)
+			if NetScript.MODES[i] == _net.get("game_mode"):
+				modes.select(i)
+		modes.item_selected.connect(func(i: int) -> void: _net.set("game_mode", NetScript.MODES[i]))
+		buttons.add_child(modes)
 		buttons.add_child(_button("START MATCH", func() -> void: _net.call("start_match")))
 	else:
 		buttons.add_child(UIStyle.label("Waiting for the host to start...", 14, UIStyle.TEXT_DIM))
@@ -208,13 +216,16 @@ func _show_status() -> void:
 		if not is_instance_valid(label):
 			continue
 		if _online_status.is_empty():
-			label.text = "..."
+			label.text = "CLASSIC  ..." if NetScript.CLASSIC_SERVERS.has(i) else "..."
 			continue
 		var info: Dictionary = servers.get("S%d" % (i + 1), {})
 		var names: Array = info.get("players", [])
 		# The map it's on right now (it changes after every match's vote).
 		var live_map := String(info.get("map", ""))
 		var on_map := "[%s]  " % live_map if live_map != "" else ""
+		# CLASSIC servers: the original six weapons only.
+		if NetScript.CLASSIC_SERVERS.has(i):
+			on_map = "CLASSIC  " + on_map
 		if names.is_empty():
 			label.text = on_map + "empty"
 			label.add_theme_color_override("font_color", UIStyle.TEXT_DIM)

@@ -23,6 +23,11 @@ func _ready() -> void:
 	# menu straight from the editor. Deferred: the root is busy while this scene loads.
 	_ensure_services.call_deferred()
 	theme = UIStyle.make_theme()
+	# The game's icon on the window and taskbar (tools/make_icon.gd). Set here so it comes
+	# with updates; the .exe's own icon only changes with a new base build.
+	var icon := load("res://icon.png") as Texture2D
+	if icon and DisplayServer.get_name() != "headless":
+		DisplayServer.set_icon(icon.get_image())
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = false
 	Engine.time_scale = 1.0
@@ -38,7 +43,7 @@ func _ready() -> void:
 
 	# Title, with red/cyan ghost copies that jitter now and then (chromatic glitch).
 	_ghost_a = _title_label(Color(1.0, 0.2, 0.35, 0.55))
-	_ghost_b = _title_label(Color(0.2, 0.9, 1.0, 0.55))
+	_ghost_b = _title_label(Color(UIStyle.ACCENT, 0.55))
 	_title = _title_label(Color.WHITE)
 	var sub := UIStyle.label("COMBAT SIMULATION  //  CRYSTAL WEAPONS DIVISION", 15, UIStyle.ACCENT)
 	sub.position = Vector2(68, 128)

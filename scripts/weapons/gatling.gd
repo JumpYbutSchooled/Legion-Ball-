@@ -48,7 +48,6 @@ signal fired(blade_index: int)
 @export var impact_light_energy := 25.0
 
 var _next := 0
-var _cooldown := 0.0
 var lock_target: Node3D = null
 var lock_screen_pos := Vector2.ZERO
 var ammo := 30
@@ -68,7 +67,6 @@ func _build() -> void:
 
 
 func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
-	_cooldown = maxf(_cooldown - delta, 0.0)
 	lock_target = null
 	if is_ready():
 		var found: Array = manager.targets_on_screen(lock_radius_px, lock_range, true)

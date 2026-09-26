@@ -11,6 +11,10 @@ const InputSetup := preload("res://scripts/input_setup.gd")
 const PAD_YAW_SPEED := 3.2
 const PAD_PITCH_SPEED := 2.2
 const PAD_DEADZONE := 0.18
+## Motion controls: gyro turn rate (radians a second) below this is treated as noise.
+const GYRO_DEADZONE := 0.02
+## Pitch the camera returns to when recentred (R3).
+const RECENTER_PITCH := -0.25
 
 @export var target: Node3D
 @export var warp_rect: CanvasItem
@@ -79,6 +83,11 @@ var _pivot_height := 0.0
 var _sensitivity_scale := 1.0
 var _shake_scale := 1.0
 var _effects_scale := 1.0
+var _motion := false
+var _motion_scale := 1.0
+var _motion_invert := false
+## Which controller's motion sensors we've switched on (-1 = none).
+var _gyro_device := -1
 var _trauma := 0.0
 var _shake_time := 0.0
 var _noise := FastNoiseLite.new()
@@ -109,6 +118,9 @@ func _apply_settings() -> void:
 	base_fov = SettingsScript.read(tree, "fov")
 	_shake_scale = SettingsScript.read(tree, "camera_shake")
 	_effects_scale = SettingsScript.read(tree, "screen_effects")
+	_motion = SettingsScript.read(tree, "motion_controls")
+	_motion_scale = SettingsScript.read(tree, "motion_sensitivity")
+	_motion_invert = SettingsScript.read(tree, "motion_invert_y")
 
 
 func _ready() -> void:
@@ -165,6 +177,9 @@ func _process(delta: float) -> void:
 		var turn := Input.get_axis("camera_left", "camera_right")
 		rotation.y -= turn * key_turn_speed * delta
 		_pad_look(delta)
+		_gyro_look(delta)
+		if Input.is_action_just_pressed("recenter_camera"):
+			_recenter()
 		# Hold I / O to zoom in / out.
 		var zoom := Input.get_axis("zoom_in", "zoom_out")
 		if zoom != 0.0:
@@ -265,6 +280,43 @@ func _pad_look(delta: float) -> void:
 		deg_to_rad(min_pitch_deg),
 		deg_to_rad(max_pitch_deg)
 	)
+
+
+## Motion controls: the controller's gyro turns the camera like a mouse would, 1:1 with how
+## far you turn it (times the sensitivity). Tilt left/right to turn, up/down to look.
+func _gyro_look(delta: float) -> void:
+	var pads := Input.get_connected_joypads()
+	if not _motion or pads.is_empty():
+		if _gyro_device >= 0:
+			Input.set_joy_motion_sensors_enabled(_gyro_device, false)
+			_gyro_device = -1
+		return
+	var device: int = pads[0]
+	if not Input.has_joy_motion_sensors(device):
+		return
+	if _gyro_device != device:
+		Input.set_joy_motion_sensors_enabled(device, true)
+		_gyro_device = device
+	var gyro := Input.get_joy_gyroscope(device)
+	# Yaw: turning the controller flat (y), plus rolling it (z), so it works however it's held.
+	var yaw := gyro.y + gyro.z
+	var pitch := gyro.x * (-1.0 if _motion_invert else 1.0)
+	if absf(yaw) > GYRO_DEADZONE:
+		rotation.y += yaw * _motion_scale * delta
+	if absf(pitch) > GYRO_DEADZONE:
+		_pitch.rotation.x = clampf(_pitch.rotation.x + pitch * _motion_scale * delta,
+			deg_to_rad(min_pitch_deg), deg_to_rad(max_pitch_deg))
+
+
+## R3: point the camera the way the ball is rolling (or keep facing if it's still) and
+## level it out, for when motion aiming has drifted.
+func _recenter() -> void:
+	var body := target as RigidBody3D
+	if body:
+		var v := body.linear_velocity
+		if Vector2(v.x, v.z).length() > 2.0:
+			rotation.y = atan2(-v.x, -v.z)
+	_pitch.rotation.x = RECENTER_PITCH
 
 
 ## Remembers whether the player is on a controller or mouse and keyboard.

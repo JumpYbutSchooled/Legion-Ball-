@@ -36,12 +36,15 @@ var _title_text := ""
 
 
 func _ready() -> void:
-	if not is_multiplayer_authority():
-		_ball.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
-		_ball.freeze = true
+	# The host simulates its bots itself, but they're still other players to it.
+	var bot: bool = _ball.get("bot")
+	if not is_multiplayer_authority() or bot:
+		if not is_multiplayer_authority():
+			_ball.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+			_ball.freeze = true
 		# Other players can be locked, painted and hit like targets (see ball.gd, PvP).
 		_ball.add_to_group("lock_targets")
-		var id := get_multiplayer_authority()
+		var id: int = _ball.call("player_id")
 		var net := get_tree().root.get_node_or_null("Net")
 		if net:
 			# The staff title floats just above the name, in its own colour.
@@ -60,7 +63,7 @@ func _refresh_name() -> void:
 	var net := get_tree().root.get_node_or_null("Net")
 	if not net:
 		return
-	var id := get_multiplayer_authority()
+	var id: int = _ball.call("player_id")
 	_name = String(net.call("player_name", id))
 	_tag.text = _name
 	var title := ModScript.title_of(net.get("players").get(id, {}))

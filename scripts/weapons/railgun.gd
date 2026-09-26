@@ -185,7 +185,7 @@ func apply_net_reload(value: float) -> void:
 ## they can be warned (scripts/ui/lock_warning.gd).
 func locked_peer() -> int:
 	if lock_target and is_instance_valid(lock_target) and lock_target.has_method("is_blocking"):
-		return lock_target.get_multiplayer_authority()
+		return lock_target.call("player_id")
 	return 0
 
 
