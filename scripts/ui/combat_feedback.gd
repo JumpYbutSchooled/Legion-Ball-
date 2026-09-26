@@ -57,6 +57,8 @@ func _ready() -> void:
 
 
 func _hook_arena() -> void:
+	if not is_inside_tree():
+		return
 	var scene := get_tree().current_scene
 	if not scene or not scene.has_signal("player_killed"):
 		return

@@ -98,6 +98,9 @@ var _mode_votes := {}
 var team_scores := [0, 0]
 ## When this round started (msec), for the match clock on the scoreboard.
 var _match_start := 0
+## This arena was loaded for an online match (so losing the connection means we're
+## leaving: never fall back to spawning a practice player).
+var _started_online := false
 
 
 func _ready() -> void:
@@ -117,8 +120,11 @@ func _ensure_then_spawn() -> void:
 
 func _start(net: Node) -> void:
 	_match_start = Time.get_ticks_msec()
+	_started_online = net.get("online")
 	# This map's sun and environment, in the player's graphics settings.
-	(func() -> void: Graphics.apply_scene(get_tree())).call_deferred()
+	(func() -> void:
+		if is_inside_tree():
+			Graphics.apply_scene(get_tree())).call_deferred()
 	# Joining a match that's already going: ask the host for its clock and team scores.
 	if net.get("online") and not multiplayer.is_server():
 		_zzhello.rpc_id(1)
@@ -158,6 +164,11 @@ func _roster() -> Dictionary:
 
 
 func _sync_players() -> void:
+	# Leaving an online match: the connection closes (and the roster empties) a moment
+	# before this scene is swapped for the menu. Don't spawn a practice player into a map
+	# that's being torn down.
+	if _started_online and not is_online():
+		return
 	var roster := _roster()
 	var ids := roster.keys()
 	ids.sort()
