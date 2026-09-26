@@ -90,6 +90,12 @@ func stagger(duration: float) -> void:
 		_stagger_timer = maxf(_stagger_timer, duration)
 
 
+## Weapon statuses (weapon.gd apply_status): anything that holds a player holds a target.
+func take_status(kind: String, duration: float, _data := Vector3.ZERO) -> void:
+	if kind in ["freeze", "cage", "pin"]:
+		stagger(duration)
+
+
 func is_marked() -> bool:
 	return _mark_timer > 0.0
 

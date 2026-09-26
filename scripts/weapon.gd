@@ -55,6 +55,8 @@ var _was_captured := false
 var last_hit_id := "railgun"
 ## Damage numbers still collecting hits, by target.
 var _numbers := {}
+## Objects this weapon manager has spawned (their network names).
+var _spawn_count := 0
 var _aim_basis := Basis.IDENTITY
 var _has_aim_basis := false
 
@@ -535,6 +537,68 @@ func spawn_rail_bolt(props: Dictionary, visual_only := false) -> void:
 @rpc("authority", "reliable")
 func _net_rail_bolt(props: Dictionary) -> void:
 	spawn_rail_bolt(props, true)
+
+
+## Any weapon object (projectile, mine, pylon, wall, drone, decoy...): a script under
+## scripts/weapons/ with `props` set on it ("position" places it, "target_path" becomes
+## its `target`). Everyone else gets a copy with visual_only set, which looks and moves
+## the same but hurts nothing: the owner's copy decides every hit, as with missiles.
+func spawn_node(script_path: String, props: Dictionary, visual_only := false) -> Node3D:
+	if not script_path.begins_with("res://scripts/weapons/") or not ResourceLoader.exists(script_path):
+		return null
+	var node: Node3D = load(script_path).new()
+	for key in props:
+		if key == "position" or key == "target_path":
+			continue
+		node.set(key, props[key])
+	var path: String = props.get("target_path", "")
+	if path != "" and "target" in node:
+		node.set("target", get_node_or_null(path))
+	node.set("manager", self)
+	node.set("visual_only", visual_only)
+	node.position = props.get("position", global_position)
+	# Named the same on every computer, so despawn_node() can remove everyone's copy.
+	if not props.has("node_name"):
+		_spawn_count += 1
+		props["node_name"] = "W%d_%d" % [get_multiplayer_authority(), _spawn_count]
+	node.name = String(props["node_name"])
+	ball.get_parent().add_child(node)
+	if not visual_only and _broadcasting():
+		_net_znode.rpc(script_path, props)
+	return node
+
+
+## Removes an object made with spawn_node (a mine going off, a replaced pylon), here
+## and on everyone else's screen.
+func despawn_node(node: Node) -> void:
+	if not is_instance_valid(node):
+		return
+	var node_name := String(node.name)
+	node.queue_free()
+	if _broadcasting():
+		_net_zdespawn.rpc(node_name)
+
+
+## (Named to sort after the other RPCs.)
+@rpc("authority", "reliable")
+func _net_zdespawn(node_name: String) -> void:
+	var node := ball.get_parent().get_node_or_null(node_name)
+	if node:
+		node.queue_free()
+
+
+## (Named to sort after the other RPCs.)
+@rpc("authority", "reliable")
+func _net_znode(script_path: String, props: Dictionary) -> void:
+	spawn_node(script_path, props, true)
+
+
+## Puts a status on something we hit: "chill" (slowed; data.x = speed left, 0..1),
+## "freeze" / "pin" / "cage" (held in place), "pull" (dragged toward data). Players
+## go through the host (arena.gd); practice targets just react.
+func apply_status(target: Object, kind: String, duration: float, data := Vector3.ZERO) -> void:
+	if target and target.has_method("take_status"):
+		target.call("take_status", kind, duration, data)
 
 
 ## A shot from `from` to `to` passed through walls: white ripples on every face it went

@@ -146,5 +146,11 @@ func stagger(duration: float) -> void:
 		manager.call("request_stagger", index, duration)
 
 
+## Freezes, cages and pins knock it out like a stagger.
+func take_status(kind: String, duration: float, _data := Vector3.ZERO) -> void:
+	if kind in ["freeze", "cage", "pin"]:
+		stagger(duration)
+
+
 func mark(_duration: float) -> void:
 	pass

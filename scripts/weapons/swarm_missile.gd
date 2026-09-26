@@ -6,6 +6,7 @@ extends Node3D
 ## Set position and velocity before adding it to the tree. Frees itself.
 
 const WallRipple := preload("res://scripts/wall_ripple.gd")
+const TimeField := preload("res://scripts/weapons/time_field.gd")
 
 @export var speed := 95.0
 ## How fast it can turn toward its target, in radians per second (ramps up after launch).
@@ -97,7 +98,8 @@ func _physics_process(delta: float) -> void:
 			_explode(global_position, target if is_instance_valid(target) else null)
 			return
 
-	var step := velocity * delta
+	# Half speed inside someone else's Time Dilator field.
+	var step := velocity * delta * TimeField.factor(get_tree(), global_position, manager.get_multiplayer_authority() if manager else 0)
 	var from := global_position
 	var space := get_world_3d().direct_space_state
 	if phase_walls:

@@ -173,6 +173,8 @@ func _draw_kind(info: Dictionary, col: Color) -> void:
 			_draw_swarm(info, col)
 		"tears":
 			_draw_tears(info, col)
+		"simple":
+			_draw_simple(info, col)
 
 
 ## Gatling: one line per blade, plus a faint lock circle; a locked target gets a small
@@ -318,6 +320,52 @@ func _draw_swarm(info: Dictionary, col: Color) -> void:
 			draw_rect(Rect2(p - Vector2(2, 2), Vector2(4, 4)), col)
 		else:
 			draw_rect(Rect2(p - Vector2(2, 2), Vector2(4, 4)), faint, false, 1.0)
+
+
+## The newer weapons' shared crosshair (simple_weapon.gd): a shape at the centre
+## ("ring", "diamond", "cross", "chevron", "dot"), a thick arc that fills as it charges,
+## a thin arc refilling on cooldown, an optional meter underneath (fuel, ammo), an
+## optional counter, and brackets on a locked target.
+func _draw_simple(info: Dictionary, col: Color) -> void:
+	var c := size / 2.0
+	var r: float = info.get("radius", 10.0)
+	var ready: bool = info.get("ready", true)
+	var main := col
+	if not ready:
+		main.a *= 0.4
+	match String(info.get("shape", "ring")):
+		"diamond":
+			_diamond(c, r, 0.0, main)
+		"cross":
+			for k in 4:
+				var d := Vector2.from_angle(k * PI / 2.0)
+				draw_line(c + d * r * 0.4, c + d * r, main, line_width, true)
+		"chevron":
+			draw_polyline(PackedVector2Array([c + Vector2(-r, r * 0.4), c + Vector2(0, -r * 0.5), c + Vector2(r, r * 0.4)]), main, line_width, true)
+		"dot":
+			draw_circle(c, 2.5, main)
+			draw_arc(c, r, 0.0, TAU, 32, Color(main, main.a * 0.35), line_width, true)
+		_:
+			draw_arc(c, r, 0.0, TAU, 40, main, line_width, true)
+	var charge: float = info.get("charge", 0.0)
+	if charge > 0.0:
+		draw_arc(c, r + 5.0, -PI / 2.0, -PI / 2.0 + TAU * charge, 40, col, line_width * 2.5, true)
+	var cd: float = info.get("cooldown", 1.0)
+	if cd < 1.0:
+		draw_arc(c, r + 5.0, -PI / 2.0, -PI / 2.0 + TAU * cd, 40, Color(col, col.a * 0.35), line_width, true)
+	if info.has("meter"):
+		var m: float = info["meter"]
+		var w := 36.0
+		var p := c + Vector2(-w / 2.0, r + 14.0)
+		draw_rect(Rect2(p, Vector2(w, 3)), Color(col, col.a * 0.25))
+		draw_rect(Rect2(p, Vector2(w * clampf(m, 0.0, 1.0), 3)), col)
+	if info.has("count"):
+		var font := ThemeDB.fallback_font
+		var text := str(info["count"])
+		var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		draw_string(font, c + Vector2(-tw / 2.0, r + 30.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, col)
+	if info.get("locked", false):
+		_brackets(info["lock_pos"], 11.0, Time.get_ticks_msec() / 400.0, col)
 
 
 ## Tears of an Angel: Swarm's paint zone and a spinning bracket on each locked target,

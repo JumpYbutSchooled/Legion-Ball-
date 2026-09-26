@@ -8,6 +8,8 @@ extends Node3D
 ## bolt's impact effects reach them over the network.
 ## Set properties and position before adding it to the tree; frees itself.
 
+const TimeField := preload("res://scripts/weapons/time_field.gd")
+
 var manager: Node
 var visual_only := false
 var dir := Vector3.FORWARD
@@ -62,7 +64,8 @@ func _physics_process(delta: float) -> void:
 		var to: Vector3 = target.call("get_aim_point") - global_position
 		if to.length() > 0.01:
 			dir = to.normalized()
-	var step := speed * delta
+	# Half speed inside someone else's Time Dilator field.
+	var step := speed * delta * TimeField.factor(get_tree(), global_position, manager.get_multiplayer_authority() if manager else 0)
 	var from := global_position
 	var to_pos := from + dir * step
 	var hit: Dictionary = manager.raycast(from, to_pos) if manager else {}

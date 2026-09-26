@@ -305,6 +305,12 @@ func request_tears_hit(victim: int, amount: float) -> void:
 	_to_host("_zztears_hit", [victim, amount])
 
 
+## A weapon put a status on player `victim` (chill, freeze, cage, pin, pull; weapon.gd
+## apply_status). The host decides; `data` is the chill strength or the pull point.
+func request_status(victim: int, kind: String, duration: float, data := Vector3.ZERO) -> void:
+	_to_host("_zzstatus", [victim, kind, duration, data])
+
+
 ## The local player fell off the map.
 func request_fall() -> void:
 	_to_host("_zfell", [])
@@ -760,6 +766,31 @@ func staff_heal(id: int) -> void:
 func staff_launch(id: int) -> void:
 	if multiplayer.is_server() and alive.get(id, false):
 		_to_peer(id, "_apply_push", [Vector3.UP * 75.0])
+
+
+## Host: a status from a weapon. Shields and god mode stop it; FROST set bonus makes it
+## last 30% longer. (Named to sort after the other RPCs.)
+@rpc("any_peer", "reliable")
+func _zzstatus(victim: int, kind: String, duration: float, data: Vector3) -> void:
+	if not multiplayer.is_server() or match_done or not kind in ["chill", "freeze", "cage", "pin", "pull"]:
+		return
+	var attacker := _sender()
+	if attacker == victim or not alive.get(victim, false) or _blocks.has(victim) or _is_god(victim) \
+			or _protect.get(victim, 0.0) > 0.0:
+		return
+	duration = clampf(duration, 0.0, 8.0)
+	if kind != "pull" and perks_of(attacker).has("frost"):
+		duration *= 1.3
+	_to_peer(victim, "_zzapply_status", [kind, duration, data])
+	_show_status.rpc(victim, kind, duration)
+
+
+## Our own ball got a status the host approved.
+@rpc("authority", "reliable")
+func _zzapply_status(kind: String, duration: float, data: Vector3) -> void:
+	var ball: Node3D = _players.get(multiplayer.get_unique_id())
+	if ball and not ball.get("dead"):
+		ball.call("apply_status", kind, duration, data)
 
 
 ## Staff brought us to `pos`.

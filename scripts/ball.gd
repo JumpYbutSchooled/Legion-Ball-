@@ -93,6 +93,14 @@ var _fall_reported := false
 ## Where staff are bringing us (moderation.gd bring); INF = nowhere.
 var _teleport_to := Vector3.INF
 var _mod: Node
+## Statuses from weapons (apply_status): chilled (speed capped to _chill_mult of normal)
+## and pulled toward a point.
+var _chill_timer := 0.0
+var _chill_mult := 1.0
+var _pull_timer := 0.0
+var _pull_point := Vector3.ZERO
+## Crystal Saber: shots parried while this runs deflect without launching us.
+var deflect_timer := 0.0
 
 
 func _ready() -> void:
@@ -138,6 +146,14 @@ func _physics_process(delta: float) -> void:
 	_jump_timer = maxf(_jump_timer - delta, 0.0)
 	_dash_timer = maxf(_dash_timer - delta, 0.0)
 	_block_cd = maxf(_block_cd - delta, 0.0)
+	_chill_timer = maxf(_chill_timer - delta, 0.0)
+	deflect_timer = maxf(deflect_timer - delta, 0.0)
+	if _pull_timer > 0.0:
+		# Dragged toward a Gravity Well; harder the further out.
+		_pull_timer -= delta
+		var to := _pull_point - global_position
+		if to.length() > 1.0:
+			apply_central_force(to.normalized() * clampf(to.length() * 3.0, 15.0, 55.0) * mass)
 	# Frozen by staff (moderation.gd): held in place like a stagger, for as long as it lasts.
 	if _mod == null:
 		_mod = get_tree().root.get_node_or_null("Mod")
@@ -180,7 +196,7 @@ func _physics_process(delta: float) -> void:
 	if dir != Vector3.ZERO:
 		# Only push while under the speed cap in the requested direction,
 		# so speed gained from a dash is kept rather than clamped.
-		if linear_velocity.dot(dir) < max_speed:
+		if linear_velocity.dot(dir) < max_speed * (_chill_mult if _chill_timer > 0.0 else 1.0):
 			var control := 1.0 if grounded else air_control
 			# Torque around the axis perpendicular to movement makes the ball roll that way.
 			apply_torque(Vector3.UP.cross(dir) * roll_torque * control)
@@ -246,6 +262,27 @@ func take_tears_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
 
 
 ## A hit that goes straight through the shield and can't be parried (staff weapons).
+## A status from someone's weapon (chill, freeze, cage, pin, pull): the host checks it
+## and sends it to this player's own computer (apply_status).
+func take_status(kind: String, duration: float, data := Vector3.ZERO) -> void:
+	var arena := _arena()
+	if arena:
+		arena.call("request_status", get_multiplayer_authority(), kind, duration, data)
+
+
+## Local player only: a status the host approved.
+func apply_status(kind: String, duration: float, data: Vector3) -> void:
+	match kind:
+		"chill":
+			_chill_timer = maxf(_chill_timer, duration)
+			_chill_mult = clampf(data.x if data.x > 0.0 else 0.6, 0.1, 1.0)
+		"freeze", "cage", "pin":
+			stagger_controls(duration)
+		"pull":
+			_pull_timer = maxf(_pull_timer, duration)
+			_pull_point = data
+
+
 func take_unblockable_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
 	var arena := _arena()
 	if arena:
@@ -362,8 +399,10 @@ func on_parried(shooter_pos := Vector3.INF) -> void:
 	_block_timer = 0.0
 	# A successful block is rewarded: the shield is ready again straight away.
 	_block_cd = 0.0
-	_knockback += Vector3.UP * parry_launch
-	_knockback_effects = true
+	# A Crystal Saber's deflect sends the shot back without throwing us around.
+	if deflect_timer <= 0.0:
+		_knockback += Vector3.UP * parry_launch
+		_knockback_effects = true
 	var weapon := get_node_or_null("Weapon")
 	if weapon:
 		weapon.call("spawn_explosion", {
@@ -396,7 +435,15 @@ func _online() -> bool:
 
 ## Glow the ball to show a status (every computer): "mark" violet, "stagger" gold.
 func show_status(kind: String, duration: float) -> void:
-	_status_color = Color(0.6, 0.35, 1.0) if kind == "mark" else Color(1.0, 0.82, 0.2)
+	match kind:
+		"mark":
+			_status_color = Color(0.6, 0.35, 1.0)
+		"chill", "cage":
+			_status_color = Color(0.5, 0.85, 1.0)
+		"pull":
+			_status_color = Color(0.4, 0.25, 1.0)
+		_:
+			_status_color = Color(1.0, 0.82, 0.2)
 	_status_timer = maxf(_status_timer, duration)
 
 
@@ -493,6 +540,11 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 
 	# Speed cap and height ceiling.
 	var v := state.linear_velocity
+	# Chilled: speed eases down to a fraction of normal running speed.
+	if _chill_timer > 0.0:
+		var cap := max_speed * _chill_mult
+		if v.length() > cap:
+			v = v.lerp(v.normalized() * cap, minf(state.step * 6.0, 1.0))
 	if v.length() > top_speed:
 		v = v.normalized() * top_speed
 	if state.transform.origin.y > max_height and v.y > 0.0:
