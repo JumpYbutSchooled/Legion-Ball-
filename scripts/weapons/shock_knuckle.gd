@@ -1,9 +1,10 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## SHOCK KNUCKLE (Brawler / Close Quarters): two fists of stubby blades tight to the
 ## front. Press to charge them (3s); your next dash becomes a punch: anyone you hit in
-## the moment after dashing takes a heavy hit and is knocked flying.
+## the moment after dashing is killed outright and knocked flying.
 
-@export var damage := 6.0
+## 25 x 4 (PvP damage scale) = 100: a landed punch kills.
+@export var damage := 25.0
 @export var launch := 60.0
 
 var _primed := 0.0

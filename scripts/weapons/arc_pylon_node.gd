@@ -6,7 +6,7 @@ extends Node3D
 var manager: Node
 var visual_only := false
 var lifetime := 8.0
-var radius := 16.0
+var radius := 96.0
 var interval := 0.4
 var damage := 1.5
 var color := Color(0.85, 1.0, 0.3)

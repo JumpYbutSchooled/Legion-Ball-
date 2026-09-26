@@ -42,8 +42,8 @@ func _build() -> void:
 		"max_thickness": 0.16,
 		"segments": 8,
 	}
-	# Four wings in an X: straight up and straight down (no other weapon sits like this).
-	for angle in [75.0, -75.0]:
+	# Swarm's wings, two a side, raised behind the ball.
+	for angle in [35.0, 60.0]:
 		for side in [1.0, -1.0]:
 			add_blade(side, angle, shape)
 

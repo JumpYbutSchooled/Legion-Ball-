@@ -11,6 +11,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 func _build() -> void:
 	cooldown = 0.9
 	lock_on = true
+	lock_radius_px = 16.0
 	crosshair_shape = "chevron"
 	add_blade(1.0, 0.0, {"arc_radius": 0.5, "tip": Vector3(0.0, -0.6, -2.2), "max_width": 0.75, "max_thickness": 0.2, "segments": 6})
 

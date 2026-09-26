@@ -11,8 +11,10 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## Lock-on (longer-range weapons): the target nearest the crosshair within
 ## lock_radius_px (and lock_range metres, in sight unless lock_through_walls) becomes the
 ## aim: target_point() and aim_dir() follow it, and shots can home on it (lock_path()).
+## A small circle like the Gatling's (16 px), not the Railgun's big one: each weapon
+## varies it a little.
 @export var lock_on := false
-@export var lock_radius_px := 90.0
+@export var lock_radius_px := 16.0
 @export var lock_range := INF
 @export var lock_through_walls := false
 

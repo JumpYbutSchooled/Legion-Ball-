@@ -1,6 +1,6 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## SPIKE CARPET (Fortress / Area Denial): a row of small teeth along the bottom. Press to
-## lay a 20m line of crystal spikes along the ground ahead of you for 6s; anyone rolling
+## lay a 240m line of crystal spikes along the ground ahead of you for 6s; anyone rolling
 ## over it is cut and slowed.
 
 
@@ -26,7 +26,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 		kick(i)
 	var from: Vector3 = start["position"]
 	# Run along the ground; stop at a wall (players in the way don't count: that's the point).
-	var to := from + flat * 40.0
+	var to := from + flat * 240.0
 	var skip: Array[RID] = [b.get_rid()]
 	for i in 6:
 		var query := PhysicsRayQueryParameters3D.create(from + Vector3.UP * 0.5, to + Vector3.UP * 0.5)

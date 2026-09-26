@@ -7,6 +7,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 func _build() -> void:
 	cooldown = 5.0
 	lock_on = true
+	lock_radius_px = 18.0
 	crosshair_shape = "cross"
 	var shape := {"arc_radius": 0.5, "tip": Vector3(0.9, 0.0, -1.5), "max_width": 0.26, "max_thickness": 0.22, "segments": 6}
 	for roll in [45.0, -45.0]:

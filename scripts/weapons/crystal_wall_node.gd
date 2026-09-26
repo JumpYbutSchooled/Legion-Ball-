@@ -8,8 +8,8 @@ var visual_only := false
 var lifetime := 5.0
 var facing := Vector3.FORWARD
 var color := Color(0.6, 0.45, 0.35)
-var width := 18.0
-var height := 9.0
+var width := 30.0
+var height := 14.0
 
 var _t := 0.0
 var _mesh: MeshInstance3D

@@ -1,12 +1,17 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## WINGLETS (Skyborne / Mobility): two long flat wings straight out to the sides. In the
-## air, press to flap: an extra jump (two per trip into the air, back on landing). Hold
-## to glide: your fall is held to a gentle drift and you carry your speed.
+## air, press to flap: an extra jump (three per trip into the air, back on landing). Hold
+## to glide: your fall is held to a slow drift and you pick up speed the way you look,
+## steering with the camera.
 
-@export var flap := 16.0
-@export var glide_fall := 3.0
+@export var flap := 22.0
+@export var glide_fall := 1.5
+@export var flaps := 3
+## Forward speed gained per second while gliding, up to glide_speed.
+@export var glide_accel := 30.0
+@export var glide_speed := 70.0
 
-var _flaps := 2
+var _flaps := 3
 var _gliding := false
 
 
@@ -22,11 +27,11 @@ func _crosshair_extra(info: Dictionary) -> void:
 	info["count"] = "x%d" % _flaps
 
 
-func _fire(pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta: float) -> void:
+func _fire(pressed: bool, just: bool, _released: bool, _hit: Dictionary, delta: float) -> void:
 	var b := ball()
 	var grounded: bool = not manager.raycast(b.global_position, b.global_position + Vector3.DOWN * 0.8).is_empty()
 	if grounded:
-		_flaps = 2
+		_flaps = flaps
 	if just and not grounded and _flaps > 0 and can_fire():
 		_flaps -= 1
 		start_cooldown()
@@ -40,6 +45,17 @@ func _fire(pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta:
 	if _gliding and b.linear_velocity.y < -glide_fall:
 		# Hold the fall to a drift: lift equal to the excess fall speed.
 		b.linear_velocity.y = lerpf(b.linear_velocity.y, -glide_fall, 0.2)
+	if _gliding:
+		# Glide the way the camera looks: carve round toward it and speed up.
+		var look := look_dir()
+		var flat := Vector3(look.x, 0.0, look.z)
+		if flat.length() > 0.01:
+			flat = flat.normalized()
+			var v := b.linear_velocity
+			var ground_v := Vector3(v.x, 0.0, v.z)
+			var speed := minf(maxf(ground_v.length(), 20.0) + glide_accel * delta, maxf(glide_speed, ground_v.length()))
+			var turned := ground_v.normalized().slerp(flat, minf(delta * 3.0, 1.0)) if ground_v.length() > 1.0 else flat
+			b.linear_velocity = Vector3(turned.x * speed, v.y, turned.z * speed)
 
 
 func _update(_delta: float) -> void:
@@ -49,4 +65,4 @@ func _update(_delta: float) -> void:
 
 func refill() -> void:
 	super.refill()
-	_flaps = 2
+	_flaps = flaps

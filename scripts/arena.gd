@@ -785,7 +785,7 @@ func staff_launch(id: int) -> void:
 ## last 30% longer. (Named to sort after the other RPCs.)
 @rpc("any_peer", "reliable")
 func _zzstatus(victim: int, kind: String, duration: float, data: Vector3) -> void:
-	if not multiplayer.is_server() or match_done or not kind in ["chill", "freeze", "cage", "pin", "pull"]:
+	if not multiplayer.is_server() or match_done or not kind in ["chill", "freeze", "cage", "pin", "pull", "dilate"]:
 		return
 	var attacker := _sender()
 	if attacker == victim or not alive.get(victim, false) or _blocks.has(victim) or _is_god(victim) \

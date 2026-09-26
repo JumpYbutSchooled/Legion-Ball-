@@ -1,7 +1,7 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## TIME DILATOR (Frost / Control): six tiny blades orbiting in a halo above the ball.
-## Press to spread a 12m bubble round you for 4s: everyone else inside is slowed, and
-## their shots crawl through it at half speed. Yours don't.
+## Press to spread a 25m bubble round you for 5s: everyone else inside moves AND fires at
+## 40% speed, their shots crawl through it, and turrets and targets stop dead. Yours don't.
 
 var _spin := 0.0
 
@@ -18,7 +18,7 @@ func _build() -> void:
 
 func _update(delta: float) -> void:
 	# The halo turns, faster while the bubble is up.
-	_spin += delta * (6.0 if _cooldown > cooldown - 4.0 else 1.5)
+	_spin += delta * (6.0 if _cooldown > cooldown - 5.0 else 1.5)
 	for i in _blades.size():
 		_blades[i].rotation.z = _spin + TAU * i / _blades.size()
 
@@ -28,7 +28,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 		return
 	start_cooldown()
 	spawn("res://scripts/weapons/time_field.gd", {
-		"position": ball().global_position, "color": color, "radius": 25.0, "lifetime": 4.0,
+		"position": ball().global_position, "color": color, "radius": 25.0, "lifetime": 5.0,
 		"owner_peer": manager.get_multiplayer_authority(),
 	})
 	manager.spawn_warp(ball().global_position, 0.3, 25.0)

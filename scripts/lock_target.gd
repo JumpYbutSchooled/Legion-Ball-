@@ -92,7 +92,7 @@ func stagger(duration: float) -> void:
 
 ## Weapon statuses (weapon.gd apply_status): anything that holds a player holds a target.
 func take_status(kind: String, duration: float, _data := Vector3.ZERO) -> void:
-	if kind in ["freeze", "cage", "pin"]:
+	if kind in ["freeze", "cage", "pin", "dilate"]:
 		stagger(duration)
 
 

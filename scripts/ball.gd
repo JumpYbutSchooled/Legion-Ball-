@@ -99,6 +99,9 @@ var _chill_timer := 0.0
 var _chill_mult := 1.0
 var _pull_timer := 0.0
 var _pull_point := Vector3.ZERO
+## Inside someone's Time Dilator: our weapons run at _dilate_mult speed (weapon_time_scale).
+var _dilate_timer := 0.0
+var _dilate_mult := 1.0
 ## Crystal Saber: shots parried while this runs deflect without launching us.
 var deflect_timer := 0.0
 
@@ -147,13 +150,14 @@ func _physics_process(delta: float) -> void:
 	_dash_timer = maxf(_dash_timer - delta, 0.0)
 	_block_cd = maxf(_block_cd - delta, 0.0)
 	_chill_timer = maxf(_chill_timer - delta, 0.0)
+	_dilate_timer = maxf(_dilate_timer - delta, 0.0)
 	deflect_timer = maxf(deflect_timer - delta, 0.0)
 	if _pull_timer > 0.0:
-		# Dragged toward a Gravity Well; harder the further out.
+		# Dragged toward a Gravity Well; harder the further out. No dashing out of it.
 		_pull_timer -= delta
 		var to := _pull_point - global_position
 		if to.length() > 1.0:
-			apply_central_force(to.normalized() * clampf(to.length() * 3.0, 15.0, 55.0) * mass)
+			apply_central_force(to.normalized() * clampf(to.length() * 6.0, 40.0, 130.0) * mass)
 	# Frozen by staff (moderation.gd): held in place like a stagger, for as long as it lasts.
 	if _mod == null:
 		_mod = get_tree().root.get_node_or_null("Mod")
@@ -210,7 +214,7 @@ func _physics_process(delta: float) -> void:
 		jumped.emit()
 		Sfx.play_flat(get_tree(), "jump", -8.0)
 
-	if controls and _dash_timer == 0.0 and Input.is_action_just_pressed("dash"):
+	if controls and _dash_timer == 0.0 and _pull_timer <= 0.0 and Input.is_action_just_pressed("dash"):
 		_dash_timer = dash_cooldown
 		_dash_requested = true
 
@@ -281,6 +285,17 @@ func apply_status(kind: String, duration: float, data: Vector3) -> void:
 		"pull":
 			_pull_timer = maxf(_pull_timer, duration)
 			_pull_point = data
+		"dilate":
+			# Time Dilator: slowed down, weapons included.
+			_dilate_timer = maxf(_dilate_timer, duration)
+			_dilate_mult = clampf(data.x if data.x > 0.0 else 0.4, 0.1, 1.0)
+			_chill_timer = maxf(_chill_timer, duration)
+			_chill_mult = _dilate_mult
+
+
+## How fast our weapons run: slower inside someone's Time Dilator.
+func weapon_time_scale() -> float:
+	return _dilate_mult if _dilate_timer > 0.0 else 1.0
 
 
 func take_unblockable_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:

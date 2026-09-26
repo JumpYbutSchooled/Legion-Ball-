@@ -1,6 +1,7 @@
 extends Node3D
 ## TIME DILATOR's bubble: follows its owner for `lifetime` seconds. Inside it, other
-## players are chilled (the owner's copy sends the status every half second) and other
+## players are DILATED: moving and firing at 40% speed (the owner's copy sends the status
+## every quarter second); turrets and practice targets stop dead and other
 ## players' projectiles fly at half speed (every projectile asks factor() each step, on
 ## every computer, so the owner of a shot sees the same slowdown).
 
@@ -18,13 +19,13 @@ var _shell: MeshInstance3D
 var _mat: StandardMaterial3D
 
 
-## How fast a shot from `shooter` moves at `pos`: 0.5 inside someone else's field, else 1.
+## How fast a shot from `shooter` moves at `pos`: 0.3 inside someone else's field, else 1.
 static func factor(tree: SceneTree, pos: Vector3, shooter: int) -> float:
 	if not tree:
 		return 1.0
 	for f in tree.get_nodes_in_group("time_fields"):
 		if int(f.get("owner_peer")) != shooter and (f as Node3D).global_position.distance_to(pos) <= float(f.get("radius")):
-			return 0.5
+			return 0.3
 	return 1.0
 
 
@@ -55,12 +56,12 @@ func _physics_process(delta: float) -> void:
 	if manager and manager.ball:
 		global_position = manager.ball.global_position
 	# Shimmer, fading out at the end.
-	_mat.albedo_color = Color(color, (0.1 + 0.05 * sin(_t * 12.0)) * clampf((lifetime - _t) * 2.0, 0.0, 1.0))
+	_mat.albedo_color = Color(color, (0.16 + 0.06 * sin(_t * 12.0)) * clampf((lifetime - _t) * 2.0, 0.0, 1.0))
 	if visual_only or not manager:
 		return
 	_tick -= delta
 	if _tick <= 0.0:
-		_tick = 0.5
+		_tick = 0.25
 		for t in get_tree().get_nodes_in_group("lock_targets"):
 			if t.call("is_alive") and (t.call("get_aim_point") as Vector3).distance_to(global_position) <= radius:
-				manager.call("apply_status", t, "chill", 0.7, Vector3(0.5, 0, 0))
+				manager.call("apply_status", t, "dilate", 0.5, Vector3(0.4, 0, 0))

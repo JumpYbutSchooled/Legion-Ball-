@@ -12,6 +12,7 @@ var _burst_timer := 0.0
 func _build() -> void:
 	cooldown = 0.9
 	lock_on = true
+	lock_radius_px = 16.0
 	crosshair_shape = "cross"
 	add_blade(1.0, -20.0, {"arc_radius": 0.5, "tip": Vector3(0.6, -0.4, -5.0), "max_width": 0.1, "max_thickness": 0.08, "segments": 12})
 

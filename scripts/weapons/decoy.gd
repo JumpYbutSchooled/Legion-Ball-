@@ -20,6 +20,7 @@ func _ready() -> void:
 	top_level = true
 	sync_to_physics = false
 	add_to_group("lock_targets")
+	add_to_group("decoys")
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.5
 	sphere.height = 1.0
@@ -82,6 +83,7 @@ func take_hit(_amount: float, _pos: Vector3, _dir: Vector3) -> void:
 		return
 	_alive = false
 	remove_from_group("lock_targets")
+	remove_from_group("decoys")
 	var sfx := get_tree().root.get_node_or_null("Sfx")
 	if sfx:
 		sfx.call("play", "shatter", global_position, -6.0)

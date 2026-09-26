@@ -45,7 +45,7 @@ func _impact(pos: Vector3) -> void:
 	var k := clampf(fall / 60.0, 0.15, 1.0)
 	manager.spawn_explosion({
 		"position": pos + Vector3.UP * 0.3, "color": color, "radius": lerpf(8.0, 24.0, k),
-		"damage": lerpf(3.0, 12.0, k), "force": lerpf(20.0, 60.0, k), "flat_sparks": true,
+		"damage": lerpf(10.0, 30.0, k), "force": lerpf(20.0, 60.0, k), "flat_sparks": true,
 		"spark_count": int(lerpf(150, 500, k)), "chunk_count": int(lerpf(15, 50, k)),
 		"light_energy": lerpf(150, 500, k), "warp_strength": lerpf(0.2, 0.5, k), "sound": "land_slam",
 	})

@@ -11,6 +11,8 @@ var _ring: MeshInstance3D
 
 
 func _ready() -> void:
+	# The minimap (ui/minimap.gd) draws every tag, walls or not.
+	add_to_group("sigil_marks")
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.no_depth_test = true

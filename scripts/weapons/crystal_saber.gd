@@ -4,7 +4,8 @@ extends "res://scripts/weapons/simple_weapon.gd"
 ## for the moment of the swing any shot that hits you is DEFLECTED back at the shooter
 ## (a parry that doesn't throw you around).
 
-@export var damage := 5.0
+## 25 x 4 (PvP damage scale) = 100: a clean cut kills.
+@export var damage := 25.0
 
 
 func _build() -> void:
@@ -24,10 +25,10 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 	var fwd := aim_dir()
 	# The deflect: the host treats us as shielded for the swing; the ball skips the
 	# parry launch while deflect_timer runs.
-	b.set("deflect_timer", 0.25)
+	b.set("deflect_timer", 0.6)
 	var arena := get_tree().current_scene
 	if arena and arena.has_method("request_block"):
-		arena.call("request_block", 0.2)
+		arena.call("request_block", 0.55)
 	for t in targets_near(center, 8.0):
 		var p: Vector3 = t.call("get_aim_point")
 		if (p - center).normalized().dot(fwd) > 0.1:

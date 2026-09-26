@@ -12,7 +12,7 @@ func _build() -> void:
 	crosshair_shape = "cross"
 	crosshair_radius = 14.0
 	lock_on = true
-	lock_radius_px = 160.0
+	lock_radius_px = 22.0
 	lock_through_walls = true
 	add_blade(1.0, 0.0, {"arc_radius": 0.3, "tip": Vector3(0.0, 2.6, 0.2), "max_width": 0.1, "max_thickness": 0.08, "segments": 9})
 

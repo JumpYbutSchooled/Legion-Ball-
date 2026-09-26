@@ -146,9 +146,10 @@ func stagger(duration: float) -> void:
 		manager.call("request_stagger", index, duration)
 
 
-## Freezes, cages and pins knock it out like a stagger.
+## Freezes, cages and pins knock it out like a stagger; so does a Time Dilator (time stops
+## for it while it's inside).
 func take_status(kind: String, duration: float, _data := Vector3.ZERO) -> void:
-	if kind in ["freeze", "cage", "pin"]:
+	if kind in ["freeze", "cage", "pin", "dilate"]:
 		stagger(duration)
 
 

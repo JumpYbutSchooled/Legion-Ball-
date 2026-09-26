@@ -3,7 +3,8 @@ extends "res://scripts/weapons/simple_weapon.gd"
 ## forward. Press to lunge and chop everything in front of you (6m): a heavy hit that
 ## does TRIPLE damage to anyone below 30% health.
 
-@export var damage := 6.0
+## 17.25 x 4 (PvP damage scale) = 69 a chop.
+@export var damage := 17.25
 var _swing_in := -1.0
 
 

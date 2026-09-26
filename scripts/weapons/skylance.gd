@@ -9,6 +9,7 @@ var _spear: Node3D = null
 func _build() -> void:
 	cooldown = 3.0
 	lock_on = true
+	lock_radius_px = 16.0
 	crosshair_shape = "diamond"
 	add_blade(-1.0, 90.0, {"arc_radius": 0.3, "tip": Vector3(0.0, 0.9, -4.2), "max_width": 0.3, "max_thickness": 0.3, "segments": 8})
 

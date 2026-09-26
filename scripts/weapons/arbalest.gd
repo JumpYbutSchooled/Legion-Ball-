@@ -5,8 +5,9 @@ extends "res://scripts/weapons/simple_weapon.gd"
 
 
 func _build() -> void:
-	cooldown = 1.4
+	cooldown = 0.9
 	lock_on = true
+	lock_radius_px = 16.0
 	crosshair_shape = "cross"
 	crosshair_radius = 12.0
 	var bow := {"arc_radius": 0.4, "tip": Vector3(1.5, 0.35, -1.4), "max_width": 0.14, "max_thickness": 0.1, "segments": 8}
@@ -24,7 +25,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 	var from := tip(2)
 	var dir: Vector3 = (target_point() - from).normalized()
 	spawn("res://scripts/weapons/crystal_shot.gd", {
-		"position": from, "velocity": dir * 250.0, "target_path": lock_path(), "turn_rate": 1.5, "gravity": 2.0, "damage": 8.0, "impulse": 45.0,
+		"position": from, "velocity": dir * 520.0, "target_path": lock_path(), "turn_rate": 3.0, "gravity": 2.0, "damage": 8.0, "impulse": 45.0,
 		"pin": 1.5, "lifetime": 5.0, "size": 0.2, "color": color,
 	})
 	flash_at(from, dir, 1.0)

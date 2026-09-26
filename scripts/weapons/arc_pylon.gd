@@ -1,6 +1,6 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## ARC PYLON (Fortress / Area Denial): two tall forks, one each side, pointing up.
-## Press to plant a pylon at your feet: for 8s it zaps whoever is nearest within 8m.
+## Press to plant a pylon at your feet: for 8s it zaps whoever is nearest within 96m.
 ## One at a time; a new one replaces the old.
 
 var _pylon: Node3D = null

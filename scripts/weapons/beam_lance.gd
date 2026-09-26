@@ -1,12 +1,15 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## BEAM LANCE (Marksman / Long Range): two long blades converging to a point far in front.
-## Hold for a steady laser. Every tick on the same target it burns hotter (up to 5x);
-## switch targets and it starts over. It overheats after 3s of firing.
+## Hold for a steady laser (300 m). Every tick on the same target it burns hotter (up to
+## 3x); switch targets and it starts over. It overheats after 2s of firing.
 
 @export var tick := 0.1
-@export var base_damage := 0.3
-@export var max_ramp := 5.0
-@export var burn_time := 3.0
+@export var base_damage := 0.2
+@export var max_ramp := 3.0
+## Ramp added per tick on the same target.
+@export var ramp_step := 0.1
+@export var burn_time := 2.0
+@export var beam_range := 300.0
 
 var heat := 0.0
 var _tick := 0.0
@@ -16,8 +19,9 @@ var _firing := false
 
 
 func _build() -> void:
-	cooldown = 1.5
+	cooldown = 2.5
 	lock_on = true
+	lock_radius_px = 14.0
 	crosshair_shape = "dot"
 	var shape := {"arc_radius": 0.6, "tip": Vector3(-0.1, 0.0, -4.4), "max_width": 0.16, "max_thickness": 0.12, "segments": 11}
 	for side in [1.0, -1.0]:
@@ -48,11 +52,11 @@ func _fire(pressed: bool, _just: bool, _released: bool, _hit: Dictionary, delta:
 	_tick = tick
 	var from := (tip(0) + tip(1)) * 0.5
 	var dir: Vector3 = (target_point() - from).normalized()
-	var hit: Dictionary = manager.raycast(from, from + dir * 700.0)
-	var end: Vector3 = hit["position"] if not hit.is_empty() else from + dir * 700.0
+	var hit: Dictionary = manager.raycast(from, from + dir * beam_range)
+	var end: Vector3 = hit["position"] if not hit.is_empty() else from + dir * beam_range
 	var collider: Object = hit["collider"] if not hit.is_empty() else null
 	if collider and collider.has_method("take_hit"):
-		_ramp = minf(_ramp + 0.25, max_ramp) if collider == _last else 1.0
+		_ramp = minf(_ramp + ramp_step, max_ramp) if collider == _last else 1.0
 		_last = collider
 		manager.hit_object(collider, base_damage * _ramp, end, dir, 1.0)
 	else:

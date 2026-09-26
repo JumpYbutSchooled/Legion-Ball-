@@ -1,7 +1,7 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## BUZZSAW (Brawler / Close Quarters): eight small blades in a flat disc round the
-## middle. Hold to spin them up: anyone who touches you (2.4m) gets shredded several
-## times a second, harder the faster you're going. Ram people.
+## middle. Hold to spin them up: anyone who touches you (3.5m) while it's spun up is
+## shredded: one touch kills. Ram people.
 
 var _spin := 0.0
 var _speed := 0.0
@@ -31,7 +31,8 @@ func _fire(pressed: bool, _just: bool, _released: bool, _hit: Dictionary, delta:
 		return
 	_tick = 0.15
 	var b := ball()
-	var dmg := 0.5 + b.linear_velocity.length() / 40.0
+	# 25 x 4 (PvP damage scale) = 100: one touch kills.
+	var dmg := 25.0
 	for t in targets_near(b.global_position, 3.5):
 		var p: Vector3 = t.call("get_aim_point")
 		manager.hit_object(t, dmg, p, (p - b.global_position).normalized(), 8.0)

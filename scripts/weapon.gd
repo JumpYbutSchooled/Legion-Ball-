@@ -219,7 +219,8 @@ func _physics_process(delta: float) -> void:
 	# doesn't need the mouse at all.
 	var aiming := (captured and _was_captured) or InputSetup.using_pad
 	var pressed := controls and aiming and Input.is_action_pressed("fire")
-	current_weapon().handle_fire(pressed, hit, delta)
+	# Inside an enemy Time Dilator our weapons charge, cool down and fire slower.
+	current_weapon().handle_fire(pressed, hit, delta * ball.call("weapon_time_scale"))
 	_was_captured = captured
 
 
@@ -333,8 +334,44 @@ func targets_on_screen(radius_px: float, max_distance := INF, need_sight := fals
 			if not block.is_empty() and block["collider"] != target:
 				continue
 		found.append({"target": target, "point": p, "screen": screen, "distance": p.distance_to(ball_pos), "off_center": off})
+	_redirect_to_decoys(found, center)
 	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["off_center"] < b["off_center"])
 	return found
+
+
+## MIRAGE: while a player has decoys out, any lock on them lands on one of their decoys
+## instead (the one nearest the crosshair), so the lock reticle jumps off them.
+func _redirect_to_decoys(found: Array, center: Vector2) -> void:
+	var by_owner := {}
+	for d in get_tree().get_nodes_in_group("decoys"):
+		var m: Node = d.get("manager")
+		if not m or not d.call("is_alive") or camera.is_position_behind(d.global_position):
+			continue
+		var id := m.get_multiplayer_authority()
+		if id == get_multiplayer_authority():
+			continue
+		if not by_owner.has(id):
+			by_owner[id] = []
+		by_owner[id].append(d)
+	if by_owner.is_empty():
+		return
+	for entry in found:
+		var t: Node = entry["target"]
+		if not t is RigidBody3D or not by_owner.has(t.get_multiplayer_authority()):
+			continue
+		var best: Node3D = null
+		var best_off := INF
+		for d in by_owner[t.get_multiplayer_authority()]:
+			var off := camera.unproject_position(d.global_position).distance_to(center)
+			if off < best_off:
+				best = d
+				best_off = off
+		var p: Vector3 = best.call("get_aim_point")
+		entry["target"] = best
+		entry["point"] = p
+		entry["screen"] = camera.unproject_position(p)
+		entry["distance"] = p.distance_to(ball.global_position)
+		# Kept where the player was, so the redirected lock still wins the same way.
 
 
 ## Converts an angle from the screen center (degrees) into pixels, using the camera's FOV.

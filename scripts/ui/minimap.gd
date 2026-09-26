@@ -189,6 +189,19 @@ func _draw_map() -> void:
 			_panel.draw_circle(pos, 5.5, Color(0, 0, 0, 0.6 * alpha))
 			_panel.draw_circle(pos, 4.0, Color(color, alpha))
 
+	# HUNTER'S SIGIL tags (only ours exist on this computer): a pulsing red diamond, seen
+	# through walls, pinned to the edge if off the map.
+	var pulse := 0.75 + 0.25 * sin(Time.get_ticks_msec() / 120.0)
+	for mark in get_tree().get_nodes_in_group("sigil_marks"):
+		var mp: Vector3 = (mark as Node3D).global_position
+		var spot: Vector2 = (to_screen * Vector2(mp.x, mp.z)).clamp(Vector2(8, 8), rect.size - Vector2(8, 8))
+		var r := 7.0 * pulse
+		var diamond := PackedVector2Array([spot + Vector2(0, -r), spot + Vector2(r, 0), spot + Vector2(0, r), spot + Vector2(-r, 0)])
+		var red: Color = mark.get("color")
+		_panel.draw_colored_polygon(diamond, Color(red, 0.85))
+		diamond.append(diamond[0])
+		_panel.draw_polyline(diamond, Color.WHITE, 1.5)
+
 	# You: an arrow where you are, pointing the way the camera looks.
 	var fwd := -cam.global_basis.z
 	var facing := Vector2(fwd.x, fwd.z)

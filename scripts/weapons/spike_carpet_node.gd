@@ -21,7 +21,7 @@ func _ready() -> void:
 	mat.emission = color
 	mat.emission_energy_multiplier = 1.2
 	var line := end_point - global_position
-	var count := clampi(int(line.length() / 1.2), 2, 30)
+	var count := clampi(int(line.length() / 1.5), 2, 200)
 	for i in count:
 		var spike := MeshInstance3D.new()
 		var cone := CylinderMesh.new()
@@ -53,6 +53,6 @@ func _physics_process(delta: float) -> void:
 			continue
 		var p: Vector3 = t.call("get_aim_point")
 		var closest := Geometry3D.get_closest_point_to_segment(p, global_position, end_point)
-		if p.distance_to(closest) <= 1.8 and p.y - closest.y < 2.5:
+		if p.distance_to(closest) <= 2.5 and p.y - closest.y < 2.5:
 			manager.call("hit_object", t, damage, p, Vector3.UP, 2.0)
 			manager.call("apply_status", t, "chill", 0.6, Vector3(0.5, 0, 0))
