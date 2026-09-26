@@ -15,6 +15,11 @@ var _ivory := solid(Color(0.95, 0.92, 0.85), 0.25)
 var _ebony := solid(Color(0.16, 0.14, 0.16), 0.12, 0.55)
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_ceiling = 90.0
 	_outline = rect_outline(Rect2(-HALF - RIM, -HALF - RIM, (HALF + RIM) * 2.0, (HALF + RIM) * 2.0))

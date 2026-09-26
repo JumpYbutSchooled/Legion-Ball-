@@ -38,6 +38,11 @@ var _black := solid(Color(0.08, 0.08, 0.09), 0.4)
 var _duvet := solid(Color(0.75, 0.25, 0.3))
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_rng.seed = SEED
 	_ceiling = H - 2.5
@@ -270,8 +275,8 @@ func _bedroom() -> void:
 	# Moving boxes: a ramp onto the first, a jump onto the second, a plank to the wardrobe.
 	ramp(Vector3(-40.0, 0.0, 55.0), Vector3(-40.0, 6.0, 44.0), 6.0, _wood_light)
 	box(Vector3(-40.0, 3.0, 40.0), Vector3(8.0, 6.0, 8.0), solid(Color(0.7, 0.55, 0.35)))
-	box(Vector3(-40.0, 7.5, 38.0), Vector3(6.0, 3.0, 6.0), solid(Color(0.75, 0.6, 0.4)))
-	ramp(Vector3(-40.0, 9.0, 36.0), Vector3(-53.0, 18.0, BRANCH_END + 3.5), 4.0, _wood_light)
+	box(Vector3(-40.0, 6.9, 38.0), Vector3(6.0, 1.8, 6.0), solid(Color(0.75, 0.6, 0.4)))
+	ramp(Vector3(-40.0, 7.8, 36.0), Vector3(-53.0, 18.0, BRANCH_END + 3.5), 4.0, _wood_light)
 	# Dresser.
 	box(Vector3(-25.0, 5.0, HZ - 4.0), Vector3(14.0, 10.0, 6.0), _wood)
 

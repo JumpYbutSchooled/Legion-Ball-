@@ -9,6 +9,9 @@ extends Node3D
 ##   _outline  the boundary, for the minimap    -> outline()
 ##   _ceiling  height where rising bleeds off   -> ceiling()   (ball.gd max_height)
 ##   _fall     height below which you've fallen off -> fall_height() (ball.gd fall_reset_height)
+## A map can be built bigger than it's written: override map_size() (2 = twice as big in
+## every direction). Everything the builder makes, the lights, spawns, turrets, outline,
+## ceiling and fall height all scale with it; sp() scales a point for anything else.
 ## Randomness must come from a fixed seed (_rng) so every computer builds the same map.
 ## Builds in _ready, which runs before the parent Map's, so Map's particle colliders
 ## cover all of it.
@@ -23,11 +26,53 @@ var _ceiling := 120.0
 var _fall := -20.0
 var _rng := RandomNumberGenerator.new()
 var _phys := PhysicsMaterial.new()
+## How much bigger than written this map is built (map_size()).
+var map_scale := 1.0
 
 
 func _ready() -> void:
 	_phys.friction = 1.0
+	map_scale = map_size()
 	_build()
+	if map_scale != 1.0:
+		_scale_the_rest()
+
+
+## Overridden by maps that are built bigger than they're written.
+func map_size() -> float:
+	return 1.0
+
+
+## A point in the map as written, where it ends up at this map's size.
+func sp(v: Vector3) -> Vector3:
+	return v * map_scale
+
+
+## After building: everything the builder didn't size itself (lights, loose meshes) and
+## the map's numbers.
+func _scale_the_rest() -> void:
+	for child in get_children():
+		var node := child as Node3D
+		if not node or node.has_meta("sized"):
+			continue
+		node.position *= map_scale
+		var omni := node as OmniLight3D
+		if omni:
+			omni.omni_range *= map_scale
+		var spot := node as SpotLight3D
+		if spot:
+			spot.spot_range *= map_scale
+		var mesh := node as MeshInstance3D
+		if mesh and mesh.mesh is BoxMesh:
+			(mesh.mesh as BoxMesh).size *= map_scale
+	for i in _spawns.size():
+		_spawns[i] *= map_scale
+	for i in _turrets.size():
+		_turrets[i] *= map_scale
+	for i in _outline.size():
+		_outline[i] *= map_scale
+	_ceiling *= map_scale
+	_fall *= map_scale
 
 
 ## Overridden by each map.
@@ -64,7 +109,10 @@ func box(center: Vector3, size: Vector3, mat: Material, yaw := 0.0, pitch := 0.0
 
 
 func box_basis(basis: Basis, center: Vector3, size: Vector3, mat: Material, minimap := true) -> StaticBody3D:
+	center *= map_scale
+	size *= map_scale
 	var body := StaticBody3D.new()
+	body.set_meta("sized", true)
 	body.transform = Transform3D(basis, center)
 	body.physics_material_override = _phys
 	var mesh := MeshInstance3D.new()
@@ -86,9 +134,11 @@ func box_basis(basis: Basis, center: Vector3, size: Vector3, mat: Material, mini
 
 ## Looks only, no collision (glow strips, trim).
 func deco(center: Vector3, size: Vector3, mat: Material, yaw := 0.0) -> MeshInstance3D:
+	center *= map_scale
 	var mesh := MeshInstance3D.new()
+	mesh.set_meta("sized", true)
 	var box_mesh := BoxMesh.new()
-	box_mesh.size = size
+	box_mesh.size = size * map_scale
 	mesh.mesh = box_mesh
 	mesh.material_override = mat
 	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

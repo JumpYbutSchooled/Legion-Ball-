@@ -36,6 +36,11 @@ var _lamp := glow(Color(1.0, 0.85, 0.55), 5.0)
 var _tower_mats: Array = []
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_rng.seed = SEED
 	_ceiling = BOUNDARY_HEIGHT - 20.0

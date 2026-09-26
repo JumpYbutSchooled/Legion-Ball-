@@ -22,6 +22,11 @@ var _helipad := glow(Color(0.2, 0.9, 0.7), 1.5)
 var _container_colors := [Color(0.7, 0.2, 0.15), Color(0.15, 0.35, 0.6), Color(0.2, 0.45, 0.25), Color(0.75, 0.55, 0.15), Color(0.4, 0.42, 0.45)]
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_rng.seed = SEED
 	_ceiling = 120.0

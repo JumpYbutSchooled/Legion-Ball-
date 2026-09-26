@@ -69,7 +69,10 @@ func _process(delta: float) -> bool:
 		cam.fov = 60.0
 		current_scene.add_child(cam)
 		var view: Array = VIEWS[_current]
-		cam.look_at_from_position(view[0], view[1])
+		# Maps built bigger than written (map_builder.gd map_size()) get the camera pulled back to match.
+		var layout := current_scene.get_node_or_null("Map/Layout")
+		var s: float = layout.get("map_scale") if layout and "map_scale" in layout else 1.0
+		cam.look_at_from_position(view[0] * s, view[1] * s)
 		cam.make_current()
 	if _t > 3.0:
 		var image := root.get_viewport().get_texture().get_image()

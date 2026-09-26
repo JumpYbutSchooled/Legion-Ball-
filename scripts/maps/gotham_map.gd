@@ -24,6 +24,11 @@ var _sodium := glow(Color(1.0, 0.6, 0.25), 5.0)
 var _signal := glow(Color(1.0, 0.95, 0.7), 8.0)
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_rng.seed = SEED
 	_ceiling = 180.0

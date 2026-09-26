@@ -8,6 +8,11 @@ const HEIGHT := 220.0
 const THICK := 6.0
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	var half := SIZE / 2.0
 	_ceiling = HEIGHT - 12.0

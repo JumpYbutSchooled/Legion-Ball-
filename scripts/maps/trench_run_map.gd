@@ -20,6 +20,11 @@ var _light_red := glow(Color(1.0, 0.25, 0.2), 4.0)
 var _star := glow(Color(1.0, 1.0, 1.0), 6.0)
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_rng.seed = SEED
 	_ceiling = 110.0
@@ -90,6 +95,12 @@ func _trench() -> void:
 		for i in 40:
 			var z := lerpf(-HALF_Z + 12.0, HALF_Z - 12.0, i / 39.0)
 			deco(Vector3(x - s * 0.3, -TRENCH_D + 1.0, z), Vector3(0.4, 0.4, 3.0), _light_blue)
+	# Ramps from the trench floor back up to the surface, along alternate walls.
+	for i in 4:
+		var s := 1.0 if i % 2 == 0 else -1.0
+		var z0 := lerpf(-HALF_Z + 60.0, HALF_Z - 200.0, i / 3.0)
+		var x := s * (TRENCH_W / 2.0 - 5.0)
+		ramp(Vector3(x, -TRENCH_D, z0), Vector3(x, 0.0, z0 + 90.0), 9.0, _hull)
 	# Catwalks across the trench.
 	for i in 6:
 		var z := lerpf(-HALF_Z + 80.0, HALF_Z - 120.0, i / 5.0)

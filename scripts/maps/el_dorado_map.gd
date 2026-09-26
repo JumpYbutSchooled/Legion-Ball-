@@ -23,6 +23,11 @@ var _water := glow(Color(0.15, 0.55, 0.45), 0.6)
 var _cliff := solid(Color(0.4, 0.34, 0.26))
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_rng.seed = SEED
 	_ceiling = 100.0

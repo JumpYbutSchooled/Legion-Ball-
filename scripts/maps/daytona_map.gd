@@ -7,6 +7,11 @@ extends "res://scripts/maps/speedway_map.gd"
 const SEED := 500
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _setup() -> void:
 	_rng.seed = SEED
 	straight = 380.0

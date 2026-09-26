@@ -24,6 +24,11 @@ var _bolt_timer := 1.0
 var _fx_rng := RandomNumberGenerator.new()
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_rng.seed = SEED
 	_fx_rng.randomize()
@@ -96,7 +101,7 @@ func _build_center() -> void:
 		for k in 4:
 			deco(Vector3(p.x, 10.0 + k * 6.0, p.y), Vector3(4.5, 0.6, 4.5), _hot)
 		deco(Vector3(p.x, 35.0, p.y), Vector3(3.5, 3.5, 3.5), _hot)
-		_tips.append(Vector3(p.x, 35.0, p.y))
+		_tips.append(sp(Vector3(p.x, 35.0, p.y)))
 	# Low barriers in a broken ring.
 	for i in 12:
 		if i % 3 == 1:
@@ -128,14 +133,14 @@ func _process(delta: float) -> void:
 		0:
 			to = _tips[_fx_rng.randi() % _tips.size()]
 			if to == from:
-				to = Vector3(0, 12, 0)
+				to = sp(Vector3(0, 12, 0))
 		1:
 			var a := _fx_rng.randf() * TAU
 			var phi := _fx_rng.randf_range(0.3, 1.2)
-			to = Vector3(0, WALL_HEIGHT, 0) + Vector3(cos(phi) * cos(a), sin(phi), cos(phi) * sin(a)) * (RADIUS - 2.0)
+			to = sp(Vector3(0, WALL_HEIGHT, 0) + Vector3(cos(phi) * cos(a), sin(phi), cos(phi) * sin(a)) * (RADIUS - 2.0))
 		_:
 			var p := Vector2.from_angle(_fx_rng.randf() * TAU) * _fx_rng.randf_range(10.0, 80.0)
-			to = Vector3(p.x, 0.1, p.y)
+			to = sp(Vector3(p.x, 0.1, p.y))
 	_bolt(from, to)
 
 

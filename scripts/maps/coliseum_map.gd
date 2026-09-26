@@ -23,6 +23,11 @@ var _marble := solid(Color(0.9, 0.88, 0.84), 0.5)
 var _bronze := solid(Color(0.72, 0.5, 0.26), 0.4, 0.6)
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_rng.seed = SEED
 	_ceiling = 64.0

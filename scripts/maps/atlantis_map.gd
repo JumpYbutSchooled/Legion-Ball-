@@ -24,6 +24,11 @@ var _coral := [glow(Color(1.0, 0.35, 0.5), 1.2), glow(Color(0.9, 0.5, 1.0), 1.2)
 var _seaweed := solid(Color(0.1, 0.4, 0.28))
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_rng.seed = SEED
 	_ceiling = 95.0
@@ -38,6 +43,7 @@ func _build() -> void:
 	for r in [ISLAND, CANAL_1, LAND_1, CANAL_2]:
 		ring(Vector2.ZERO, r, 40, -CANAL_DEPTH, CANAL_DEPTH - 0.1, 1.2, _marble_dark)
 	_bridges()
+	_canal_ramps()
 	_temple()
 	_ruins()
 	# The sea wall.
@@ -87,19 +93,34 @@ func _bridges() -> void:
 				box(Vector3(rail.x, 0.8, rail.y), Vector3(length, 1.6, 0.8), _marble_dark, -a)
 
 
+## Ramps up out of each canal, between the bridges, alternately onto the inner and outer
+## bank, so nobody is ever stuck down in the water.
+func _canal_ramps() -> void:
+	for span in [[ISLAND, CANAL_1], [LAND_1, CANAL_2]]:
+		for k in 4:
+			var a := TAU * (k + 0.5) / 4.0
+			var d := Vector2.from_angle(a)
+			var inner: float = span[0] + 1.5
+			var outer: float = span[1] - 1.5
+			if k % 2 == 0:
+				ramp(Vector3(d.x * inner, -CANAL_DEPTH, d.y * inner), Vector3(d.x * (outer + 1.5), 0.0, d.y * (outer + 1.5)), 8.0, _marble)
+			else:
+				ramp(Vector3(d.x * outer, -CANAL_DEPTH, d.y * outer), Vector3(d.x * (inner - 1.5), 0.0, d.y * (inner - 1.5)), 8.0, _marble)
+
+
 ## The Temple of Poseidon on the island: three stepped tiers (low enough to jump up), a
 ## ring of pillars, and an orichalcum spire in the middle.
 func _temple() -> void:
 	for tier in 3:
 		var size := 58.0 - tier * 14.0
-		var h := 2.5
+		var h := 1.8  # x2 map size = 3.6: still a jump.
 		box(Vector3(0.0, tier * h + h / 2.0, 0.0), Vector3(size, h, size), _marble if tier % 2 == 0 else _marble_dark, PI / 4.0 * tier)
 	# Ramps up each face of the lowest tier.
 	for k in 4:
 		var yaw := TAU * k / 4.0
 		var out := Vector3(sin(yaw), 0.0, cos(yaw))
-		ramp(out * 40.0, out * 29.0 + Vector3.UP * 2.5, 10.0, _marble)
-	var top := 7.5
+		ramp(out * 40.0, out * 29.0 + Vector3.UP * 1.8, 10.0, _marble)
+	var top := 5.4
 	for i in 12:
 		var p := Vector2.from_angle(TAU * i / 12.0) * 13.0
 		pillar(p, top, 2.2, 14.0, _marble)
