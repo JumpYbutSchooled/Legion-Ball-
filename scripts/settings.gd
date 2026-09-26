@@ -8,6 +8,7 @@ signal changed
 
 const PATH := "user://settings.cfg"
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
+const Graphics := preload("res://scripts/graphics.gd")
 const DEFAULTS := {
 	## Multiplier on the base mouse sensitivity.
 	"mouse_sensitivity": 1.0,
@@ -39,6 +40,25 @@ const DEFAULTS := {
 	## Staff weapons shown in the picker and on keys 7-8 (key 0 toggles).
 	"show_staff_weapons": true,
 	"fullscreen": false,
+	## Graphics (graphics.gd): a preset, and the options it sets (each can be changed after).
+	"graphics_preset": "HIGH",
+	"shadows": true,
+	"aa": "MSAA 2X",
+	"ssao": true,
+	"ssr": false,
+	"ssil": false,
+	"render_scale": 1.0,
+	## Frame cap (0 = none).
+	"max_fps": 0,
+	## Volumes, 0..1 (music_volume is above).
+	"master_volume": 1.0,
+	"sfx_volume": 1.0,
+	## Feedback and HUD extras.
+	"hit_markers": true,
+	"damage_indicators": true,
+	"speed_trails": true,
+	"show_fps": false,
+	"invert_mouse_y": false,
 	## Aim the camera by tilting a controller with a gyro (DualSense, DualShock 4, Switch Pro).
 	"motion_controls": false,
 	"motion_sensitivity": 1.0,
@@ -58,6 +78,7 @@ func _ready() -> void:
 			_values[key] = file.get_value("settings", key, DEFAULTS[key])
 	_apply_window()
 	UIStyle.set_accent(String(get_value("ui_color")))
+	(func() -> void: Graphics.apply(get_tree())).call_deferred()
 
 
 func get_value(key: String) -> Variant:
@@ -66,11 +87,17 @@ func get_value(key: String) -> Variant:
 
 func set_value(key: String, value: Variant) -> void:
 	_values[key] = value
+	# A preset sets every option it covers.
+	if key == "graphics_preset" and Graphics.PRESETS.has(value):
+		var preset: Dictionary = Graphics.PRESETS[value]
+		for k in preset:
+			_values[k] = preset[k]
 	_save()
 	if key == "fullscreen" or key == "vsync":
 		_apply_window()
 	if key == "ui_color":
 		UIStyle.set_accent(String(value))
+	Graphics.apply(get_tree())
 	changed.emit()
 
 
@@ -79,6 +106,7 @@ func reset_defaults() -> void:
 	_save()
 	_apply_window()
 	UIStyle.set_accent(String(get_value("ui_color")))
+	Graphics.apply(get_tree())
 	changed.emit()
 
 

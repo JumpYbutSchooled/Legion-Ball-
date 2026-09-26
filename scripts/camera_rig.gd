@@ -86,6 +86,7 @@ var _effects_scale := 1.0
 var _motion := false
 var _motion_scale := 1.0
 var _motion_invert := false
+var _invert_y := false
 ## Which controller's motion sensors we've switched on (-1 = none).
 var _gyro_device := -1
 var _trauma := 0.0
@@ -121,6 +122,7 @@ func _apply_settings() -> void:
 	_motion = SettingsScript.read(tree, "motion_controls")
 	_motion_scale = SettingsScript.read(tree, "motion_sensitivity")
 	_motion_invert = SettingsScript.read(tree, "motion_invert_y")
+	_invert_y = SettingsScript.read(tree, "invert_mouse_y")
 
 
 func _ready() -> void:
@@ -260,7 +262,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var sens := mouse_sensitivity * _sensitivity_scale
 		rotation.y -= event.relative.x * sens
 		_pitch.rotation.x = clampf(
-			_pitch.rotation.x - event.relative.y * sens,
+			_pitch.rotation.x - event.relative.y * sens * (-1.0 if _invert_y else 1.0),
 			deg_to_rad(min_pitch_deg),
 			deg_to_rad(max_pitch_deg)
 		)
@@ -276,7 +278,7 @@ func _pad_look(delta: float) -> void:
 	stick *= stick.length()
 	rotation.y -= stick.x * PAD_YAW_SPEED * _sensitivity_scale * delta
 	_pitch.rotation.x = clampf(
-		_pitch.rotation.x - stick.y * PAD_PITCH_SPEED * _sensitivity_scale * delta,
+		_pitch.rotation.x - stick.y * PAD_PITCH_SPEED * _sensitivity_scale * delta * (-1.0 if _invert_y else 1.0),
 		deg_to_rad(min_pitch_deg),
 		deg_to_rad(max_pitch_deg)
 	)

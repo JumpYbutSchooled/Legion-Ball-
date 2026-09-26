@@ -12,6 +12,8 @@ extends Node3D
 
 ## Forwarded from the gatling: which blade just fired (the crosshair uses it).
 signal fired(blade_index: int)
+## The local player's weapon landed a hit (hit markers: ui/combat_feedback.gd).
+signal damage_dealt(amount: float)
 ## Key 0 hid or showed the staff weapons (the weapon selector shows the result).
 signal staff_weapons_toggled(shown: bool)
 
@@ -424,6 +426,7 @@ func report_damage(target: Object, damage: float, pos: Vector3) -> void:
 		return
 	last_hit_id = slot_id(current)
 	var amount := damage * BallScript.PVP_DAMAGE_SCALE
+	damage_dealt.emit(amount)
 	var dist := ball.global_position.distance_to(pos)
 	var existing = _numbers.get(target)
 	if existing and is_instance_valid(existing) and existing.can_merge():

@@ -26,6 +26,7 @@ const LoadoutCard := preload("res://scripts/ui/loadout_card.gd")
 const WeaponPicker := preload("res://scripts/ui/weapon_picker.gd")
 const WeaponIcons := preload("res://scripts/ui/weapon_icons.gd")
 const MapGrid := preload("res://scripts/ui/map_grid.gd")
+const Graphics := preload("res://scripts/graphics.gd")
 const GLOBAL_COLOR := Color(1.0, 0.72, 0.3)
 
 var pause_mode := false
@@ -1070,27 +1071,46 @@ func _build_settings(box: VBoxContainer) -> void:
 	if not s:
 		box.add_child(UIStyle.label("Settings service offline.", 15, UIStyle.TEXT_DIM))
 		return
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 24)
-	grid.add_theme_constant_override("v_separation", 14)
-	box.add_child(grid)
-	_slider(grid, s, "MOUSE SENSITIVITY", "mouse_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
-	_slider(grid, s, "FIELD OF VIEW", "fov", 55.0, 100.0, 1.0, "%d")
-	_slider(grid, s, "MOTION BLUR", "motion_blur", 0.0, 1.5, 0.05, "%.2f")
-	_slider(grid, s, "SCREEN EFFECTS", "screen_effects", 0.0, 1.5, 0.05, "%.2fx")
-	_slider(grid, s, "CAMERA SHAKE", "camera_shake", 0.0, 2.0, 0.05, "%.2fx")
-	_slider(grid, s, "MUSIC VOLUME", "music_volume", 0.0, 1.0, 0.05, "%.2f")
-	_toggle(grid, s, "MENU SOUNDS", "ui_sounds")
-	_toggle(grid, s, "MAP BUILD-IN", "map_intro")
-	_toggle(grid, s, "IMPACT FRAMES", "impact_frames")
-	_toggle(grid, s, "FULLSCREEN", "fullscreen")
-	_toggle(grid, s, "V-SYNC", "vsync")
-	_toggle(grid, s, "MOTION CONTROLS", "motion_controls")
-	_slider(grid, s, "MOTION SENSITIVITY", "motion_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
-	_toggle(grid, s, "MOTION INVERT Y", "motion_invert_y")
+	# GRAPHICS: a preset, then each thing it sets.
+	box.add_child(UIStyle.label("GRAPHICS", 14, UIStyle.ACCENT, true))
+	_choice_row(box, s, "QUALITY", "graphics_preset", ["LOW", "MEDIUM", "HIGH", "ULTRA"])
+	_choice_row(box, s, "ANTI-ALIASING", "aa", Graphics.AA_MODES)
+	var gfx := _settings_grid(box)
+	_toggle(gfx, s, "SUN SHADOWS", "shadows")
+	_toggle(gfx, s, "AMBIENT OCCLUSION", "ssao")
+	_toggle(gfx, s, "REFLECTIONS", "ssr")
+	_toggle(gfx, s, "INDIRECT LIGHT", "ssil")
+	_slider(gfx, s, "RENDER SCALE", "render_scale", 0.5, 1.0, 0.05, "%.2fx")
+	_slider(gfx, s, "FRAME CAP (0 = NONE)", "max_fps", 0.0, 360.0, 30.0, "%d")
+	_slider(gfx, s, "FIELD OF VIEW", "fov", 55.0, 100.0, 1.0, "%d")
+	_slider(gfx, s, "MOTION BLUR", "motion_blur", 0.0, 1.5, 0.05, "%.2f")
+	_slider(gfx, s, "SCREEN EFFECTS", "screen_effects", 0.0, 1.5, 0.05, "%.2fx")
+	_slider(gfx, s, "CAMERA SHAKE", "camera_shake", 0.0, 2.0, 0.05, "%.2fx")
+	_toggle(gfx, s, "SPEED TRAILS", "speed_trails")
+	_toggle(gfx, s, "IMPACT FRAMES", "impact_frames")
+	_toggle(gfx, s, "MAP BUILD-IN", "map_intro")
+	_toggle(gfx, s, "FULLSCREEN", "fullscreen")
+	_toggle(gfx, s, "V-SYNC", "vsync")
 
-	# Accent colour for the menus and HUD: one swatch per choice.
+	box.add_child(UIStyle.label("AUDIO", 14, UIStyle.ACCENT, true))
+	var audio := _settings_grid(box)
+	_slider(audio, s, "MASTER VOLUME", "master_volume", 0.0, 1.0, 0.05, "%.2f")
+	_slider(audio, s, "EFFECTS VOLUME", "sfx_volume", 0.0, 1.0, 0.05, "%.2f")
+	_slider(audio, s, "MUSIC VOLUME", "music_volume", 0.0, 1.0, 0.05, "%.2f")
+	_toggle(audio, s, "MENU SOUNDS", "ui_sounds")
+
+	box.add_child(UIStyle.label("GAMEPLAY & HUD", 14, UIStyle.ACCENT, true))
+	var play := _settings_grid(box)
+	_slider(play, s, "MOUSE SENSITIVITY", "mouse_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
+	_toggle(play, s, "INVERT MOUSE Y", "invert_mouse_y")
+	_toggle(play, s, "HIT MARKERS", "hit_markers")
+	_toggle(play, s, "DAMAGE DIRECTION", "damage_indicators")
+	_toggle(play, s, "SHOW FPS / PING", "show_fps")
+	_toggle(play, s, "MOTION CONTROLS", "motion_controls")
+	_slider(play, s, "MOTION SENSITIVITY", "motion_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
+	_toggle(play, s, "MOTION INVERT Y", "motion_invert_y")
+
+	box.add_child(UIStyle.label("INTERFACE", 14, UIStyle.ACCENT, true))	# Accent colour for the menus and HUD: one swatch per choice.
 	var color_row := HBoxContainer.new()
 	color_row.add_theme_constant_override("separation", 10)
 	box.add_child(color_row)
@@ -1166,6 +1186,41 @@ func _recolor(node: Node, old: Color, new: Color) -> void:
 		control.queue_redraw()
 	for child in node.get_children():
 		_recolor(child, old, new)
+
+
+## A three-column grid (name, control, value) for a settings section.
+func _settings_grid(box: VBoxContainer) -> GridContainer:
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 24)
+	grid.add_theme_constant_override("v_separation", 12)
+	box.add_child(grid)
+	return grid
+
+
+## One button per choice for setting `key`; the current one is lit. Picking one refreshes
+## the page in place (a preset changes several other settings).
+func _choice_row(box: VBoxContainer, s: Node, title: String, key: String, choices: Array) -> void:
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 8)
+	row.add_theme_constant_override("v_separation", 6)
+	box.add_child(row)
+	var label := UIStyle.label(title, 15, UIStyle.TEXT)
+	label.custom_minimum_size = Vector2(170, 0)
+	row.add_child(label)
+	var current := String(s.call("get_value", key))
+	for choice in choices:
+		var b := Button.new()
+		b.text = choice
+		b.add_theme_font_size_override("font_size", 12)
+		if choice == current:
+			b.add_theme_stylebox_override("normal", UIStyle.panel_box(UIStyle.ACCENT, Color(UIStyle.ACCENT, 0.2)))
+			b.add_theme_color_override("font_color", Color.WHITE)
+		b.pressed.connect(func() -> void:
+			s.call("set_value", key, choice)
+			ui_sound(self, "ui_click", -8.0)
+			_show_page("settings", true))
+		row.add_child(b)
 
 
 func _slider(grid: GridContainer, s: Node, title: String, key: String, lo: float, hi: float, step: float, fmt: String) -> void:

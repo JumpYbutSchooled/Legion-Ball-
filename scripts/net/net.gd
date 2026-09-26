@@ -127,6 +127,9 @@ var classic := false
 ## Bots on this server (any player can switch them off or on from the pause menu). The
 ## server's copy is the real one; everyone gets told when it changes (_zzbots_state).
 var bots_enabled := true
+## Round trip to the server in milliseconds (clients; measured every couple of seconds).
+var ping_ms := -1
+var _ping_timer := 0.0
 ## This game's version (res://version.txt, updated with every patch). Players must match
 ## the server's exactly to join.
 var version := ""
@@ -434,6 +437,7 @@ func leave() -> void:
 	game_mode = "ffa"
 	classic = false
 	bots_enabled = true
+	ping_ms = -1
 	players.clear()
 	input_blocked = false
 	roster_changed.emit()
@@ -506,6 +510,12 @@ func quit_to_menu() -> void:
 
 
 func _process(delta: float) -> void:
+	# Ping: a timestamp to the server and back.
+	if online and in_match and not multiplayer.is_server() and multiplayer.multiplayer_peer and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+		_ping_timer -= delta
+		if _ping_timer <= 0.0:
+			_ping_timer = 2.0
+			_zzping.rpc_id(1, Time.get_ticks_msec())
 	if _retry_timer >= 0.0:
 		_retry_timer -= delta
 		if _retry_timer < 0.0:
@@ -732,6 +742,17 @@ func _allowed_loadout(ids: Array) -> Array:
 func _zzuse_mode(mode: String) -> void:
 	if MODES.has(mode):
 		game_mode = mode
+
+
+@rpc("any_peer", "unreliable")
+func _zzping(stamp: int) -> void:
+	if multiplayer.is_server():
+		_zzpong.rpc_id(multiplayer.get_remote_sender_id(), stamp)
+
+
+@rpc("authority", "unreliable")
+func _zzpong(stamp: int) -> void:
+	ping_ms = Time.get_ticks_msec() - stamp
 
 
 ## Any player: switch this server's bots on or off (for everyone).

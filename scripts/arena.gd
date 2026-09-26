@@ -16,6 +16,8 @@ signal match_over(winner: int)
 ## voted for what: {peer: map index} and {peer: mode index} (Net.MODES).
 signal vote_opened(options: Array)
 signal vote_state(map_votes: Dictionary, mode_votes: Dictionary)
+## Our own player was hit from pos (the direction arrows: ui/combat_feedback.gd).
+signal hurt_from(pos: Vector3)
 ## Team game: the two teams' kill totals changed.
 signal team_scores_changed(scores: Array)
 
@@ -29,7 +31,9 @@ const Turrets := preload("res://scripts/turrets.gd")
 const SettingsScript := preload("res://scripts/settings.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const NetScript := preload("res://scripts/net/net.gd")
+const Graphics := preload("res://scripts/graphics.gd")
 const BotBrain := preload("res://scripts/bot_brain.gd")
+const SpeedTrail := preload("res://scripts/speed_trail.gd")
 
 ## Spawn points spread round the middle of the map, facing inward.
 const SPAWN_RADIUS := 55.0
@@ -113,6 +117,8 @@ func _ensure_then_spawn() -> void:
 
 func _start(net: Node) -> void:
 	_match_start = Time.get_ticks_msec()
+	# This map's sun and environment, in the player's graphics settings.
+	(func() -> void: Graphics.apply_scene(get_tree())).call_deferred()
 	# Joining a match that's already going: ask the host for its clock and team scores.
 	if net.get("online") and not multiplayer.is_server():
 		_zzhello.rpc_id(1)
@@ -258,6 +264,14 @@ func _spawn(id: int, index: int) -> void:
 	ball.get_node("Weapon").set("loadout", loadout_of(id))
 	_players_root.add_child(ball)
 	_apply_set_perks(id)
+	# A glowing trail behind the ball when it's going fast, in its player's colour.
+	if DisplayServer.get_name() != "headless":
+		var trail := SpeedTrail.new()
+		trail.ball = ball
+		var net := _net()
+		trail.color = net.call("player_color", id) if net and is_online() else Color(0.35, 0.9, 1.0)
+		add_child(trail)
+		ball.tree_exiting.connect(trail.queue_free)
 	if bot and multiplayer.is_server():
 		var brain := BotBrain.new()
 		brain.arena = self
@@ -471,7 +485,7 @@ func turret_shot(victim: int, amount: float, from: Vector3) -> bool:
 		_parried[victim] = true
 		_to_peer(victim, "_zzparry_at", [from])
 		return true
-	_deal(victim, -1, amount)
+	_deal(victim, -1, amount, from)
 	return false
 
 
@@ -533,9 +547,15 @@ func _perk_damage(victim: int, attacker: int) -> float:
 
 
 ## Host only: take `amount` off `victim`, credited to `attacker` if it kills.
-func _deal(victim: int, attacker: int, amount: float) -> void:
+func _deal(victim: int, attacker: int, amount: float, from := Vector3.INF) -> void:
 	if not alive.get(victim, false) or _protect.get(victim, 0.0) > 0.0 or _is_god(victim):
 		return
+	# Tell the victim where it came from (their screen shows an arrow that way).
+	var source := from
+	if source == Vector3.INF and attacker != victim and _players.has(attacker):
+		source = _players[attacker].global_position
+	if source != Vector3.INF and not NetScript.is_bot(victim):
+		_to_peer(victim, "_zzhurt", [source])
 	if _marks.get(victim, 0.0) > 0.0:
 		amount *= MARK_MULTIPLIER
 	amount *= _perk_damage(victim, attacker)
@@ -977,6 +997,12 @@ func _zzstatus(victim: int, kind: String, duration: float, data: Vector3) -> voi
 		duration *= 1.3
 	_to_peer(victim, "_zzapply_status", [kind, duration, data])
 	_show_status.rpc(victim, kind, duration)
+
+
+## We were hit from pos.
+@rpc("authority", "unreliable")
+func _zzhurt(pos: Vector3) -> void:
+	hurt_from.emit(pos)
 
 
 ## Our own ball got a status the host approved.

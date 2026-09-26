@@ -30,6 +30,11 @@ var _metal := solid(Color(0.3, 0.32, 0.35), 0.5, 0.6)
 var _links: Array = []
 
 
+## Roofed over: lit by its own lamps, so the sun casts no shadows here (graphics.gd).
+func is_indoor() -> bool:
+	return true
+
+
 func _build() -> void:
 	_rng.seed = SEED
 	_ceiling = HALL_HEIGHT - 2.0

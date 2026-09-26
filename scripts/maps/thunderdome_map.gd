@@ -25,6 +25,11 @@ var _fx_rng := RandomNumberGenerator.new()
 
 
 ## Built at twice its written size in every direction.
+## Roofed over: lit by its own lamps, so the sun casts no shadows here (graphics.gd).
+func is_indoor() -> bool:
+	return true
+
+
 func map_size() -> float:
 	return 2.0
 

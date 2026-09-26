@@ -8,6 +8,7 @@ extends Node
 ## Built on a worker thread at startup; anything played before it's ready is skipped.
 
 const RATE := 22050
+const Graphics := preload("res://scripts/graphics.gd")
 const POOL_3D := 32
 const POOL_UI := 10
 
@@ -39,8 +40,11 @@ func _ready() -> void:
 	_enabled = DisplayServer.get_name() != "headless"
 	if not _enabled:
 		return
+	# Sound effects go through the SFX channel (Settings: SFX volume).
+	Graphics.ensure_buses()
 	for i in POOL_3D:
 		var p := AudioStreamPlayer3D.new()
+		p.bus = "SFX"
 		p.unit_size = 14.0
 		p.max_distance = 260.0
 		p.panning_strength = 0.8
@@ -48,6 +52,7 @@ func _ready() -> void:
 		_pool_3d.append(p)
 	for i in POOL_UI:
 		var p := AudioStreamPlayer.new()
+		p.bus = "SFX"
 		add_child(p)
 		_pool_ui.append(p)
 	_task = WorkerThreadPool.add_task(_build_all)
@@ -92,6 +97,7 @@ func make_loop(sound: String, parent: Node) -> AudioStreamPlayer3D:
 	if not _enabled or not _streams.has(sound):
 		return null
 	var p := AudioStreamPlayer3D.new()
+	p.bus = "SFX"
 	p.stream = _streams[sound]
 	p.unit_size = 10.0
 	p.max_distance = 200.0
@@ -105,6 +111,7 @@ func make_flat_loop(sound: String, parent: Node) -> AudioStreamPlayer:
 	if not _enabled or not _streams.has(sound):
 		return null
 	var p := AudioStreamPlayer.new()
+	p.bus = "SFX"
 	p.stream = _streams[sound]
 	p.volume_db = -80.0
 	parent.add_child(p)

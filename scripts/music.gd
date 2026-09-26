@@ -12,6 +12,7 @@ extends Node
 ## Volume: Settings "music_volume" (0..1).
 
 const RATE := 22050
+const Graphics := preload("res://scripts/graphics.gd")
 const FADE_TIME := 1.6
 ## Seed for the break chops, so the loop is the same every time.
 const SEED := 1742
@@ -31,8 +32,10 @@ func _ready() -> void:
 	_enabled = DisplayServer.get_name() != "headless"
 	if not _enabled:
 		return
+	Graphics.ensure_buses()
 	for i in 2:
 		var p := AudioStreamPlayer.new()
+		p.bus = "Music"
 		p.volume_db = -80.0
 		add_child(p)
 		_players.append(p)
