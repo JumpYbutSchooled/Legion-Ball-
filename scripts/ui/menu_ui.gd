@@ -542,6 +542,40 @@ func _show_weapon_id(id: String) -> void:
 		detail.add_child(UIStyle.label("WORKS WITH", 13, UIStyle.TEXT_DIM))
 		detail.add_child(_wrapped(UIStyle.label("  " + ", ".join(PackedStringArray(names)), 14, UIStyle.TEXT)))
 
+## Practice: admin powers on yourself, for everyone. They end when you leave practice.
+func _build_practice_admin(box: VBoxContainer, mod: Node) -> void:
+	_header(box, "PRACTICE ADMIN", "ADMIN POWERS ON YOURSELF  //  PRACTICE ONLY  //  RESET WHEN YOU LEAVE")
+	var gold := Color(1.0, 0.78, 0.25)
+	var powers := _flow(box)
+	var god: bool = mod.get("offline_god")
+	var low: bool = mod.get("low_gravity")
+	for entry in [
+		["GOLD SHIELD: %s" % ("ON" if god else "OFF"), func() -> void: mod.call("practice_toggle_god")],
+		["LOW GRAVITY: %s" % ("ON" if low else "OFF"), func() -> void: mod.call("practice_set_gravity", not low)],
+		["LAUNCH ME", func() -> void: mod.call("practice_launch")],
+	]:
+		var b := _small_button(entry[0], entry[1])
+		b.add_theme_color_override("font_color", gold)
+		powers.add_child(b)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 10)
+	box.add_child(row)
+	row.add_child(UIStyle.label("MY SPEED %", 15, UIStyle.TEXT))
+	var speed := SpinBox.new()
+	speed.min_value = 10
+	speed.max_value = 1000
+	speed.step = 1
+	speed.custom_arrow_step = 10
+	speed.value = roundf(float(mod.get("practice_speed")) * 100.0)
+	speed.custom_minimum_size = Vector2(110, 0)
+	row.add_child(speed)
+	var set_button := _small_button("SET", func() -> void: mod.call("practice_set_speed", speed.value / 100.0))
+	set_button.add_theme_color_override("font_color", gold)
+	row.add_child(set_button)
+	row.add_child(_small_button("RESET", func() -> void: mod.call("practice_set_speed", 1.0)))
+	box.add_child(_wrapped(UIStyle.label("GOLD SHIELD: the owner's invincible shell. LOW GRAVITY: everything floats. LAUNCH ME: straight up. SPEED: how fast you roll, top speed, acceleration and dash all together. The AI turrets switch is in the menu on the left.", 12, UIStyle.TEXT_DIM)))
+
+
 ## Owner: every player's max health and speed (you too), set with SET, or RESET to normal.
 func _build_player_stats(box: VBoxContainer, mod: Node, net: Node, gold: Color) -> void:
 	box.add_child(UIStyle.label("PLAYER STATS  (max health, speed %)", 13, gold))
@@ -897,8 +931,12 @@ func _mod() -> Node:
 func _update_mod_nav() -> void:
 	var mod := _mod()
 	# Testers get the page too (with just their own tools).
-	var on: bool = mod != null and int(mod.call("my_level")) >= 1
+	# In practice everyone gets their own admin powers (the same page, practice tools).
+	var net := get_tree().root.get_node_or_null("Net")
+	var practice: bool = pause_mode and not (net and net.get("online"))
+	var on: bool = mod != null and (int(mod.call("my_level")) >= 1 or practice)
 	_nav_buttons["moderation"].visible = on
+	_nav_buttons["moderation"].text = "[ PRACTICE ADMIN ]" if practice else "[ MODERATION ]"
 	if not on and _current_page == "moderation":
 		_show_page("armory")
 	elif on and _current_page == "moderation" and is_inside_tree():
@@ -917,9 +955,12 @@ func _on_roster_changed() -> void:
 ## launches players, kills or heals everyone, freezes everyone, low gravity, and picks
 ## which weapons everyone may use. The server checks every request itself.
 func _build_moderation(box: VBoxContainer) -> void:
-	_header(box, "MODERATION", "STAFF TOOLS  //  WHAT YOU SEE DEPENDS ON YOUR ROLE")
 	var mod := _mod()
 	var net := get_tree().root.get_node_or_null("Net")
+	if mod and not (net and net.get("online")):
+		_build_practice_admin(box, mod)
+		return
+	_header(box, "MODERATION", "STAFF TOOLS  //  WHAT YOU SEE DEPENDS ON YOUR ROLE")
 	var level: int = mod.call("my_level") if mod else 0
 	if not mod or not net or level < 1:
 		box.add_child(UIStyle.label("Staff tools are not active.", 15, UIStyle.TEXT_DIM))

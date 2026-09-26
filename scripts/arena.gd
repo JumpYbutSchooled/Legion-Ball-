@@ -152,6 +152,14 @@ func _start(net: Node) -> void:
 		add_child(intro)
 
 
+## Leaving practice: practice admin powers (speed, low gravity, gold shield) end with it.
+func _exit_tree() -> void:
+	if not _started_online:
+		var mod := get_tree().root.get_node_or_null("Mod")
+		if mod:
+			mod.call("practice_reset")
+
+
 func _net() -> Node:
 	return get_tree().root.get_node_or_null("Net")
 
@@ -160,7 +168,9 @@ func _roster() -> Dictionary:
 	var net := _net()
 	if net and net.get("online"):
 		return net.get("players")
-	return {1: {"name": "YOU", "color": 0, "loadout": WeaponInfo.local_loadout(get_tree())}}
+	var mod := get_tree().root.get_node_or_null("Mod")
+	var speed: float = mod.get("practice_speed") if mod else 1.0
+	return {1: {"name": "YOU", "color": 0, "loadout": WeaponInfo.local_loadout(get_tree()), "speed": speed}}
 
 
 func _sync_players() -> void:

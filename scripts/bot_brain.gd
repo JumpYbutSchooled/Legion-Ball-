@@ -42,17 +42,41 @@ var _last_health := 100.0
 var _hurt := 0.0
 var _move := Vector3.ZERO
 var _blade := 0
+var _armed := true
+## The style this bot was given; it goes back to it whenever its weapon is allowed again.
+var _preferred: int = Style.GUNNER
 
 
 func _ready() -> void:
 	_ball = get_parent() as RigidBody3D
 	_weapon = _ball.get_node_or_null("Weapon")
-	_style = [Style.GUNNER, Style.SNIPER, Style.BRAWLER][bot_id % 3]
+	_preferred = [Style.GUNNER, Style.SNIPER, Style.BRAWLER][bot_id % 3]
+	_style = _preferred
 	_last_pos = _ball.global_position
-	# Hold the style's weapon, drawn.
-	var slot: int = (_weapon.get("slot_ids") as Array).find(STYLES[_style][0]) if _weapon else -1
-	if slot >= 0:
-		_weapon.call("select", slot)
+	_arm()
+
+
+## Take up the style's weapon, or (if the owner has locked it) another style whose weapon
+## is allowed. The style always matches what's actually held, so a bot never shows one
+## gun and fires another. Everything locked: it holds nothing and doesn't shoot.
+func _arm() -> void:
+	if not _weapon:
+		return
+	var ids: Array = _weapon.get("slot_ids")
+	var order: Array = [_preferred]
+	for st in [Style.GUNNER, Style.SNIPER, Style.BRAWLER]:
+		if not order.has(st):
+			order.append(st)
+	for st in order:
+		var slot := ids.find(STYLES[st][0])
+		if slot >= 0 and _weapon.call("_slot_allowed", slot):
+			_weapon.call("select", slot)
+			_style = st
+			_armed = true
+			return
+	_armed = false
+	if _weapon.call("is_drawn"):
+		_weapon.call("toggle")
 
 
 func _physics_process(delta: float) -> void:
@@ -66,6 +90,12 @@ func _physics_process(delta: float) -> void:
 	_think -= delta
 	if _think <= 0.0:
 		_think = THINK
+		# The owner may lock or unlock weapons mid-match: follow along.
+		var held: String = _weapon.call("slot_id", _weapon.get("current")) if _weapon else ""
+		var own: int = (_weapon.get("slot_ids") as Array).find(STYLES[_preferred][0]) if _weapon else -1
+		var back_to_own: bool = _style != _preferred and own >= 0 and _weapon.call("_slot_allowed", own)
+		if not _armed or back_to_own or held != STYLES[_style][0] or not _weapon.call("_slot_allowed", _weapon.get("current")):
+			_arm()
 		_choose_target()
 		_plan_move()
 	_ball.set("bot_move", _move)
@@ -214,7 +244,7 @@ func _aim_and_fire(delta: float) -> void:
 		_weapon.set("aim_point", aim)
 	_cooldown -= delta
 	var reach: float = STYLES[_style][4]
-	if not _can_see or dist > reach or _ball.call("is_staggered") or _ball.call("is_blocking"):
+	if not _armed or not _can_see or dist > reach or _ball.call("is_staggered") or _ball.call("is_blocking"):
 		_charge = 0.0
 		_set_charge(0.0)
 		return

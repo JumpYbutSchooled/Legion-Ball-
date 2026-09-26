@@ -213,6 +213,56 @@ func set_stats(id: int, max_hp: float, speed: float) -> void:
 	_to_server("_zzstats", [id, max_hp, speed])
 
 
+## Practice (offline): anyone's own admin powers. Speed multiplier for your ball (arena.gd
+## reads it), low gravity, the gold shield and a launch. Reset when practice ends.
+var practice_speed := 1.0
+
+
+func practice_toggle_god() -> void:
+	offline_god = not offline_god
+	_refresh_god_shields()
+	mod_changed.emit()
+
+
+func practice_set_gravity(on: bool) -> void:
+	low_gravity = on
+	_apply_gravity()
+	mod_changed.emit()
+
+
+func practice_set_speed(mult: float) -> void:
+	practice_speed = clampf(mult, 0.1, 10.0)
+	var arena := _arena()
+	if arena and arena.has_method("refresh_loadout"):
+		arena.call("_apply_set_perks", 1)
+	mod_changed.emit()
+
+
+func practice_launch() -> void:
+	var arena := _arena()
+	var ball: Node = arena.call("player_ball", 1) if arena else null
+	if ball:
+		# Held by the ball until its next physics step (practice pauses while the menu's open).
+		ball.call("apply_knockback", Vector3.UP * 75.0, false)
+
+
+## Leaving practice: everything back to normal.
+func practice_reset() -> void:
+	practice_speed = 1.0
+	offline_god = false
+	if low_gravity:
+		low_gravity = false
+		_apply_gravity()
+
+
+func _apply_gravity() -> void:
+	if not is_inside_tree():
+		return
+	var g: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+	PhysicsServer3D.area_set_param(get_viewport().world_3d.space, PhysicsServer3D.AREA_PARAM_GRAVITY,
+		g * (LOW_GRAVITY_SCALE if low_gravity else 1.0))
+
+
 ## Owner: low gravity for everyone, on or off.
 func toggle_low_gravity() -> void:
 	_to_server("_zgravity", [])
@@ -678,9 +728,7 @@ func _zstate(state: Dictionary) -> void:
 	low_gravity = bool(state.get("gravity", false))
 	frozen = state.get("frozen", []).duplicate()
 	muted = state.get("muted", []).duplicate()
-	var g: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-	PhysicsServer3D.area_set_param(get_viewport().world_3d.space, PhysicsServer3D.AREA_PARAM_GRAVITY,
-		g * (LOW_GRAVITY_SCALE if low_gravity else 1.0))
+	_apply_gravity()
 	mod_changed.emit()
 
 
