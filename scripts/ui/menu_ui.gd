@@ -42,11 +42,13 @@ var _current_page := ""
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# Anchors and offsets both: anchors alone keep the old (zero) offsets, and the menu
+	# stayed narrow instead of reaching the right edge of the screen.
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var row := HBoxContainer.new()
-	row.set_anchors_preset(Control.PRESET_FULL_RECT)
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	row.offset_left = 64
 	row.offset_right = -64
 	row.offset_top = 184
