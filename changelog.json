@@ -1,5 +1,10 @@
 [
     {
+        "version":  "0.8.8",
+        "date":  "2026-09-25",
+        "notes":  "New staff weapon for mods and the owner: TEARS OF AN ANGEL (slot 8), a white Swarm with unlimited range and locks, missiles that fire one by one at twice the speed, deal 25 damage and steer round walls - but a parried tear kills you. Pillars of God moves to slot 9."
+    },
+    {
         "version":  "0.8.7",
         "date":  "2026-09-25",
         "notes":  "New UPDATES page in the menu with every past update, and a what\u0027s-new message the first time you open a new version."
