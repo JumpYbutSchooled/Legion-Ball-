@@ -5,7 +5,7 @@ extends Node3D
 
 var manager: Node
 var visual_only := false
-var trigger_radius := 4.5
+var trigger_radius := 7.0
 var lifetime := 40.0
 var color := Color(0.2, 0.45, 1.0)
 
@@ -45,7 +45,7 @@ func _physics_process(delta: float) -> void:
 
 func _detonate() -> void:
 	manager.call("spawn_explosion", {
-		"position": global_position, "color": color, "radius": 5.5, "damage": 3.0,
+		"position": global_position, "color": color, "radius": 9.0, "damage": 3.0,
 		"force": 20.0, "stagger_time": 1.2, "spark_count": 140, "light_energy": 140.0,
 		"warp_strength": 0.25, "sound": "boom",
 	})

@@ -3,7 +3,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 ## Hold to thrust wherever you're looking. Fuel runs out in about 2.5s and refills on
 ## the ground.
 
-@export var thrust := 55.0
+@export var thrust := 80.0
 @export var burn := 0.4
 @export var refill_rate := 0.5
 

@@ -8,7 +8,7 @@ var visual_only := false
 var lifetime := 10.0
 var interval := 0.45
 var damage := 0.9
-var shot_range := 70.0
+var shot_range := 150.0
 var color := Color(0.45, 0.5, 0.6)
 
 var _t := 0.0

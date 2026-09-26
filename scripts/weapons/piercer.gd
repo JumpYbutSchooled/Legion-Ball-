@@ -11,6 +11,7 @@ var _burst_timer := 0.0
 
 func _build() -> void:
 	cooldown = 0.9
+	lock_on = true
 	crosshair_shape = "cross"
 	add_blade(1.0, -20.0, {"arc_radius": 0.5, "tip": Vector3(0.6, -0.4, -5.0), "max_width": 0.1, "max_thickness": 0.08, "segments": 12})
 
@@ -32,8 +33,8 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, delta:
 func _round() -> void:
 	kick(0)
 	var from := tip()
-	var dir: Vector3 = (manager.aim_point - from).normalized()
-	var shot := hitscan(from, dir, 500.0, damage, 6.0, true)
+	var dir: Vector3 = (target_point() - from).normalized()
+	var shot := hitscan(from, dir, 900.0, damage, 6.0, true)
 	tracer(from, shot["end"], 0.07, 9.0)
 	flash_at(from, dir, 0.6)
 	for hit in shot["hits"]:

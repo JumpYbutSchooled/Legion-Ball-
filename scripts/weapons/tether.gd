@@ -15,7 +15,7 @@ extends "res://scripts/weapons/blade_weapon.gd"
 
 const LaserShader := preload("res://shaders/dash_laser.gdshader")
 
-@export var max_range := 120.0
+@export var max_range := 200.0
 ## How fast the rope winds in, in m/s.
 @export var reel_speed := 28.0
 ## Constant pull toward the hook while reeling.

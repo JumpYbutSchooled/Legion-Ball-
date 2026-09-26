@@ -28,13 +28,13 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 	var arena := get_tree().current_scene
 	if arena and arena.has_method("request_block"):
 		arena.call("request_block", 0.2)
-	for t in targets_near(center, 5.5):
+	for t in targets_near(center, 8.0):
 		var p: Vector3 = t.call("get_aim_point")
 		if (p - center).normalized().dot(fwd) > 0.1:
 			manager.hit_object(t, damage, p, fwd, 18.0)
 	for i in 7:
 		var a := lerpf(-1.2, 1.2, i / 6.0)
 		var d := fwd.rotated(Vector3.UP, a)
-		manager.spawn_beam(center + d * 1.2, d, 3.8, 0.35, 0.1, 14.0, color)
+		manager.spawn_beam(center + d * 1.5, d, 5.5, 0.4, 0.1, 14.0, color)
 	manager.play_sound("unequip", center, 0.0)
 	manager.shake(0.25)

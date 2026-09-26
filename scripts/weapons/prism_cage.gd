@@ -6,6 +6,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 
 func _build() -> void:
 	cooldown = 5.0
+	lock_on = true
 	crosshair_shape = "cross"
 	var shape := {"arc_radius": 0.5, "tip": Vector3(0.9, 0.0, -1.5), "max_width": 0.26, "max_thickness": 0.22, "segments": 6}
 	for roll in [45.0, -45.0]:
@@ -21,8 +22,8 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 		kick(i)
 	var from := ball().global_position + aim_dir() * 1.6
 	spawn("res://scripts/weapons/crystal_shot.gd", {
-		"position": from, "velocity": aim_dir() * 32.0, "damage": 2.0, "impulse": 2.0,
-		"lifetime": 3.0, "size": 0.6, "color": color, "status": "cage", "status_time": 2.0,
+		"position": from, "velocity": aim_dir() * 55.0, "target_path": lock_path(), "turn_rate": 2.5, "damage": 2.0, "impulse": 2.0,
+		"lifetime": 5.0, "size": 0.6, "color": color, "status": "cage", "status_time": 2.0,
 		"spawn_script": "res://scripts/weapons/cage_fx.gd", "spawn_on_hit": true,
 		"spawn_props": {"color": color, "lifetime": 2.0},
 	})

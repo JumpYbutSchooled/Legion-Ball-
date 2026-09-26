@@ -8,6 +8,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 
 func _build() -> void:
 	cooldown = 0.35
+	lock_on = true
 	crosshair_shape = "ring"
 	var shape := {"arc_radius": 0.7, "tip": Vector3(0.45, 0.0, -3.0), "max_width": 0.14, "max_thickness": 0.12, "segments": 9}
 	add_blade(1.0, 14.0, shape)
@@ -21,8 +22,8 @@ func _fire(pressed: bool, _just: bool, _released: bool, _hit: Dictionary, _delta
 	var i := randi() % 2
 	kick(i)
 	var from := tip(i)
-	var dir: Vector3 = (manager.aim_point - from).normalized()
-	var shot := hitscan(from, dir, 400.0, damage, 5.0)
+	var dir: Vector3 = (target_point() - from).normalized()
+	var shot := hitscan(from, dir, 900.0, damage, 5.0)
 	tracer(from, shot["end"], 0.08, 6.0)
 	flash_at(from, dir, 0.6)
 	manager.play_sound("zap", from, -6.0)

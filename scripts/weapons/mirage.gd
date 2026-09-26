@@ -27,8 +27,8 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 	for side in [-1.0, 1.0]:
 		var dir := flat.rotated(Vector3.UP, side * 0.6)
 		spawn("res://scripts/weapons/decoy.gd", {
-			"position": b.global_position + dir * 1.5, "direction": dir, "speed": 26.0,
-			"lifetime": 5.0, "tint": tint,
+			"position": b.global_position + dir * 1.5, "direction": dir, "speed": 40.0,
+			"lifetime": 7.0, "tint": tint,
 		})
 	for i in _blades.size():
 		kick(i)

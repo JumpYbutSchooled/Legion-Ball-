@@ -54,6 +54,16 @@ const BladeShader := preload("res://shaders/blade_warp.gdshader")
 	set(value):
 		jag = value
 		_rebuild()
+## Size of the whole blade (arc, tip, width, thickness). Every weapon's blades use the
+## same scale (blade_weapon.gd BLADE_SCALE).
+@export var scale_factor := 1.0:
+	set(value):
+		scale_factor = value
+		_rebuild()
+## The ball's radius plus a gap: no part of a blade comes closer to the ball's centre
+## than this (plus half the blade's own width), so blades wrap AROUND the ball, never
+## through it.
+const BALL_CLEAR := 0.62
 ## Seed for the jag, so each blade is chipped differently but consistently.
 @export var jag_seed := 1:
 	set(value):
@@ -69,7 +79,17 @@ func _ready() -> void:
 
 ## Tip position in this blade's local space, with mirroring applied.
 func get_tip() -> Vector3:
-	return Vector3(tip.x * side, tip.y, tip.z)
+	var p := Vector3(tip.x * side, tip.y, tip.z) * scale_factor
+	var clear := _clearance()
+	if p.length() < clear:
+		p = (p.normalized() if p.length() > 0.001 else Vector3.FORWARD) * clear
+	return p
+
+
+## How far every point of the blade's centre line stays from the ball's centre.
+func _clearance() -> float:
+	# Half the blade's width, plus the chipping (jag) that can push a surface out further.
+	return BALL_CLEAR + maxf(max_width, max_thickness) * scale_factor * 0.5 * (1.0 + jag)
 
 
 func _rebuild() -> void:
@@ -95,8 +115,8 @@ func _rebuild() -> void:
 		var u := along[i] / total
 		# Pointed at both ends, widest through the curve, long taper to the tip.
 		var profile := smoothstep(0.0, 0.3, u) * pow(1.0 - smoothstep(0.45, 1.0, u), 0.8)
-		var half_w := max_width * 0.5 * profile
-		var half_t := max_thickness * 0.5 * profile
+		var half_w := max_width * scale_factor * 0.5 * profile
+		var half_t := max_thickness * scale_factor * 0.5 * profile
 		var ring := PackedVector3Array()
 		for k in cross_sides:
 			var ang := k * TAU / cross_sides
@@ -145,15 +165,16 @@ func _build_path() -> PackedVector3Array:
 	var mirror := Vector3(side, 1.0, 1.0)
 	var pts := PackedVector3Array()
 	var arc_steps := segments / 2
+	var radius := arc_radius * scale_factor
 	# Semicircle round the ball's side.
 	for i in arc_steps:
 		var a := deg_to_rad(lerpf(arc_start_deg, arc_end_deg, float(i) / arc_steps))
-		pts.append(Vector3(sin(a), 0.0, -cos(a)) * arc_radius * mirror)
+		pts.append(Vector3(sin(a), 0.0, -cos(a)) * radius * mirror)
 
 	# Then a smooth quadratic curve forward to the tip, leaving the arc tangentially
 	# but bending toward straight ahead.
 	var a_end := deg_to_rad(arc_end_deg)
-	var p0 := Vector3(sin(a_end), 0.0, -cos(a_end)) * arc_radius * mirror
+	var p0 := Vector3(sin(a_end), 0.0, -cos(a_end)) * radius * mirror
 	var arc_tangent := Vector3(-cos(a_end), 0.0, -sin(a_end)) * mirror
 	var bend := (arc_tangent * 0.4 + Vector3.FORWARD * 0.6).normalized()
 	var end := get_tip()
@@ -162,4 +183,12 @@ func _build_path() -> PackedVector3Array:
 	for i in curve_steps + 1:
 		var t := float(i) / curve_steps
 		pts.append(p0.lerp(p1, t).lerp(p1.lerp(end, t), t))
+	# Around the ball, never through it: anything inside the clearance is pushed out onto
+	# it, so a blade that would cut across the ball hugs its surface instead.
+	var clear := _clearance()
+	for i in pts.size():
+		var p := pts[i]
+		if p.length() < clear:
+			var out := p.normalized() if p.length() > 0.001 else Vector3(side, 0.0, 0.0)
+			pts[i] = out * clear
 	return pts

@@ -28,7 +28,7 @@ func _fire(pressed: bool, _just: bool, _released: bool, _hit: Dictionary, delta:
 		return
 	_drop = 0.12
 	spawn("res://scripts/weapons/slip_trail.gd", {
-		"position": _last, "to_point": here, "color": color, "lifetime": 4.0,
+		"position": _last, "to_point": here, "color": color, "lifetime": 6.0,
 	})
 	_last = here
 

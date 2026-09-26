@@ -22,7 +22,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, delta:
 	if just and can_fire():
 		start_cooldown()
 		# Lunge first; the chop lands a moment later.
-		manager.push_ball(aim_dir() * 30.0 + Vector3.UP * 3.0)
+		manager.push_ball(aim_dir() * 45.0 + Vector3.UP * 3.0)
 		_swing_in = 0.15
 		manager.play_sound("dash", ball().global_position, -6.0)
 
@@ -31,7 +31,7 @@ func _chop() -> void:
 	kick(0)
 	var center := ball().global_position
 	var fwd := aim_dir()
-	for t in targets_near(center, 6.5):
+	for t in targets_near(center, 9.0):
 		var p: Vector3 = t.call("get_aim_point")
 		if (p - center).normalized().dot(fwd) < 0.2:
 			continue

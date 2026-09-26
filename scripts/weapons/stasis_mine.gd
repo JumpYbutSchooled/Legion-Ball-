@@ -35,7 +35,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 	var from := ball().global_position + aim_dir() * 1.2
 	# Lobbed: the mine is left where the shot comes down.
 	var shot := spawn("res://scripts/weapons/crystal_shot.gd", {
-		"position": from, "velocity": aim_dir() * 26.0 + Vector3.UP * 6.0, "gravity": 22.0,
+		"position": from, "velocity": aim_dir() * 45.0 + Vector3.UP * 8.0, "gravity": 22.0,
 		"damage": 0.0, "impulse": 0.0, "lifetime": 3.0, "size": 0.25, "color": color,
 	})
 	# Place the mine where it lands: the shot tells us by where it ends up.

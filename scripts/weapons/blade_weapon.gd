@@ -16,6 +16,9 @@ const BladeFlare := preload("res://scripts/weapons/blade_flare.gd")
 const FlashLight := preload("res://scripts/flash_light.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 const WAVE_END := 1.4  # Wave position where every facet has fully broken/joined.
+## Every weapon's blades are built this much bigger than their shapes are written (the
+## maps are huge; the weapons should look it).
+const BLADE_SCALE := 1.4
 
 @export var color := Color(0.3, 0.8, 1.0)
 ## Seconds for the enter/exit wave to run the length of the blades.
@@ -56,6 +59,7 @@ func add_blade(side: float, roll_deg: float, props := {}) -> MeshInstance3D:
 	var blade := BladeMesh.new()
 	blade.side = side
 	blade.jag_seed = _blades.size() + 1
+	blade.scale_factor = BLADE_SCALE
 	for key in props:
 		blade.set(key, props[key])
 	var roll := Basis(Vector3.BACK, deg_to_rad(roll_deg * side))

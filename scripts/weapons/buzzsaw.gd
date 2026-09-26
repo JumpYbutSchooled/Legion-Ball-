@@ -32,7 +32,7 @@ func _fire(pressed: bool, _just: bool, _released: bool, _hit: Dictionary, delta:
 	_tick = 0.15
 	var b := ball()
 	var dmg := 0.5 + b.linear_velocity.length() / 40.0
-	for t in targets_near(b.global_position, 2.4):
+	for t in targets_near(b.global_position, 3.5):
 		var p: Vector3 = t.call("get_aim_point")
 		manager.hit_object(t, dmg, p, (p - b.global_position).normalized(), 8.0)
 		manager.spawn_beam(p, (p - b.global_position).normalized(), 1.0, 0.4, 0.08, 16.0, color)

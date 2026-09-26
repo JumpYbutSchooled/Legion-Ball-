@@ -38,7 +38,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, delta:
 		_punching -= delta
 		var b := ball()
 		var v := b.linear_velocity
-		for t in targets_near(b.global_position, 3.0):
+		for t in targets_near(b.global_position, 4.5):
 			if _struck.has(t):
 				continue
 			_struck.append(t)

@@ -3,7 +3,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 ## air, press to flap: an extra jump (two per trip into the air, back on landing). Hold
 ## to glide: your fall is held to a gentle drift and you carry your speed.
 
-@export var flap := 11.0
+@export var flap := 16.0
 @export var glide_fall := 3.0
 
 var _flaps := 2

@@ -4,7 +4,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 ## everyone in it (harder the faster you were), and you slow right down.
 
 @export var min_speed := 45.0
-@export var reach := 25.0
+@export var reach := 45.0
 
 
 func _build() -> void:

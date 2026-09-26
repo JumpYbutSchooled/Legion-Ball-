@@ -42,7 +42,7 @@ func _burst() -> void:
 			var dir := Vector3(cos(a), tilt, sin(a)).normalized()
 			if tilt != 0.0 and i % 2 == 1:
 				continue
-			var shot := hitscan(center + dir * 0.8, dir, 12.0, lerpf(1.0, 3.0, k), 6.0)
+			var shot := hitscan(center + dir * 0.8, dir, 22.0, lerpf(1.0, 3.0, k), 6.0)
 			manager.spawn_beam(center + dir * 0.8, dir, (center + dir * 0.8).distance_to(shot["end"]), 0.06, 0.1, 6.0, color)
 	manager.spawn_light(center, 60.0, 12.0, 0.15, color)
 	manager.spawn_warp(center, 0.2, 6.0)

@@ -18,7 +18,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 		return
 	var dir := aim_dir()
 	var flat := Vector3(dir.x, 0.0, dir.z).normalized()
-	var spot := ball().global_position + flat * 6.0
+	var spot := ball().global_position + flat * 10.0
 	var ground: Dictionary = manager.raycast(spot + Vector3.UP * 3.0, spot + Vector3.DOWN * 20.0)
 	if ground.is_empty():
 		return  # Nothing to stand it on.
@@ -26,7 +26,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 	for i in _blades.size():
 		kick(i)
 	spawn("res://scripts/weapons/crystal_wall_node.gd", {
-		"position": ground["position"] + Vector3.UP * 3.0, "facing": -flat, "color": color,
+		"position": ground["position"] + Vector3.UP * 4.5, "facing": -flat, "color": color,
 		"lifetime": deploy_time(5.0),
 	})
 	manager.shake(0.3)

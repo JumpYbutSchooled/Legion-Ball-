@@ -11,7 +11,7 @@ const MISSILE_SPEED := 95.0
 
 @export var paint_radius_px := 170.0
 ## Targets further than this can't be painted.
-@export var paint_range := 90.0
+@export var paint_range := 250.0
 @export var paint_interval := 0.25
 @export var max_paints := 4
 @export var cooldown := 1.2

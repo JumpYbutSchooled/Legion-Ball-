@@ -364,6 +364,9 @@ func _draw_simple(info: Dictionary, col: Color) -> void:
 		var text := str(info["count"])
 		var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
 		draw_string(font, c + Vector2(-tw / 2.0, r + 30.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, col)
+	if info.has("lock_ring"):
+		# Faint circle: a target inside it gets locked.
+		draw_arc(c, info["lock_ring"], 0.0, TAU, 56, Color(col, col.a * 0.18), line_width, true)
 	if info.get("locked", false):
 		_brackets(info["lock_pos"], 11.0, Time.get_ticks_msec() / 400.0, col)
 

@@ -6,7 +6,7 @@ extends Node3D
 
 var manager: Node
 var visual_only := false
-var radius := 12.0
+var radius := 25.0
 var lifetime := 4.0
 var color := Color(0.55, 0.6, 1.0)
 ## Peer id of whoever made it (their own shots aren't slowed).

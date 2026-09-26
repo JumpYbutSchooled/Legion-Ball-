@@ -90,8 +90,8 @@ func _build() -> void:
 	_charge_warp.mesh = sphere
 	_charge_warp.material_override = _warp_mat
 	_charge_warp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_charge_warp.position = Vector3(0.6, 0.0, -1.8)
-	_charge_warp.scale = Vector3.ONE * 3.6
+	_charge_warp.position = Vector3(0.6, 0.0, -1.8) * BLADE_SCALE
+	_charge_warp.scale = Vector3.ONE * 3.6 * BLADE_SCALE
 	_charge_warp.visible = false
 	add_child(_charge_warp)
 

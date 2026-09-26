@@ -6,6 +6,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 
 func _build() -> void:
 	cooldown = 1.2
+	lock_on = true
 	crosshair_shape = "ring"
 	var shape := {"arc_radius": 0.7, "tip": Vector3(1.3, 0.0, -0.3), "max_width": 0.18, "max_thickness": 0.06, "segments": 9}
 	add_blade(-1.0, 12.0, shape)
@@ -20,8 +21,8 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 		kick(i)
 	var from := ball().global_position + aim_dir() * 1.5
 	spawn("res://scripts/weapons/crystal_shot.gd", {
-		"position": from, "velocity": aim_dir() * 70.0, "damage": 3.0, "impulse": 10.0,
-		"bounces": 4, "bounce_bonus": 0.35, "lifetime": 4.0, "size": 0.35, "color": color,
+		"position": from, "velocity": aim_dir() * 110.0, "damage": 3.0, "impulse": 10.0,
+		"bounces": 4, "bounce_bonus": 0.35, "lifetime": 6.0, "size": 0.35, "color": color,
 	})
 	flash_at(from, aim_dir(), 0.7)
 	manager.play_sound("tether", from, -4.0)

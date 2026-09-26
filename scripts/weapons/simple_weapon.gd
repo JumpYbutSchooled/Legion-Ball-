@@ -8,6 +8,16 @@ extends "res://scripts/weapons/blade_weapon.gd"
 @export var cooldown := 1.0
 @export var crosshair_shape := "ring"
 @export var crosshair_radius := 10.0
+## Lock-on (longer-range weapons): the target nearest the crosshair within
+## lock_radius_px (and lock_range metres, in sight unless lock_through_walls) becomes the
+## aim: target_point() and aim_dir() follow it, and shots can home on it (lock_path()).
+@export var lock_on := false
+@export var lock_radius_px := 90.0
+@export var lock_range := INF
+@export var lock_through_walls := false
+
+var lock_target: Node3D = null
+var lock_screen := Vector2.ZERO
 
 var charge := 0.0
 var _cooldown := 0.0
@@ -21,8 +31,33 @@ func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
 	_was_pressed = pressed
 	if not is_ready():
 		charge = 0.0
+		lock_target = null
 		return
+	if lock_on:
+		_update_lock()
 	_fire(pressed, just, released, hit, delta)
+
+
+func _update_lock() -> void:
+	lock_target = null
+	if not manager.camera:
+		return
+	var found: Array = manager.targets_on_screen(lock_radius_px, lock_range, not lock_through_walls)
+	if not found.is_empty():
+		lock_target = found[0]["target"]
+		lock_screen = found[0]["screen"]
+
+
+## Where to shoot: the locked target, or wherever the crosshair lands.
+func target_point() -> Vector3:
+	if lock_target and is_instance_valid(lock_target) and lock_target.call("is_alive"):
+		return lock_target.call("get_aim_point")
+	return manager.aim_point
+
+
+## The locked target's node path, for homing shots ("" = none).
+func lock_path() -> String:
+	return String(lock_target.get_path()) if lock_target and is_instance_valid(lock_target) else ""
 
 
 ## Overridden by each weapon.
@@ -47,6 +82,11 @@ func get_crosshair() -> Dictionary:
 		"cooldown": 1.0 - _cooldown / cooldown if cooldown > 0.0 else 1.0,
 		"charge": charge,
 	}
+	if lock_on:
+		info["lock_ring"] = lock_radius_px
+	if lock_target and is_instance_valid(lock_target):
+		info["locked"] = true
+		info["lock_pos"] = lock_screen
 	_crosshair_extra(info)
 	return info
 
@@ -80,9 +120,9 @@ func tip(i := 0) -> Vector3:
 	return _blades[i].to_global(_blades[i].call("get_tip"))
 
 
-## From the ball toward the crosshair's aim point.
+## From the ball toward the target (the lock, or the crosshair's aim point).
 func aim_dir() -> Vector3:
-	var d: Vector3 = manager.aim_point - ball().global_position
+	var d: Vector3 = target_point() - ball().global_position
 	return d.normalized() if d.length() > 0.01 else -global_basis.z
 
 

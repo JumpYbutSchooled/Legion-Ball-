@@ -28,9 +28,9 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 		return
 	start_cooldown()
 	spawn("res://scripts/weapons/time_field.gd", {
-		"position": ball().global_position, "color": color, "radius": 12.0, "lifetime": 4.0,
+		"position": ball().global_position, "color": color, "radius": 25.0, "lifetime": 4.0,
 		"owner_peer": manager.get_multiplayer_authority(),
 	})
-	manager.spawn_warp(ball().global_position, 0.3, 12.0)
+	manager.spawn_warp(ball().global_position, 0.3, 25.0)
 	manager.play_sound("infinity", ball().global_position, -2.0)
 	manager.shake(0.3)

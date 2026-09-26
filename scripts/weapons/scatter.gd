@@ -19,7 +19,7 @@ extends "res://scripts/weapons/blade_weapon.gd"
 @export var assist_deg := 9.0
 ## Slow, pump-action pace: every shot can kill up close.
 @export var fire_interval := 0.7
-@export var max_range := 120.0
+@export var max_range := 150.0
 
 @export_group("Heat")
 ## Heat added per shot (1 = overheated): 0.34 gives three shots.

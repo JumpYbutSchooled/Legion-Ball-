@@ -6,7 +6,7 @@ extends Node3D
 var manager: Node
 var visual_only := false
 var to_point := Vector3.ZERO
-var lifetime := 4.0
+var lifetime := 6.0
 var color := Color(0.1, 1.0, 0.8)
 var damage := 0.8
 

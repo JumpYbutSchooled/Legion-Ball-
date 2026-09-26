@@ -3,7 +3,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 ## to teleport up to 15m where you're looking (stopping short of walls), keeping your
 ## speed, and leave a slash along the way that cuts everyone on the line.
 
-@export var distance := 15.0
+@export var distance := 35.0
 @export var damage := 5.0
 
 

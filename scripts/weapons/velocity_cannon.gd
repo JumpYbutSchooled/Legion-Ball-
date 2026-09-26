@@ -10,6 +10,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 
 func _build() -> void:
 	cooldown = 0.9
+	lock_on = true
 	crosshair_shape = "chevron"
 	add_blade(1.0, 0.0, {"arc_radius": 0.5, "tip": Vector3(0.0, -0.6, -2.2), "max_width": 0.75, "max_thickness": 0.2, "segments": 6})
 
@@ -30,8 +31,8 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 	kick(0)
 	var k := clampf(ball().linear_velocity.length() / 100.0, 0.0, 1.0)
 	var from := tip()
-	var dir: Vector3 = (manager.aim_point - from).normalized()
-	var shot := hitscan(from, dir, 400.0, base_damage + speed_damage * k, lerpf(5.0, 50.0, k))
+	var dir: Vector3 = (target_point() - from).normalized()
+	var shot := hitscan(from, dir, 900.0, base_damage + speed_damage * k, lerpf(5.0, 50.0, k))
 	tracer(from, shot["end"], lerpf(0.1, 0.6, k), lerpf(5.0, 24.0, k))
 	flash_at(from, dir, 0.6 + k)
 	for hit in shot["hits"]:
