@@ -24,6 +24,7 @@ const ShardBurst := preload("res://scripts/shard_burst.gd")
 const MapIntro := preload("res://scripts/map_intro.gd")
 const Turrets := preload("res://scripts/turrets.gd")
 const SettingsScript := preload("res://scripts/settings.gd")
+const WeaponInfo := preload("res://scripts/weapon_info.gd")
 
 ## Spawn points spread round the middle of the map, facing inward.
 const SPAWN_RADIUS := 55.0
@@ -129,7 +130,7 @@ func _roster() -> Dictionary:
 	var net := _net()
 	if net and net.get("online"):
 		return net.get("players")
-	return {1: {"name": "YOU", "color": 0}}
+	return {1: {"name": "YOU", "color": 0, "loadout": WeaponInfo.local_loadout(get_tree())}}
 
 
 func _sync_players() -> void:
@@ -144,6 +145,39 @@ func _sync_players() -> void:
 			_players[id].queue_free()
 			_players.erase(id)
 	refresh_god_shields()
+
+
+## A player's loadout (weapon ids for keys 1-6) from the roster.
+func loadout_of(id: int) -> Array:
+	return WeaponInfo.valid_loadout(_roster().get(id, {}).get("loadout", []))
+
+
+## The combo groups whose set bonus a player has (weapon_info.gd set_bonuses).
+func perks_of(id: int) -> Array:
+	return WeaponInfo.set_bonuses(loadout_of(id))
+
+
+## Swap a player's weapons to their roster loadout (on respawn; right away in practice)
+## and refresh their set bonuses.
+func refresh_loadout(id: int) -> void:
+	var ball: Node = _players.get(id)
+	if not ball:
+		return
+	ball.get_node("Weapon").call("set_loadout", loadout_of(id))
+	_apply_set_perks(id)
+
+
+## The set bonuses that change how a ball moves (on its owner's computer).
+func _apply_set_perks(id: int) -> void:
+	var ball: Node = _players.get(id)
+	if not ball:
+		return
+	if not ball.has_meta("base_air_control"):
+		ball.set_meta("base_air_control", ball.get("air_control"))
+		ball.set_meta("base_top_speed", ball.get("top_speed"))
+	var perks := perks_of(id)
+	ball.set("air_control", float(ball.get_meta("base_air_control")) * (1.2 if perks.has("skyborne") else 1.0))
+	ball.set("top_speed", float(ball.get_meta("base_top_speed")) * (1.1 if perks.has("momentum") else 1.0))
 
 
 ## Shows the owner's gold shield on whoever has it on (the roster's "god" flag online,
@@ -173,7 +207,10 @@ func _spawn(id: int, index: int) -> void:
 	var layout := get_node_or_null("Map/Layout")
 	if layout and layout.has_method("ceiling"):
 		ball.set("max_height", layout.call("ceiling"))
+	# Their own weapons (the roster's loadout), built when the ball is added.
+	ball.get_node("Weapon").set("loadout", loadout_of(id))
 	_players_root.add_child(ball)
+	_apply_set_perks(id)
 	_players[id] = ball
 	health[id] = MAX_HEALTH
 	alive[id] = true
@@ -360,12 +397,32 @@ func _zfell() -> void:
 	_kill(victim, attacker)
 
 
+## Host: the attacker's set bonuses on a hit (weapon_info.gd GROUPS): HUNTER +10% on
+## marked targets, BRAWLER +15% within 10 m, MARKSMAN +15% beyond 60 m.
+func _perk_damage(victim: int, attacker: int) -> float:
+	if not _players.has(attacker) or not _players.has(victim) or attacker == victim:
+		return 1.0
+	var perks := perks_of(attacker)
+	if perks.is_empty():
+		return 1.0
+	var k := 1.0
+	if perks.has("hunter") and _marks.get(victim, 0.0) > 0.0:
+		k *= 1.1
+	var dist: float = _players[attacker].global_position.distance_to(_players[victim].global_position)
+	if perks.has("brawler") and dist <= 10.0:
+		k *= 1.15
+	if perks.has("marksman") and dist >= 60.0:
+		k *= 1.15
+	return k
+
+
 ## Host only: take `amount` off `victim`, credited to `attacker` if it kills.
 func _deal(victim: int, attacker: int, amount: float) -> void:
 	if not alive.get(victim, false) or _protect.get(victim, 0.0) > 0.0 or _is_god(victim):
 		return
 	if _marks.get(victim, 0.0) > 0.0:
 		amount *= MARK_MULTIPLIER
+	amount *= _perk_damage(victim, attacker)
 	if attacker != victim:
 		_last_hit[victim] = [attacker, Time.get_ticks_msec()]
 	var hp: float = health.get(victim, MAX_HEALTH) - amount
@@ -383,6 +440,9 @@ func _host_push(victim: int, impulse: Vector3) -> void:
 @rpc("any_peer", "reliable")
 func _host_mark(victim: int, duration: float) -> void:
 	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim) and not _is_god(victim):
+		# HUNTER set bonus: your marks last 50% longer.
+		if perks_of(_sender()).has("hunter"):
+			duration *= 1.5
 		_marks[victim] = maxf(_marks.get(victim, 0.0), duration)
 		_show_status.rpc(victim, "mark", duration)
 
@@ -390,6 +450,9 @@ func _host_mark(victim: int, duration: float) -> void:
 @rpc("any_peer", "reliable")
 func _host_stagger(victim: int, duration: float) -> void:
 	if multiplayer.is_server() and alive.get(victim, false) and not _blocks.has(victim) and not _is_god(victim):
+		# FROST set bonus: your staggers (and later slows and freezes) last 30% longer.
+		if perks_of(_sender()).has("frost"):
+			duration *= 1.3
 		_to_peer(victim, "_apply_stagger", [duration])
 		_show_status.rpc(victim, "stagger", duration)
 
@@ -573,23 +636,25 @@ func _on_killed(victim: int, attacker: int) -> void:
 		# everyone on every kill would stall the whole match.
 		var me := multiplayer.get_unique_id()
 		get_tree().call_group("impact_frames", "trigger", ball.global_position, burst.color,
-			_kill_slot(attacker), attacker == me or victim == me)
+			_kill_weapon(attacker), attacker == me or victim == me)
 	player_killed.emit(victim, attacker)
 
 
-## Weapon slot whose impact frames a kill plays: our own last hit if it was ours (-1),
+## Weapon id whose impact frames a kill plays: our own last hit if it was ours (""),
 ## otherwise whatever the killer is holding.
-func _kill_slot(attacker: int) -> int:
+func _kill_weapon(attacker: int) -> String:
 	if attacker == multiplayer.get_unique_id():
-		return -1
+		return ""
 	var killer: Node = _players.get(attacker)
 	var weapon := killer.get_node_or_null("Weapon") if killer else null
-	return weapon.get("current") if weapon else 1
+	return weapon.call("slot_id", weapon.get("current")) if weapon else "railgun"
 
 
 @rpc("authority", "call_local", "reliable")
 func _on_respawn(id: int, pos: Vector3) -> void:
 	alive[id] = true
+	# A loadout changed in the Armory mid-match takes effect now.
+	refresh_loadout(id)
 	var ball: Node3D = _players.get(id)
 	if ball:
 		ball.call("set_dead", false)

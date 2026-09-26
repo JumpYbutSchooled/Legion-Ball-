@@ -54,6 +54,7 @@ const COMBAT_MAPS := [
 ## "training") overrides it.
 const SERVER_MAPS := [ARENA_SCENE, ARENA_SCENE, TRAINING_SCENE, TRAINING_SCENE]
 const MENU_SCENE := "res://scenes/menu.tscn"
+const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const CONNECT_TIMEOUT := 8.0
 ## A sleeping free-tier server takes up to about a minute to wake; keep retrying this long.
 const SERVER_WAKE_TIMEOUT := 100.0
@@ -84,6 +85,8 @@ var turrets_on := false
 var version := ""
 # Server: the version each connected peer reported before registering.
 var _peer_versions := {}
+# Server: the loadout each peer sent before registering (weapon_info.gd ids).
+var _peer_loadouts := {}
 
 var _connecting := false
 var _connect_timer := 0.0
@@ -166,6 +169,7 @@ func host(port := PORT) -> Error:
 	multiplayer.multiplayer_peer = peer
 	online = true
 	players = {1: _new_player(local_name(), 0)}
+	players[1]["loadout"] = WeaponInfo.local_loadout(get_tree())
 	_set_status("Hosting on port %d" % port)
 	roster_changed.emit()
 	return OK
@@ -372,6 +376,8 @@ func _on_connected() -> void:
 	_set_status("Connected. Waiting for the host...")
 	# Version first: the server turns mismatched games away before they register.
 	_version_is.rpc_id(1, version)
+	# Our loadout too, so we spawn with our own weapons even when joining mid-match.
+	_zset_loadout.rpc_id(1, WeaponInfo.local_loadout(get_tree()))
 	_register.rpc_id(1, local_name())
 
 
@@ -408,6 +414,7 @@ func _on_peer_connected(id: int) -> void:
 
 func _on_peer_disconnected(id: int) -> void:
 	_peer_versions.erase(id)
+	_peer_loadouts.erase(id)
 	if not multiplayer.is_server() or not players.has(id):
 		return
 	if dedicated:
@@ -454,6 +461,7 @@ func _register(player_name_in: String) -> void:
 		get_tree().create_timer(0.5).timeout.connect(_drop_peer.bind(id))
 		return
 	players[id] = _new_player(player_name_in.strip_edges().substr(0, 16), _free_color())
+	players[id]["loadout"] = WeaponInfo.valid_loadout(_peer_loadouts.get(id, []))
 	if dedicated:
 		print("[server] %s joined (%d online)" % [players[id]["name"], players.size()])
 	_sync_roster.rpc(players)
@@ -524,7 +532,37 @@ func _back_to_lobby() -> void:
 # --- Helpers ------------------------------------------------------------------------
 
 func _new_player(n: String, color: int) -> Dictionary:
-	return {"name": n if n != "" else "PLAYER", "color": color, "kills": 0, "deaths": 0}
+	return {"name": n if n != "" else "PLAYER", "color": color, "kills": 0, "deaths": 0,
+		"loadout": WeaponInfo.DEFAULT_LOADOUT.duplicate()}
+
+
+## Tell the server our loadout changed (the Armory). It takes effect on our next respawn.
+func send_loadout() -> void:
+	if not online:
+		return
+	var mine := WeaponInfo.local_loadout(get_tree())
+	if multiplayer.is_server():
+		_zset_loadout(mine)
+	else:
+		_zset_loadout.rpc_id(1, mine)
+
+
+## A player's loadout: before they register (kept for _register), or a change later
+## (roster updated; every computer swaps their weapons on their next respawn). The server
+## only accepts built pool weapons, six of them, no repeats. (Named to sort last.)
+@rpc("any_peer", "reliable")
+func _zset_loadout(ids: Array) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if id == 0:
+		id = 1
+	var clean := WeaponInfo.valid_loadout(ids)
+	if players.has(id):
+		players[id]["loadout"] = clean
+		_sync_roster.rpc(players)
+	else:
+		_peer_loadouts[id] = clean
 
 
 func _drop_peer(id: int) -> void:

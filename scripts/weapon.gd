@@ -1,7 +1,7 @@
 extends Node3D
 ## Weapon manager, mounted on the ball. Follows the ball (not its spin), turns every
 ## weapon toward the crosshair, and routes input to the equipped one:
-##   1 Gatling  2 Railgun  3 Scatter  4 Tether  5 Nova  6 Swarm
+##   1-6 the player's own loadout (weapon_info.gd; Gatling, Railgun... by default)
 ##   7 Rain of God, 8 Tears of an Angel (mods, owner)  9 Pillars of God (owner)
 ##   0 hide/show the staff weapons
 ##   (WeaponInfo.unlocked_count)
@@ -16,15 +16,6 @@ signal fired(blade_index: int)
 signal staff_weapons_toggled(shown: bool)
 
 const BladeWeapon := preload("res://scripts/weapons/blade_weapon.gd")
-const Gatling := preload("res://scripts/weapons/gatling.gd")
-const Railgun := preload("res://scripts/weapons/railgun.gd")
-const Scatter := preload("res://scripts/weapons/scatter.gd")
-const Tether := preload("res://scripts/weapons/tether.gd")
-const Nova := preload("res://scripts/weapons/nova.gd")
-const Swarm := preload("res://scripts/weapons/swarm.gd")
-const RainOfGod := preload("res://scripts/weapons/rain_of_god.gd")
-const TearsOfAnAngel := preload("res://scripts/weapons/tears_of_an_angel.gd")
-const PillarsOfGod := preload("res://scripts/weapons/pillars_of_god.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const SLOT_ACTIONS := ["weapon_1", "weapon_2", "weapon_3", "weapon_4", "weapon_5", "weapon_6", "weapon_7", "weapon_8", "weapon_9"]
 const Beam := preload("res://scripts/dash_laser.gd")
@@ -53,10 +44,15 @@ const TURN_RATE := 30.0
 var aim_point := Vector3.ZERO
 var weapons: Array = []
 var current := 0
+## This ball's loadout (weapon ids for keys 1-6, weapon_info.gd). Set by the arena
+## before the ball is added (from the roster online, Settings offline).
+var loadout: Array = WeaponInfo.DEFAULT_LOADOUT.duplicate()
+## The weapon id in each slot: the loadout, then the staff weapons (keys 7-9).
+var slot_ids: Array = []
 
 var _was_captured := false
-## Slot of the weapon that last dealt damage: picks the kill's impact frames.
-var last_hit_slot := 1
+## Id of the weapon that last dealt damage: picks the kill's impact frames.
+var last_hit_id := "railgun"
 ## Damage numbers still collecting hits, by target.
 var _numbers := {}
 var _aim_basis := Basis.IDENTITY
@@ -66,17 +62,50 @@ var _has_aim_basis := false
 func _ready() -> void:
 	top_level = true
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	# Every player has the owner weapons too, so an owner's shows up on their ball.
-	var scripts := [Gatling, Railgun, Scatter, Tether, Nova, Swarm, RainOfGod, TearsOfAnAngel, PillarsOfGod]
-	for slot in scripts.size():
-		var w = scripts[slot].new()
-		w.manager = self
-		# Colours live in weapon_info.gd, shared with the menus and the selector.
-		w.color = WeaponInfo.get_entry(slot)["color"]
-		add_child(w)
-		weapons.append(w)
-	weapons[0].fired.connect(func(i: int) -> void: fired.emit(i))
+	# The player's own loadout, then the staff weapons: every ball has those too, so a
+	# moderator's or the owner's shows up on their ball for everyone.
+	slot_ids = WeaponInfo.slot_ids(loadout)
+	loadout = slot_ids.slice(0, WeaponInfo.LOADOUT_SIZE)
+	for id in slot_ids:
+		weapons.append(_make(id))
 	weapons[current].enter()
+
+
+func _make(id: String) -> Node3D:
+	var info := WeaponInfo.by_id(id)
+	var w = load(info["script"]).new()
+	w.manager = self
+	# Colours live in weapon_info.gd, shared with the menus and the selector.
+	w.color = info["color"]
+	add_child(w)
+	if w.has_signal("fired"):
+		w.fired.connect(func(i: int) -> void: fired.emit(i))
+	return w
+
+
+## Swaps in a new loadout (keys 1-6); the staff weapons stay. Every computer does this
+## for a player at the same moment (their respawn), so slot numbers stay in step.
+func set_loadout(ids: Array) -> void:
+	var fresh := WeaponInfo.valid_loadout(ids)
+	if fresh == loadout:
+		return
+	var was_drawn := is_drawn()
+	for i in WeaponInfo.LOADOUT_SIZE:
+		weapons[i].queue_free()
+	loadout = fresh
+	slot_ids = WeaponInfo.slot_ids(loadout)
+	for i in WeaponInfo.LOADOUT_SIZE:
+		weapons[i] = _make(slot_ids[i])
+	if was_drawn:
+		current_weapon().enter()
+
+
+func slot_id(slot: int) -> String:
+	return slot_ids[slot] if slot >= 0 and slot < slot_ids.size() else ""
+
+
+func slot_info(slot: int) -> Dictionary:
+	return WeaponInfo.by_id(slot_id(slot))
 
 
 func current_weapon() -> Node3D:
@@ -93,7 +122,10 @@ func get_crosshair() -> Dictionary:
 
 
 func get_gatling_angles() -> PackedFloat32Array:
-	return weapons[0].row_angles
+	for w in weapons:
+		if "row_angles" in w:
+			return w.row_angles
+	return PackedFloat32Array([40.0, 0.0, -28.0])
 
 
 ## Switches weapon: the old one's exit and the new one's enter play at the same time.
@@ -132,7 +164,7 @@ func _slot_allowed(slot: int) -> bool:
 	if not is_multiplayer_authority() or not is_inside_tree():
 		return true
 	var mod := get_tree().root.get_node_or_null("Mod")
-	return mod == null or mod.call("weapon_allowed", slot)
+	return mod == null or mod.call("weapon_allowed", slot_id(slot))
 
 
 ## First allowed slot among the unlocked ones (-1 if every one is locked).
@@ -346,7 +378,7 @@ func hit_object(collider: Object, damage: float, pos: Vector3, dir: Vector3, imp
 func report_damage(target: Object, damage: float, pos: Vector3) -> void:
 	if not is_multiplayer_authority() or damage <= 0.0 or not ball:
 		return
-	last_hit_slot = current
+	last_hit_id = slot_id(current)
 	var amount := damage * BallScript.PVP_DAMAGE_SCALE
 	var dist := ball.global_position.distance_to(pos)
 	var existing = _numbers.get(target)

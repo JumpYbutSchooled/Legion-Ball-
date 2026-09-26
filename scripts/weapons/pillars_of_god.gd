@@ -44,9 +44,12 @@ func _build() -> void:
 		"max_thickness": 0.3,
 		"segments": 12,
 	}
-	for angle in [55.0, -35.0]:
-		for side in [1.0, -1.0]:
-			add_blade(side, angle, shape)
+	# A cross of light: one arm straight up, one straight down, one out each side.
+	# (Placed one by one: a mirrored pair at 90 degrees would put both arms on top.)
+	add_blade(1.0, 0.0, shape)
+	add_blade(-1.0, 0.0, shape)
+	add_blade(1.0, 90.0, shape)
+	add_blade(1.0, -90.0, shape)
 
 
 func handle_fire(pressed: bool, _hit: Dictionary, delta: float) -> void:
@@ -172,7 +175,7 @@ func _strike() -> void:
 		"sound": "",
 		# Everyone near enough gets impact frames, kill or not.
 		"impact_frame_range": 120.0,
-		"impact_frame_slot": 7,
+		"impact_frame_id": "pillars_of_god",
 	})
 	manager.shake(1.6)
 	_strike_target = null

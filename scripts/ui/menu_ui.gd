@@ -22,6 +22,7 @@ const Sfx := preload("res://scripts/sfx.gd")
 const SettingsScript := preload("res://scripts/settings.gd")
 const MenuChat := preload("res://scripts/net/menu_chat.gd")
 const Changelog := preload("res://scripts/ui/changelog.gd")
+const LoadoutCard := preload("res://scripts/ui/loadout_card.gd")
 const GLOBAL_COLOR := Color(1.0, 0.72, 0.3)
 
 var pause_mode := false
@@ -32,6 +33,11 @@ var _chat: Node
 var _chat_log: VBoxContainer
 var _chat_status: Label
 var _unread := 0
+## Armory: the weapon being shown, the briefing panel, and a weapon picked up to place.
+var _armory_detail_id := ""
+var _armory_detail: VBoxContainer
+var _held := ""
+var _held_label: Label
 
 var _page_holder: PanelContainer
 var _scroll: ScrollContainer
@@ -290,57 +296,187 @@ func _header(parent: Control, title: String, sub: String) -> void:
 
 # --- ARMORY -------------------------------------------------------------------
 
+## The Armory: your loadout (six slots, keys 1-6) above the weapon pool, grouped by
+## combo group. Drag a weapon onto a slot (or press it, then press a slot); drag slots
+## onto each other to reorder. Concepts show but can't be equipped yet. Staff weapons
+## (keys 7-9) are listed separately. Pressing any card shows its briefing on the right.
 func _build_armory(box: VBoxContainer) -> void:
-	_header(box, "ARMORY", "CRYSTAL WEAPON PLATFORMS  //  WEAPON KEYS OR MOUSE WHEEL + RMB")
+	_header(box, "ARMORY", "DRAG WEAPONS INTO YOUR SIX SLOTS (KEYS 1-6)  //  STAFF WEAPONS STAY ON 7-9")
+	var mine := WeaponInfo.local_loadout(get_tree())
+	if _armory_detail_id == "":
+		_armory_detail_id = mine[0]
+
+	box.add_child(UIStyle.label("LOADOUT", 13, UIStyle.TEXT_DIM))
+	# Two rows of three, stretched to the page's width.
+	var bar := GridContainer.new()
+	bar.columns = 3
+	bar.add_theme_constant_override("h_separation", 8)
+	bar.add_theme_constant_override("v_separation", 8)
+	box.add_child(bar)
+	for i in WeaponInfo.LOADOUT_SIZE:
+		var card := _card(mine[i], i)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.add_child(card)
+	# Combo groups covered, and set bonuses earned.
+	var counts := WeaponInfo.group_counts(mine)
+	var parts: Array[String] = []
+	for g in WeaponInfo.GROUPS:
+		if counts.has(g):
+			var n: int = counts[g]
+			var tag := "%s %d/%d" % [WeaponInfo.GROUPS[g]["name"].split(" /")[0], n, WeaponInfo.SET_SIZE]
+			parts.append(("[color=#%s][b]%s  SET BONUS: %s[/b][/color]" % [Color(WeaponInfo.GROUPS[g]["color"]).to_html(false), tag, WeaponInfo.GROUPS[g]["bonus"]]) if n >= WeaponInfo.SET_SIZE \
+				else "[color=#%s]%s[/color]" % [Color(WeaponInfo.GROUPS[g]["color"]).to_html(false), tag])
+	var sets := RichTextLabel.new()
+	sets.bbcode_enabled = true
+	sets.fit_content = true
+	sets.scroll_active = false
+	sets.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sets.add_theme_font_override("normal_font", UIStyle.font())
+	sets.add_theme_font_override("bold_font", UIStyle.font(true))
+	sets.add_theme_font_size_override("normal_font_size", 13)
+	sets.add_theme_font_size_override("bold_font_size", 13)
+	sets.text = "COMBO GROUPS  //  " + "   ".join(PackedStringArray(parts)) + "\n[color=#%s]Equip %d from one group for its set bonus.[/color]" % [UIStyle.TEXT_DIM.to_html(false), WeaponInfo.SET_SIZE]
+	box.add_child(sets)
+	_held_label = UIStyle.label("", 13, UIStyle.ACCENT)
+	box.add_child(_held_label)
+	_update_held_label()
+
 	var split := HBoxContainer.new()
-	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	split.add_theme_constant_override("separation", 20)
 	box.add_child(split)
+	var pool := VBoxContainer.new()
+	pool.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pool.add_theme_constant_override("separation", 6)
+	split.add_child(pool)
+	_armory_detail = VBoxContainer.new()
+	_armory_detail.custom_minimum_size = Vector2(240, 0)
+	_armory_detail.add_theme_constant_override("separation", 8)
+	split.add_child(_armory_detail)
 
-	var list := VBoxContainer.new()
-	list.custom_minimum_size = Vector2(230, 0)
-	list.add_theme_constant_override("separation", 6)
-	split.add_child(list)
-	var detail := VBoxContainer.new()
-	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	detail.add_theme_constant_override("separation", 8)
-	split.add_child(detail)
+	for g in WeaponInfo.GROUPS:
+		var group: Dictionary = WeaponInfo.GROUPS[g]
+		pool.add_child(UIStyle.label(group["name"], 14, group["color"], true))
+		pool.add_child(_wrapped(UIStyle.label(group["theme"] + "  Set bonus: " + group["bonus"], 12, UIStyle.TEXT_DIM)))
+		var flow := HFlowContainer.new()
+		flow.add_theme_constant_override("h_separation", 8)
+		flow.add_theme_constant_override("v_separation", 8)
+		pool.add_child(flow)
+		for id in WeaponInfo.in_group(g):
+			flow.add_child(_card(id, -1))
+	# Staff weapons: white, keys 7-9, only for staff who have them.
+	var staff := WeaponInfo.unlocked_count(get_tree()) - WeaponInfo.LOADOUT_SIZE
+	if staff > 0:
+		pool.add_child(UIStyle.label("STAFF WEAPONS  (KEYS 7-9, ALWAYS CARRIED)", 14, Color.WHITE, true))
+		var flow := HFlowContainer.new()
+		flow.add_theme_constant_override("h_separation", 8)
+		pool.add_child(flow)
+		for i in staff:
+			flow.add_child(_card(WeaponInfo.STAFF[i], -1))
+	_show_weapon_id(_armory_detail_id)
 
-	# Staff weapons only show for staff who have them (and haven't hidden them with 0).
-	for slot in WeaponInfo.unlocked_count(get_tree()):
-		var info := WeaponInfo.get_entry(slot)
-		var b := Button.new()
-		b.text = "%02d  %s" % [slot + 1, info["name"]]
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.add_theme_color_override("font_color", info["color"])
-		b.add_theme_color_override("font_hover_color", Color.WHITE)
-		b.pressed.connect(_show_weapon.bind(detail, slot))
-		list.add_child(b)
-		_animate_button(b)
-	_show_weapon(detail, 0)
+
+func _card(id: String, slot: int) -> Button:
+	var card := LoadoutCard.new()
+	card.weapon_id = id
+	card.slot = slot
+	card.armory = self
+	_animate_button(card)
+	return card
 
 
-func _show_weapon(detail: VBoxContainer, slot: int) -> void:
+## A card was pressed: show its briefing, and pick up / place for click-to-equip.
+func _card_pressed(card: Node) -> void:
+	var id: String = card.get("weapon_id")
+	var slot: int = card.get("slot")
+	_show_weapon_id(id)
+	if slot < 0:
+		# A pool card: pick it up if it's a weapon you can equip.
+		_held = id if WeaponInfo.is_built(id) and not WeaponInfo.is_staff(id) else ""
+		_update_held_label()
+	elif _held != "":
+		_loadout_drop(slot, {"weapon": _held, "from_slot": -1})
+
+
+func _update_held_label() -> void:
+	if _held_label and is_instance_valid(_held_label):
+		_held_label.text = "HOLDING %s: PRESS A SLOT TO EQUIP IT" % WeaponInfo.by_id(_held)["name"] if _held != "" else ""
+
+
+## Put weapon data["weapon"] into loadout slot `slot`. From another slot: the two swap.
+## Already equipped elsewhere: it moves and the displaced weapon takes its old place.
+func _loadout_drop(slot: int, data: Dictionary) -> void:
+	var id := String(data.get("weapon", ""))
+	if not WeaponInfo.is_built(id) or WeaponInfo.is_staff(id) or slot < 0 or slot >= WeaponInfo.LOADOUT_SIZE:
+		return
+	var mine := WeaponInfo.local_loadout(get_tree())
+	var from := int(data.get("from_slot", -1))
+	if from < 0:
+		from = mine.find(id)
+	if from >= 0:
+		var other: String = mine[slot]
+		mine[slot] = mine[from]
+		mine[from] = other
+	else:
+		mine[slot] = id
+	_held = ""
+	_armory_detail_id = id
+	save_loadout(get_tree(), mine)
+	ui_sound(self, "ui_click", -8.0)
+	_show_page("armory", true)
+
+
+## Saves a loadout and puts it to use: online the server hears about it (it takes effect
+## on your next respawn); in practice your weapons change straight away.
+static func save_loadout(tree: SceneTree, loadout: Array) -> void:
+	var settings := tree.root.get_node_or_null("Settings")
+	if settings:
+		settings.call("set_value", "loadout", WeaponInfo.valid_loadout(loadout))
+	var net := tree.root.get_node_or_null("Net")
+	if net and net.get("online"):
+		net.call("send_loadout")
+	else:
+		var scene := tree.current_scene
+		if scene and scene.has_method("refresh_loadout"):
+			scene.call("refresh_loadout", 1)
+
+
+func _show_weapon_id(id: String) -> void:
+	_armory_detail_id = id
+	var detail := _armory_detail
+	if not detail or not is_instance_valid(detail):
+		return
 	for child in detail.get_children():
 		child.queue_free()
-	var info := WeaponInfo.get_entry(slot)
+	var info := WeaponInfo.by_id(id)
 	var color: Color = info["color"]
+	var built: bool = info.get("built", false)
 	var bar := ColorRect.new()
 	bar.color = color
 	bar.custom_minimum_size = Vector2(0, 3)
 	detail.add_child(bar)
 	# Every line wraps: the page can't scroll sideways, so one long unwrapped line pushed
 	# the whole panel off the right edge of the screen.
-	detail.add_child(_wrapped(UIStyle.label("SLOT %02d  //  %s" % [slot + 1, info["tag"]], 13, color)))
-	detail.add_child(_wrapped(UIStyle.label(info["name"], 34, Color.WHITE, true)))
-	detail.add_child(_wrapped(UIStyle.label(info["summary"], 16, UIStyle.TEXT)))
-	detail.add_child(UIStyle.label("OPERATION", 13, UIStyle.TEXT_DIM))
-	for line in info["usage"]:
-		detail.add_child(_wrapped(UIStyle.label("  > " + line, 15, UIStyle.TEXT)))
+	var group_name: String = WeaponInfo.GROUPS[info["group"]]["name"] if info.has("group") else "STAFF WEAPON"
+	detail.add_child(_wrapped(UIStyle.label("%s  //  %s" % [group_name, info["tag"]], 13, color)))
+	detail.add_child(_wrapped(UIStyle.label(info["name"], 30, Color.WHITE, true)))
+	if not built:
+		detail.add_child(UIStyle.label("NOT BUILT YET", 13, Color(1.0, 0.6, 0.3), true))
+	detail.add_child(_wrapped(UIStyle.label(info["summary"], 15, UIStyle.TEXT)))
+	if info.has("usage"):
+		detail.add_child(UIStyle.label("OPERATION", 13, UIStyle.TEXT_DIM))
+		for line in info["usage"]:
+			detail.add_child(_wrapped(UIStyle.label("  > " + line, 14, UIStyle.TEXT)))
+	detail.add_child(UIStyle.label("BLADES", 13, UIStyle.TEXT_DIM))
+	detail.add_child(_wrapped(UIStyle.label("  " + info.get("layout", ""), 14, UIStyle.TEXT)))
 	detail.add_child(UIStyle.label("COMBO VECTOR", 13, UIStyle.TEXT_DIM))
-	detail.add_child(_wrapped(UIStyle.label("  + " + info["combo"], 15, color)))
-	_animate_page(detail)
-
+	detail.add_child(_wrapped(UIStyle.label("  + " + info["combo"], 14, color)))
+	var partners := WeaponInfo.partners(id)
+	if not partners.is_empty():
+		var names: Array[String] = []
+		for p in partners:
+			names.append(WeaponInfo.by_id(p)["name"])
+		detail.add_child(UIStyle.label("WORKS WITH", 13, UIStyle.TEXT_DIM))
+		detail.add_child(_wrapped(UIStyle.label("  " + ", ".join(PackedStringArray(names)), 14, UIStyle.TEXT)))
 
 ## Lets a label wrap instead of widening its container.
 func _wrapped(label: Label) -> Label:
@@ -736,18 +872,25 @@ func _build_moderation(box: VBoxContainer) -> void:
 			b.add_theme_color_override("font_color", gold)
 			powers.add_child(b)
 		# Weapon lock: pick exactly which weapons everyone else may use.
-		var mask: int = mod.get("allowed_weapons")
+		var locked: Array = mod.get("locked_ids")
 		box.add_child(UIStyle.label("ALLOWED WEAPONS  (click to lock / unlock; yours always work)", 13, UIStyle.TEXT_DIM))
 		var guns := _flow(box)
-		for slot in WeaponInfo.count():
-			var info := WeaponInfo.get_entry(slot)
-			var allowed := (mask & (1 << slot)) != 0
-			var b := _small_button("%d %s: %s" % [slot + 1, info["name"], "ON" if allowed else "LOCKED"],
-				func() -> void: mod.call("set_weapons", mask ^ (1 << slot)))
+		# Every playable weapon: the built pool, then the staff weapons.
+		var lockable: Array = WeaponInfo.pool().filter(func(id: String) -> bool: return WeaponInfo.is_built(id)) + WeaponInfo.STAFF
+		for id in lockable:
+			var info := WeaponInfo.by_id(id)
+			var allowed := not locked.has(id)
+			var b := _small_button("%s: %s" % [info["name"], "ON" if allowed else "LOCKED"], func() -> void:
+				var next: Array = locked.duplicate()
+				if next.has(id):
+					next.erase(id)
+				else:
+					next.append(id)
+				mod.call("set_locked", next))
 			b.add_theme_color_override("font_color", info["color"] if allowed else Color(1.0, 0.3, 0.3))
 			guns.add_child(b)
-		guns.add_child(_small_button("ALL ON", func() -> void: mod.call("set_weapons", ModScript.ALL_WEAPONS)))
-		guns.add_child(_small_button("ALL LOCKED", func() -> void: mod.call("set_weapons", 0)))
+		guns.add_child(_small_button("ALL ON", func() -> void: mod.call("set_locked", [])))
+		guns.add_child(_small_button("ALL LOCKED", func() -> void: mod.call("set_locked", lockable)))
 		help += "LAUNCH flings a player skyward. KILL ALL / HEAL ALL / FREEZE ALL affect everyone else.\n" \
 			+ "Locked weapons holster and can't be picked; lock all to disarm everyone.\n"
 	if level >= 2:

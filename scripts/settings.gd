@@ -25,6 +25,8 @@ const DEFAULTS := {
 	"map_intro": true,
 	## The last version whose "what's new" message was shown (main_menu.gd).
 	"last_seen_version": "",
+	## Weapon ids for keys 1-6 (weapon_info.gd; empty = the default six). Set in the Armory.
+	"loadout": [],
 	"player_name": "PLAYER",
 	## Last address typed into Join, remembered for next time.
 	"last_join_ip": "127.0.0.1",

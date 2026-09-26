@@ -141,7 +141,7 @@ func _process(delta: float) -> void:
 
 
 func _refresh() -> void:
-	var info := WeaponInfo.get_entry(_candidate)
+	var info: Dictionary = weapon.call("slot_info", _candidate)
 	var color: Color = info["color"]
 	_name.text = "[ %s ]" % info["name"]
 	_name.add_theme_color_override("font_color", color)
@@ -188,7 +188,7 @@ func _draw_ring() -> void:
 			_ring.draw_line(c, c - Vector2(sx * arm, 0), UIStyle.ACCENT, 1.5)
 			_ring.draw_line(c, c - Vector2(0, sy * arm), UIStyle.ACCENT, 1.5)
 	for i in n:
-		var info := WeaponInfo.get_entry(i)
+		var info: Dictionary = weapon.call("slot_info", i)
 		var color: Color = info["color"]
 		var mid := -PI / 2.0 + step * i
 		var picked := i == _candidate

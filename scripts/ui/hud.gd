@@ -174,7 +174,7 @@ func _update_staff_status(mod: Node, delta: float) -> void:
 			parts.append("FROZEN BY STAFF")
 		if mod.call("my_guns_locked"):
 			parts.append("WEAPONS LOCKED")
-		elif mod.call("staff_role") != "owner" and int(mod.get("allowed_weapons")) != ModScript.ALL_WEAPONS:
+		elif mod.call("staff_role") != "owner" and not (mod.get("locked_ids") as Array).is_empty():
 			parts.append("WEAPONS RESTRICTED")
 		if mod.get("low_gravity"):
 			parts.append("LOW GRAVITY")

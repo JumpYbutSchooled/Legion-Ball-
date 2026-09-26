@@ -45,12 +45,12 @@ var role := ""
 var offline_god := false
 ## Staff state the server shares with every peer (_zstate), so each game enforces it on
 ## its own player:
-##   allowed_weapons  bitmask of the weapon slots players may use (owner exempt); 0 = none
+##   locked_ids       weapon ids (weapon_info.gd) nobody but the owner may use
 ##   low_gravity      everyone floats (owner toggle)
 ##   frozen / muted   peer ids held in place / kept out of chat (moderators)
-const ALL_WEAPONS := 0x1FF
+const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const LOW_GRAVITY_SCALE := 0.3
-var allowed_weapons := ALL_WEAPONS
+var locked_ids: Array = []
 var low_gravity := false
 var frozen: Array = []
 var muted: Array = []
@@ -165,9 +165,9 @@ func kill_all() -> void:
 	_to_server("_zkill_all", [])
 
 
-## Owner: which weapon slots everyone else may use (bitmask, bit n = slot n).
-func set_weapons(mask: int) -> void:
-	_to_server("_zweapons", [mask])
+## Owner: which weapons (ids) nobody else may use.
+func set_locked(ids: Array) -> void:
+	_to_server("_zweapons", [ids])
 
 
 ## Testers and up: jump to player `id`.
@@ -236,14 +236,20 @@ func my_level() -> int:
 	return lvl
 
 
-## May our own player use weapon `slot` right now? The owner always may.
-func weapon_allowed(slot: int) -> bool:
-	return staff_role() == "owner" or (allowed_weapons & (1 << slot)) != 0
+## May our own player use weapon `id` right now? The owner always may.
+func weapon_allowed(id: String) -> bool:
+	return staff_role() == "owner" or not locked_ids.has(id)
 
 
-## Every weapon locked for our player.
+## Every weapon our player carries is locked.
 func my_guns_locked() -> bool:
-	return staff_role() != "owner" and (allowed_weapons & ALL_WEAPONS) == 0
+	if staff_role() == "owner" or locked_ids.is_empty():
+		return false
+	var ids := WeaponInfo.slot_ids(WeaponInfo.local_loadout(get_tree()))
+	for i in WeaponInfo.unlocked_count(get_tree()):
+		if not locked_ids.has(ids[i]):
+			return false
+	return true
 
 
 func is_frozen(id: int) -> bool:
@@ -307,8 +313,8 @@ func _on_roster_changed() -> void:
 		role = ""
 		offline_god = false
 		# Leaving a server lifts everything it imposed.
-		if allowed_weapons != ALL_WEAPONS or low_gravity or not frozen.is_empty() or not muted.is_empty():
-			_zstate({"weapons": ALL_WEAPONS, "gravity": false, "frozen": [], "muted": []})
+		if not locked_ids.is_empty() or low_gravity or not frozen.is_empty() or not muted.is_empty():
+			_zstate({"locked": [], "gravity": false, "frozen": [], "muted": []})
 		_set_mod(false)
 		return
 	if multiplayer.is_server() or _greeted:
@@ -523,13 +529,16 @@ func _zkill_all() -> void:
 
 
 @rpc("any_peer", "reliable")
-func _zweapons(mask: int) -> void:
+func _zweapons(ids: Array) -> void:
 	var peer := _sender()
 	if not multiplayer.is_server() or not _is_owner(peer):
 		return
-	allowed_weapons = mask & ALL_WEAPONS
+	locked_ids = []
+	for id in ids:
+		if typeof(id) == TYPE_STRING and WeaponInfo.WEAPONS.has(id) and not locked_ids.has(id):
+			locked_ids.append(id)
 	_send_state()
-	print("[server] %s set allowed weapons to %s" % [_player_name(peer), String.num_int64(allowed_weapons, 2)])
+	print("[server] %s locked weapons: %s" % [_player_name(peer), ", ".join(PackedStringArray(locked_ids))])
 
 
 @rpc("any_peer", "reliable")
@@ -630,12 +639,12 @@ func _zgravity() -> void:
 ## Server: the staff state, to everyone.
 func _send_state() -> void:
 	if multiplayer.is_server() and _net.get("online"):
-		_zstate.rpc({"weapons": allowed_weapons, "gravity": low_gravity, "frozen": frozen, "muted": muted})
+		_zstate.rpc({"locked": locked_ids, "gravity": low_gravity, "frozen": frozen, "muted": muted})
 
 
 @rpc("authority", "call_local", "reliable")
 func _zstate(state: Dictionary) -> void:
-	allowed_weapons = int(state.get("weapons", ALL_WEAPONS))
+	locked_ids = state.get("locked", []).duplicate()
 	low_gravity = bool(state.get("gravity", false))
 	frozen = state.get("frozen", []).duplicate()
 	muted = state.get("muted", []).duplicate()

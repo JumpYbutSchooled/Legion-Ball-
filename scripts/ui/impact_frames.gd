@@ -11,7 +11,7 @@ extends CanvasLayer
 ## Every weapon has its own version, scaled to how hard it hits (PROFILES): the Gatling's
 ## is a quick flicker, the Scatter's is mostly blast, the Tether's mostly pull, Nova's is
 ## huge, and the Railgun gets the full-length original. The weapon is whichever one last
-## dealt damage (weapon.gd, last_hit_slot).
+## dealt damage (weapon.gd, last_hit_id).
 ## Targets trigger it by calling the "impact_frames" group's trigger(world_pos, color).
 ## Online, every player sees every kill's frames (arena.gd _on_killed).
 ## Can be switched off in Settings (the shake still plays).
@@ -25,23 +25,22 @@ const SHIELD_PARAMS := ["out_amount", "grow", "fade", "shell_radius"]
 const SettingsScript := preload("res://scripts/settings.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 
-## Per weapon slot (0 Gatling, 1 Railgun, 2 Scatter, 3 Tether, 4 Nova, 5 Swarm,
-## 6 Rain of God, 7 Pillars of God):
+## Per weapon id (weapon_info.gd); weapons with none play the Railgun's:
 ##   implode / explode: key frames each side of the crack (fewer = shorter)
 ##   speed: frame time multiplier    pull: implosion strength    blast: explosion strength
 ##   core: size of the crack flash   volume: blast sound (dB)     shake: camera shake
 const PROFILES := {
-	0: {"implode": 4, "explode": 6, "speed": 0.8, "pull": 0.35, "blast": 0.5, "core": 0.6, "volume": -6.0, "shake": 0.5},
-	1: {"implode": 12, "explode": 16, "speed": 1.0, "pull": 1.0, "blast": 1.0, "core": 1.0, "volume": 6.0, "shake": 1.0},
-	2: {"implode": 4, "explode": 12, "speed": 1.0, "pull": 0.5, "blast": 1.0, "core": 1.0, "volume": 1.0, "shake": 0.9},
-	3: {"implode": 8, "explode": 7, "speed": 1.0, "pull": 0.9, "blast": 0.6, "core": 0.8, "volume": -2.0, "shake": 0.7},
-	4: {"implode": 10, "explode": 14, "speed": 1.0, "pull": 0.9, "blast": 0.95, "core": 1.1, "volume": 4.0, "shake": 1.0},
-	5: {"implode": 5, "explode": 8, "speed": 0.9, "pull": 0.5, "blast": 0.65, "core": 0.7, "volume": -3.0, "shake": 0.6},
+	"gatling": {"implode": 4, "explode": 6, "speed": 0.8, "pull": 0.35, "blast": 0.5, "core": 0.6, "volume": -6.0, "shake": 0.5},
+	"railgun": {"implode": 12, "explode": 16, "speed": 1.0, "pull": 1.0, "blast": 1.0, "core": 1.0, "volume": 6.0, "shake": 1.0},
+	"scatter": {"implode": 4, "explode": 12, "speed": 1.0, "pull": 0.5, "blast": 1.0, "core": 1.0, "volume": 1.0, "shake": 0.9},
+	"tether": {"implode": 8, "explode": 7, "speed": 1.0, "pull": 0.9, "blast": 0.6, "core": 0.8, "volume": -2.0, "shake": 0.7},
+	"nova": {"implode": 10, "explode": 14, "speed": 1.0, "pull": 0.9, "blast": 0.95, "core": 1.1, "volume": 4.0, "shake": 1.0},
+	"swarm": {"implode": 5, "explode": 8, "speed": 0.9, "pull": 0.5, "blast": 0.65, "core": 0.7, "volume": -3.0, "shake": 0.6},
 	# Staff weapons: Rain of God plays the Railgun's; Tears of an Angel a bright, quick
 	# flurry; Pillars of God's is the biggest.
-	6: {"implode": 12, "explode": 16, "speed": 1.0, "pull": 1.0, "blast": 1.0, "core": 1.0, "volume": 6.0, "shake": 1.0},
-	7: {"implode": 6, "explode": 12, "speed": 0.85, "pull": 0.6, "blast": 1.2, "core": 0.9, "volume": 2.0, "shake": 0.8},
-	8: {"implode": 26, "explode": 36, "speed": 1.25, "pull": 1.6, "blast": 1.8, "core": 2.2, "volume": 12.0, "shake": 2.0},
+	"rain_of_god": {"implode": 12, "explode": 16, "speed": 1.0, "pull": 1.0, "blast": 1.0, "core": 1.0, "volume": 6.0, "shake": 1.0},
+	"tears_of_an_angel": {"implode": 6, "explode": 12, "speed": 0.85, "pull": 0.6, "blast": 1.2, "core": 0.9, "volume": 2.0, "shake": 0.8},
+	"pillars_of_god": {"implode": 26, "explode": 36, "speed": 1.25, "pull": 1.6, "blast": 1.8, "core": 2.2, "volume": 12.0, "shake": 2.0},
 }
 
 ## Receives add_shake().
@@ -62,11 +61,11 @@ var _mat: ShaderMaterial
 var _start_usec := -1
 var _jolt_now := Vector2.ZERO
 var _jolt_goal := Vector2.ZERO
-var _profile: Dictionary = PROFILES[1]
+var _profile: Dictionary = PROFILES["railgun"]
 var _implode := 12
 ## Solid stand-ins for the see-through blades and shields: [real mesh, stand-in, params].
 var _proxies: Array = []
-var _playing_slot := -1
+var _playing_id := ""
 ## Where the kill happened, re-projected every frame (the camera may turn).
 var _kill_world := Vector3.ZERO
 
@@ -79,7 +78,7 @@ func _ready() -> void:
 	_mat.shader = FrameShader
 	# Last of everything, over the whole screen.
 	_mat.render_priority = Material.RENDER_PRIORITY_MAX
-	_build_frames(PROFILES[1])
+	_build_frames(PROFILES["railgun"])
 
 
 ## The implosion -> crack -> explosion sequence, shaped by a weapon profile.
@@ -114,17 +113,17 @@ func _build_frames(p: Dictionary) -> void:
 		})
 
 
-## `slot`: the weapon whose version to play (-1 = our own last hit). `hitstop`: also
-## slow the game down (off for other players' kills; see arena.gd _on_killed).
-func trigger(world_pos: Vector3, color: Color, slot := -1, hitstop := true) -> void:
-	if slot < 0:
-		slot = weapon.get("last_hit_slot") if weapon else 1
+## `weapon_id`: the weapon whose version to play ("" = our own last hit). `hitstop`:
+## also slow the game down (off for other players' kills; see arena.gd _on_killed).
+func trigger(world_pos: Vector3, color: Color, weapon_id := "", hitstop := true) -> void:
+	if weapon_id == "":
+		weapon_id = weapon.get("last_hit_id") if weapon else "railgun"
 	# The same blast asking again straight away (the orbital strike's own frames, then
 	# its kill a moment later): let the first one play on.
-	if _start_usec >= 0 and slot == _playing_slot and Time.get_ticks_usec() - _start_usec < 800_000:
+	if _start_usec >= 0 and weapon_id == _playing_id and Time.get_ticks_usec() - _start_usec < 800_000:
 		return
-	_playing_slot = slot
-	_build_frames(PROFILES.get(slot, PROFILES[1]))
+	_playing_id = weapon_id
+	_build_frames(PROFILES.get(weapon_id, PROFILES["railgun"]))
 	var shake: float = _profile["shake"]
 	var volume: float = _profile["volume"]
 	if camera_rig and camera_rig.has_method("add_shake"):
