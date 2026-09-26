@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.4.1",
+        "date":  "2026-09-26",
+        "notes":  "Fixed a crash when leaving a server (or when the server drops you)."
+    },
+    {
         "version":  "1.4.0",
         "date":  "2026-09-26",
         "notes":  "Big graphics and quality-of-life update. GRAPHICS: quality presets (Low to Ultra), sun shadows, anti-aliasing, ambient occlusion, reflections, render scale, frame cap, and glowing speed trails. COMBAT FEEDBACK: hit markers and kill markers on the crosshair, red arrows showing where hits come from, and a red screen edge at low health. AUDIO: Master and Effects volume sliders. Also: FPS / ping counter, invert mouse Y, and a reorganised Settings page."
