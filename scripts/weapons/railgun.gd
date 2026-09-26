@@ -163,6 +163,12 @@ func apply_net_charge(c: float) -> void:
 	charge = c
 
 
+func refill() -> void:
+	rail_state = Rail.IDLE
+	reload = 0.0
+	charge = 0.0
+
+
 func get_net_reload() -> float:
 	return reload if rail_state == Rail.RELOADING else -1.0
 

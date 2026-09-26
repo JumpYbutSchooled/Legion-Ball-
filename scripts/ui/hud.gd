@@ -5,6 +5,8 @@ extends CanvasLayer
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
 const ModScript := preload("res://scripts/net/moderation.gd")
+const Killstreak := preload("res://scripts/ui/killstreak.gd")
+const NetScript := preload("res://scripts/net/net.gd")
 const FEED_TIME := 5.0
 const FEED_MAX := 5
 
@@ -20,6 +22,14 @@ var _center: Label
 var _center_sub: Label
 var _respawn_left := 0.0
 var _feed_items: Array = []  # [label, time_left]
+var _streak: Control
+## End-of-match map vote: the panel, one label per option, and our own pick.
+var _vote_box: PanelContainer
+var _vote_labels: Array[Label] = []
+var _vote_counts: Array = []
+var _my_vote := -1
+var _vote_left := 0.0
+var _vote_title: Label
 
 
 func _ready() -> void:
@@ -55,6 +65,12 @@ func _ready() -> void:
 	_feed.alignment = BoxContainer.ALIGNMENT_BEGIN
 	root.add_child(_feed)
 
+	# Killstreak skull, top-centre.
+	_streak = Killstreak.new()
+	_streak.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_streak.position = Vector2(-80, 18)
+	root.add_child(_streak)
+
 	# Center overlay: eliminated / winner.
 	_center = UIStyle.label("", 44, Color.WHITE, true)
 	_center.set_anchors_preset(Control.PRESET_CENTER)
@@ -80,11 +96,21 @@ func _ready() -> void:
 	_board_rows.add_theme_constant_override("separation", 6)
 	_board.add_child(_board_rows)
 
+	# Map vote, bottom-centre (shown at the end of a match).
+	_vote_box = PanelContainer.new()
+	_vote_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_vote_box.custom_minimum_size = Vector2(560, 0)
+	_vote_box.position = Vector2(-280, -210)
+	_vote_box.visible = false
+	root.add_child(_vote_box)
+
 	if arena:
 		arena.connect("health_changed", _on_health)
 		arena.connect("player_killed", _on_killed)
 		arena.connect("player_respawned", _on_respawned)
 		arena.connect("match_over", _on_match_over)
+		arena.connect("vote_opened", _on_vote_opened)
+		arena.connect("vote_counts", _on_vote_counts)
 
 
 func _process(delta: float) -> void:
@@ -101,6 +127,74 @@ func _process(delta: float) -> void:
 	if _respawn_left > 0.0:
 		_respawn_left -= delta
 		_center_sub.text = "RESPAWNING IN %.1f" % maxf(_respawn_left, 0.0)
+	if _vote_box.visible:
+		_vote_left = maxf(_vote_left - delta, 0.0)
+		for i in _vote_labels.size():
+			var key := "weapon_%d" % (i + 1)
+			if InputMap.has_action(key) and Input.is_action_just_pressed(key):
+				_vote(i)
+		_refresh_vote()
+
+
+## Controller: D-pad left / down / right vote for options 1 / 2 / 3.
+func _input(event: InputEvent) -> void:
+	var pad := event as InputEventJoypadButton
+	if not _vote_box.visible or not pad or not pad.pressed:
+		return
+	var pick := [JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_RIGHT].find(pad.button_index)
+	if pick >= 0 and pick < _vote_labels.size():
+		_vote(pick)
+
+
+func _on_vote_opened(options: Array) -> void:
+	for child in _vote_box.get_children():
+		child.queue_free()
+	_vote_labels.clear()
+	_vote_counts = []
+	_my_vote = -1
+	_vote_left = arena.call("get_rules").get("end_delay", 12.0)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 6)
+	_vote_box.add_child(column)
+	_vote_title = UIStyle.label("", 14, UIStyle.ACCENT, true)
+	column.add_child(_vote_title)
+	var names: Dictionary = NetScript.MAP_NAMES
+	var here: String = _net.get("map_scene") if _net else ""
+	for i in options.size():
+		var label := UIStyle.label("", 17, UIStyle.TEXT)
+		label.set_meta("map", String(names.get(options[i], options[i])) + ("  (STAY)" if options[i] == here else ""))
+		column.add_child(label)
+		_vote_labels.append(label)
+	column.add_child(UIStyle.label("KEYS 1 / 2 / 3   //   D-PAD LEFT / DOWN / RIGHT", 11, UIStyle.TEXT_DIM))
+	_vote_box.visible = true
+	_refresh_vote()
+
+
+func _on_vote_counts(counts: Array) -> void:
+	_vote_counts = counts
+	_refresh_vote()
+
+
+func _vote(index: int) -> void:
+	if _my_vote == index:
+		return
+	_my_vote = index
+	arena.call("cast_vote", index)
+	var sfx := get_tree().root.get_node_or_null("Sfx")
+	if sfx:
+		sfx.call("play_ui", "ui_click", -8.0)
+	_refresh_vote()
+
+
+func _refresh_vote() -> void:
+	if _vote_title:
+		_vote_title.text = "// VOTE: NEXT MAP   %ds" % ceili(_vote_left)
+	for i in _vote_labels.size():
+		var n: int = _vote_counts[i] if i < _vote_counts.size() else 0
+		var mine := i == _my_vote
+		var bar := "■".repeat(n)
+		_vote_labels[i].text = "%s [%d]  %s   %s" % [">" if mine else " ", i + 1, _vote_labels[i].get_meta("map"), bar]
+		_vote_labels[i].add_theme_color_override("font_color", UIStyle.ACCENT if mine else UIStyle.TEXT)
 
 
 func _on_health(id: int, hp: float) -> void:
@@ -124,7 +218,10 @@ func _on_health(id: int, hp: float) -> void:
 
 
 func _on_killed(victim: int, attacker: int) -> void:
-	var line := UIStyle.label("%s  >>  %s" % [_name(attacker), _name(victim)], 15, Color.WHITE)
+	# Nobody to blame (fell off the map): "NAME  >>  THE VOID".
+	var solo := attacker == victim
+	var text := "%s  >>  THE VOID" % _name(victim) if solo else "%s  >>  %s" % [_name(attacker), _name(victim)]
+	var line := UIStyle.label(text, 15, Color.WHITE)
 	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	line.custom_minimum_size = Vector2(356, 0)
 	if attacker == multiplayer.get_unique_id() or victim == multiplayer.get_unique_id():
@@ -139,10 +236,13 @@ func _on_killed(victim: int, attacker: int) -> void:
 	while _feed_items.size() > FEED_MAX:
 		_feed_items[0][0].queue_free()
 		_feed_items.remove_at(0)
+	if attacker == multiplayer.get_unique_id() and not solo:
+		_streak.call("add_kill")
 	if victim == multiplayer.get_unique_id():
+		_streak.call("reset")
 		_center.text = "ELIMINATED"
 		_center.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
-		_center_sub.text = "BY " + _name(attacker)
+		_center_sub.text = "LOST TO THE VOID" if solo else "BY " + _name(attacker)
 		_respawn_left = arena.call("get_rules")["respawn_time"]
 		_slam_in(_center)
 
@@ -169,7 +269,8 @@ func _on_match_over(winner: int) -> void:
 	var me := winner == multiplayer.get_unique_id()
 	_center.text = "VICTORY" if me else _name(winner) + " WINS"
 	_center.add_theme_color_override("font_color", UIStyle.ACCENT if me else Color.WHITE)
-	_center_sub.text = "RETURNING TO LOBBY..."
+	var dedicated_server: bool = _net != null and not _net.call("is_host")
+	_center_sub.text = "VOTE FOR THE NEXT MAP" if dedicated_server else "RETURNING TO LOBBY..."
 	_slam_in(_center)
 	_board.visible = true
 	_rebuild_board()

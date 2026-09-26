@@ -11,6 +11,9 @@ var _title: Label
 var _ghost_a: Label
 var _ghost_b: Label
 var _glitch_timer := 0.0
+var _bg_mat: ShaderMaterial
+## Backdrop tear strength (sim_grid.gdshader glitch), kicked by the title's bursts.
+var _tear := 0.0
 
 
 func _ready() -> void:
@@ -29,6 +32,7 @@ func _ready() -> void:
 	bg.material = mat
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
+	_bg_mat = mat
 
 	# Title, with red/cyan ghost copies that jitter now and then (chromatic glitch).
 	_ghost_a = _title_label(Color(1.0, 0.2, 0.35, 0.55))
@@ -46,7 +50,7 @@ func _ready() -> void:
 	var ui := MenuUI.new()
 	ui.pause_mode = false
 	add_child(ui)
-	ui.play_pressed.connect(func() -> void: get_tree().change_scene_to_file(GAME_SCENE))
+	ui.play_pressed.connect(func(scene: String) -> void: get_tree().change_scene_to_file(scene))
 	ui.quit_pressed.connect(func() -> void: get_tree().quit())
 
 
@@ -67,11 +71,16 @@ func _title_label(color: Color) -> Label:
 
 
 func _process(delta: float) -> void:
+	_tear = move_toward(_tear, 0.0, delta * 6.0)
+	_bg_mat.set_shader_parameter("glitch", _tear)
 	_glitch_timer -= delta
 	if _glitch_timer <= 0.0:
 		# Mostly calm, with short bursts of jitter.
 		var burst := randf() < 0.25
 		_glitch_timer = randf_range(0.03, 0.08) if burst else randf_range(0.4, 1.4)
 		var amount := 7.0 if burst else 1.5
+		# Now and then a burst tears the whole backdrop too.
+		if burst and randf() < 0.3:
+			_tear = randf_range(0.5, 1.0)
 		_ghost_a.position = _title.position + Vector2(randf_range(-amount, amount), randf_range(-1, 1))
 		_ghost_b.position = _title.position + Vector2(randf_range(-amount, amount), randf_range(-1, 1))

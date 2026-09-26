@@ -235,3 +235,8 @@ func apply_net_reload(_value: float) -> void:
 ## The reload key (T): reload early. Most weapons have nothing to reload.
 func manual_reload() -> void:
 	pass
+
+
+## After a respawn: full magazine, cold, nothing reloading or on cooldown.
+func refill() -> void:
+	pass

@@ -54,6 +54,44 @@ const MOUSE := {
 	"fire": [MOUSE_BUTTON_LEFT],
 }
 
+## Controller defaults (Xbox layout names). Buttons, and [axis, direction] for sticks and
+## triggers. These sit alongside the keyboard slots: rebinding keys never removes them.
+## The right stick turns the camera directly (camera_rig.gd); Start pauses (pause_menu.gd).
+const JOY_BUTTONS := {
+	"jump": [JOY_BUTTON_A],
+	"dash": [JOY_BUTTON_X],
+	"block": [JOY_BUTTON_B],
+	"toggle_weapon": [JOY_BUTTON_Y],
+	"weapon_prev": [JOY_BUTTON_LEFT_SHOULDER],
+	"weapon_next": [JOY_BUTTON_RIGHT_SHOULDER],
+	"zoom_in": [JOY_BUTTON_DPAD_UP],
+	"zoom_out": [JOY_BUTTON_DPAD_DOWN],
+	"scoreboard": [JOY_BUTTON_BACK],
+}
+const JOY_AXES := {
+	"move_forward": [[JOY_AXIS_LEFT_Y, -1.0]],
+	"move_back": [[JOY_AXIS_LEFT_Y, 1.0]],
+	"move_left": [[JOY_AXIS_LEFT_X, -1.0]],
+	"move_right": [[JOY_AXIS_LEFT_X, 1.0]],
+	"fire": [[JOY_AXIS_TRIGGER_RIGHT, 1.0]],
+	"reload": [[JOY_AXIS_TRIGGER_LEFT, 1.0]],
+}
+## Controller-only actions (not on the Controls page; keyboard uses the mouse wheel).
+const PAD_ONLY := ["weapon_prev", "weapon_next"]
+
+## True while the last input came from a controller (set by camera_rig.gd): firing then
+## doesn't need a captured mouse.
+static var using_pad := false
+
+
+## Shown on the Controls page under the key bindings.
+const PAD_HELP := [
+	["LEFT STICK", "Roll"], ["RIGHT STICK", "Camera"], ["A", "Jump"], ["X", "Dash"],
+	["B", "Shield"], ["Y", "Holster / draw"], ["RT", "Fire"], ["LT", "Reload / vent"],
+	["LB / RB", "Previous / next weapon"], ["D-PAD UP / DOWN", "Zoom"],
+	["BACK", "Scoreboard"], ["START", "Pause menu"],
+]
+
 ## Everything the player can rebind, in the order the Controls page lists it:
 ## [action, label]; a lone string starts a new section.
 const REBINDABLE := [
@@ -107,7 +145,51 @@ static func apply() -> void:
 	for action in MOUSE:
 		if _needs_events(action):
 			_add_defaults(action)
+	for action in PAD_ONLY:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action, 0.2)
 	_load_saved()
+	# Controller bindings go on after the saved keys, so every action always has them.
+	for action in JOY_BUTTONS.keys() + JOY_AXES.keys():
+		if InputMap.has_action(action) and _pad_events(action).is_empty():
+			_add_pad_defaults(action)
+
+
+static func _is_pad(ev: InputEvent) -> bool:
+	return ev is InputEventJoypadButton or ev is InputEventJoypadMotion
+
+
+static func _add_pad_defaults(action: String) -> void:
+	for button in JOY_BUTTONS.get(action, []):
+		var ev := InputEventJoypadButton.new()
+		ev.button_index = button
+		ev.device = -1
+		InputMap.action_add_event(action, ev)
+	for axis in JOY_AXES.get(action, []):
+		var ev := InputEventJoypadMotion.new()
+		ev.axis = axis[0]
+		ev.axis_value = axis[1]
+		ev.device = -1
+		InputMap.action_add_event(action, ev)
+
+
+## An action's keyboard and mouse bindings (the rebindable slots), without controller ones.
+static func kbm_events(action: String) -> Array[InputEvent]:
+	var out: Array[InputEvent] = []
+	if InputMap.has_action(action):
+		for ev in InputMap.action_get_events(action):
+			if not _is_pad(ev):
+				out.append(ev)
+	return out
+
+
+static func _pad_events(action: String) -> Array[InputEvent]:
+	var out: Array[InputEvent] = []
+	if InputMap.has_action(action):
+		for ev in InputMap.action_get_events(action):
+			if _is_pad(ev):
+				out.append(ev)
+	return out
 
 
 static func _needs_events(action: String) -> bool:
@@ -146,7 +228,7 @@ static func bind(action: String, slot: int, event: InputEvent) -> void:
 			for other in InputMap.action_get_events(entry[0]):
 				if _same(other, ev):
 					InputMap.action_erase_event(entry[0], other)
-	var events := InputMap.action_get_events(action)
+	var events := kbm_events(action)
 	# Already bound in the other slot: just keep one copy.
 	events = events.filter(func(e: InputEvent) -> bool: return not _same(e, ev))
 	if slot < events.size():
@@ -158,7 +240,7 @@ static func bind(action: String, slot: int, event: InputEvent) -> void:
 
 
 static func clear(action: String, slot: int) -> void:
-	var events := InputMap.action_get_events(action)
+	var events := kbm_events(action)
 	if slot < events.size():
 		events.remove_at(slot)
 		_set_events(action, events)
@@ -171,6 +253,7 @@ static func reset_all() -> void:
 		if entry is Array:
 			InputMap.action_erase_events(entry[0])
 			_add_defaults(entry[0])
+			_add_pad_defaults(entry[0])
 	DirAccess.remove_absolute(SAVE_PATH)
 
 
@@ -179,7 +262,7 @@ static func save() -> void:
 	for entry in REBINDABLE:
 		if entry is Array:
 			var saved: Array = []
-			for ev in InputMap.action_get_events(entry[0]):
+			for ev in kbm_events(entry[0]):
 				saved.append(_to_dict(ev))
 			file.set_value("binds", entry[0], saved)
 	file.save(SAVE_PATH)
@@ -200,10 +283,14 @@ static func _load_saved() -> void:
 		_set_events(action, events)
 
 
+## Replaces an action's key/mouse slots; its controller bindings are kept.
 static func _set_events(action: String, events: Array) -> void:
+	var pad := _pad_events(action)
 	InputMap.action_erase_events(action)
 	for i in mini(events.size(), SLOTS):
 		InputMap.action_add_event(action, events[i])
+	for ev in pad:
+		InputMap.action_add_event(action, ev)
 
 
 ## Just the key (by position on the keyboard, so it works on any layout) or mouse button.
@@ -283,7 +370,5 @@ static func event_label(ev: InputEvent) -> String:
 
 ## The first key bound to `action`, for on-screen hints ("SHIELD [Q]").
 static func key_label(action: String) -> String:
-	if not InputMap.has_action(action):
-		return "-"
-	var events := InputMap.action_get_events(action)
+	var events := kbm_events(action)
 	return event_label(events[0]) if not events.is_empty() else "-"

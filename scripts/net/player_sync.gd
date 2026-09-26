@@ -129,6 +129,12 @@ func lock_charge() -> float:
 	return _charge
 
 
+## This ball's velocity: its own physics on the owner's computer, the last one it sent
+## everywhere else (remote balls are kinematic, so their linear_velocity stays 0).
+func net_velocity() -> Vector3:
+	return _ball.linear_velocity if is_multiplayer_authority() else _vel
+
+
 @rpc("authority", "unreliable_ordered")
 func _state(pos: Vector3, rot: Quaternion, vel: Vector3, aim: Vector3, slot: int, armed: bool, charge: float, locked_peer: int, reload: float) -> void:
 	_pos = pos

@@ -210,3 +210,7 @@ func _slam(ground_pos: Vector3) -> void:
 	manager.push_ball(Vector3.UP * 6.0)
 	manager.shake(1.0)
 	_burst = 1.0
+
+
+func refill() -> void:
+	_cooldown = 0.0

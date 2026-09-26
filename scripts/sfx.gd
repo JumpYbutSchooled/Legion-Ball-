@@ -187,6 +187,17 @@ func _build_all() -> void:
 	s["shatter"] = _wav(shatter)
 	s["unshatter"] = _wav(_reverse(shatter))
 	s["infinity"] = _wav(_mix([_glass(0.9), _shimmer(1.0, 300.0, 2400.0, 0.01)]))
+	# Menu UI: a tiny digital tick on hover, a crisp chirp-click on press, and a quick
+	# rising sweep with a crackle when a page opens.
+	s["ui_hover"] = _wav(_gain(_sweep(0.035, 2600.0, 3400.0, 0.1, 0.001, 1.0, 2, 0.7), 0.35))
+	s["ui_click"] = _wav(_mix([
+		_gain(_crush(_sweep(0.07, 1800.0, 900.0, 0.2, 0.001, 2.0, 3, 0.8), 6.0), 0.5),
+		_gain(_sweep(0.05, 160.0, 90.0, 0.0, 0.001), 0.35),
+	]))
+	s["ui_page"] = _wav(_mix([
+		_gain(_sweep(0.22, 300.0, 2400.0, 0.3, 0.002, 0.6, 2, 0.5), 0.35),
+		_delay(_gain(_crush(_noise(0.08, 0.8, 0.001), 5.0), 0.25), 0.05),
+	]))
 	# Loops.
 	s["charge"] = _wav(_hum(1.0), true)
 	s["wind"] = _wav(_wind(3.0), true)

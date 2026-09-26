@@ -1,13 +1,17 @@
 extends CanvasLayer
-## Mouse-wheel weapon browser. Scrolling slides a small, low-key wheel in from the left:
-## a ring of weapon slots (the one you've scrolled to lit in its colour, a dot on the
-## equipped one) round a spinning hologram of that weapon, with its name below.
-## Right-click equips it; it hides after a few idle seconds. Ctrl + wheel is left alone
-## (camera zoom). Staff weapons only appear if unlocked (and not hidden with 0).
+## Mouse-wheel weapon browser. Scrolling slides a small panel in from the left, in the
+## same style as the rest of the UI (dark glass, thin cyan border, "// ARMAMENT" header,
+## bracketed names): a ring of weapon slots (the one you've scrolled to lit in its colour,
+## a dot on the equipped one) round a spinning hologram of that weapon, with its name
+## below. Right-click equips it; it hides after a few idle seconds. Ctrl + wheel is left
+## alone (camera zoom). Controller: LB / RB step to the previous / next weapon and equip
+## it straight away. Staff weapons only appear if unlocked (and not hidden with 0).
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const HoloShader := preload("res://shaders/hologram.gdshader")
+const InputSetup := preload("res://scripts/input_setup.gd")
+const Sfx := preload("res://scripts/sfx.gd")
 
 ## The weapon manager (Ball/Weapon).
 @export var weapon: Node
@@ -19,8 +23,8 @@ const HoloShader := preload("res://shaders/hologram.gdshader")
 ## Overall opacity when fully shown.
 @export var opacity := 0.85
 
-const OUTER := 96.0
-const INNER := 62.0
+const OUTER := 86.0
+const INNER := 56.0
 
 var _open := false
 var _candidate := 0
@@ -33,6 +37,8 @@ var _ring: Control
 var _name: Label
 var _tag: Label
 var _hint: Label
+var _slot_label: Label
+var _spin := 0.0
 var _font: Font
 var _holo_root: Node3D
 var _holo_model: Node3D
@@ -63,6 +69,13 @@ func _on_staff_weapons_toggled(shown: bool) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not weapon or get_tree().paused:
 		return
+	# Controller shoulders: step and equip in one press.
+	for dir in [["weapon_prev", -1], ["weapon_next", 1]]:
+		if event.is_action_pressed(dir[0]) and not _input_blocked():
+			_browse(dir[1])
+			_confirm()
+			get_viewport().set_input_as_handled()
+			return
 	var mb := event as InputEventMouseButton
 	if not mb or not mb.pressed or mb.ctrl_pressed:
 		return
@@ -75,11 +88,21 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		MOUSE_BUTTON_RIGHT:
 			if _open:
-				weapon.call("select", _candidate)
-				_confirm_flash = 1.0
-				_idle = idle_hide_time - 0.5  # Close shortly after confirming.
-				_refresh()
+				_confirm()
 				get_viewport().set_input_as_handled()
+
+
+func _confirm() -> void:
+	weapon.call("select", _candidate)
+	_confirm_flash = 1.0
+	_idle = idle_hide_time - 0.5  # Close shortly after confirming.
+	_refresh()
+	Sfx.play_flat(get_tree(), "ui_click", -12.0)
+
+
+func _input_blocked() -> bool:
+	var net := get_tree().root.get_node_or_null("Net")
+	return net != null and net.get("input_blocked")
 
 
 func _browse(step: int) -> void:
@@ -90,6 +113,7 @@ func _browse(step: int) -> void:
 	_candidate = (_candidate + step + total) % total
 	_idle = 0.0
 	_refresh()
+	Sfx.play_flat(get_tree(), "ui_hover", -16.0)
 
 
 func _process(delta: float) -> void:
@@ -103,11 +127,12 @@ func _process(delta: float) -> void:
 	var eased := ease(_slide, 0.4)
 	var view := _panel.get_viewport_rect().size
 	# Slides in from off the left edge, vertically centered.
-	var x := lerpf(-panel_width - 20.0, margin, eased)
+	var x := lerpf(-_panel.size.x - 20.0, margin, eased)
 	_panel.position = Vector2(x, (view.y - _panel.size.y) / 2.0)
 	_panel.modulate.a = eased * opacity
 	_panel.visible = _slide > 0.001
 	_confirm_flash = move_toward(_confirm_flash, 0.0, delta * 3.0)
+	_spin += delta * 0.4
 	if _panel.visible:
 		_ring.queue_redraw()
 		if _holo_root:
@@ -118,11 +143,17 @@ func _process(delta: float) -> void:
 func _refresh() -> void:
 	var info := WeaponInfo.get_entry(_candidate)
 	var color: Color = info["color"]
-	_name.text = info["name"]
+	_name.text = "[ %s ]" % info["name"]
 	_name.add_theme_color_override("font_color", color)
 	_tag.text = info["tag"]
+	_slot_label.text = "%02d/%02d" % [_candidate + 1, _count()]
 	var equipped: int = weapon.get("current")
-	_hint.text = "RMB  equip" if _candidate != equipped else "equipped"
+	if _candidate == equipped:
+		_hint.text = "// EQUIPPED"
+		_hint.add_theme_color_override("font_color", UIStyle.ACCENT)
+	else:
+		_hint.text = "LB/RB  //  EQUIP" if InputSetup.using_pad else "RMB  //  EQUIP"
+		_hint.add_theme_color_override("font_color", UIStyle.TEXT_DIM)
 	_holo_mat.set_shader_parameter("color", color)
 	_pad_mat.set_shader_parameter("color", color)
 	_build_hologram(_candidate)
@@ -132,18 +163,30 @@ func _count() -> int:
 	return maxi(WeaponInfo.unlocked_count(get_tree()), 1)
 
 
-## The wheel: faint glass disc, one thin segment per slot round the edge with its number
-## (the scrolled-to one lit in its colour), and a dot on the equipped one.
+## The wheel: a slowly turning tick ring, one thin segment per slot with its number (the
+## scrolled-to one lit in its colour), a dot on the equipped one, and corner brackets.
 func _draw_ring() -> void:
 	var center := _ring.size / 2.0
 	var n := _count()
 	var step := TAU / n
 	var gap := 0.06
 	var equipped: int = weapon.get("current") if weapon else 0
-	# Faint glass, like the old panel: mostly see-through, barely-there border.
-	_ring.draw_circle(center, OUTER + 4.0, Color(0.02, 0.05, 0.08, 0.45))
-	_ring.draw_arc(center, OUTER + 4.0, 0.0, TAU, 64, Color(0.35, 0.9, 1.0, 0.16), 1.0, true)
-	_ring.draw_arc(center, INNER - 2.0, 0.0, TAU, 48, Color(0.35, 0.9, 1.0, 0.1), 1.0, true)
+	# Tick ring round the outside, turning slowly; every sixth tick longer.
+	for k in 60:
+		var a := TAU * k / 60.0 + _spin
+		var long := k % 6 == 0
+		var from := center + Vector2.from_angle(a) * (OUTER + 5.0)
+		var to := center + Vector2.from_angle(a) * (OUTER + (10.0 if long else 7.0))
+		_ring.draw_line(from, to, Color(UIStyle.ACCENT, 0.5 if long else 0.2), 1.0)
+	_ring.draw_arc(center, INNER - 2.0, 0.0, TAU, 48, UIStyle.ACCENT_DIM, 1.0, true)
+	# Corner brackets, as on the menu panels.
+	var half := _ring.size.x / 2.0 - 2.0
+	var arm := 12.0
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			var c := center + Vector2(sx, sy) * half
+			_ring.draw_line(c, c - Vector2(sx * arm, 0), UIStyle.ACCENT, 1.5)
+			_ring.draw_line(c, c - Vector2(0, sy * arm), UIStyle.ACCENT, 1.5)
 	for i in n:
 		var info := WeaponInfo.get_entry(i)
 		var color: Color = info["color"]
@@ -211,18 +254,33 @@ func _build_ui() -> void:
 	root.theme = UIStyle.make_theme()
 	add_child(root)
 
-	_panel = VBoxContainer.new()
-	_panel.custom_minimum_size = Vector2(panel_width, 0)
-	_panel.add_theme_constant_override("separation", 3)
+	# Dark glass panel with a thin cyan border, like the minimap and menus.
+	_panel = PanelContainer.new()
+	var box := UIStyle.panel_box(UIStyle.ACCENT_DIM, Color(0.02, 0.05, 0.08, 0.6))
+	box.set_content_margin_all(10)
+	_panel.add_theme_stylebox_override("panel", box)
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_panel)
+	var column := VBoxContainer.new()
+	column.custom_minimum_size = Vector2(panel_width, 0)
+	column.add_theme_constant_override("separation", 3)
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_panel.add_child(column)
+
+	var header := HBoxContainer.new()
+	column.add_child(header)
+	var title := UIStyle.label("// ARMAMENT", 10, UIStyle.ACCENT, true)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	_slot_label = UIStyle.label("", 10, UIStyle.TEXT_DIM)
+	header.add_child(_slot_label)
 
 	# The wheel, with the hologram stage in its middle.
 	_ring = Control.new()
 	_ring.custom_minimum_size = Vector2(panel_width, panel_width)
 	_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ring.draw.connect(_draw_ring)
-	_panel.add_child(_ring)
+	column.add_child(_ring)
 	var holder := SubViewportContainer.new()
 	holder.stretch = true
 	holder.size = Vector2(INNER * 2.0 - 8.0, INNER * 2.0 - 8.0)
@@ -260,12 +318,17 @@ func _build_ui() -> void:
 	pad_mi.position = Vector3(0, -0.9, 0)
 	vp.add_child(pad_mi)
 
-	_name = UIStyle.label("", 18, Color.WHITE, true)
+	_name = UIStyle.label("", 16, Color.WHITE, true)
 	_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_panel.add_child(_name)
+	column.add_child(_name)
 	_tag = UIStyle.label("", 10, UIStyle.TEXT_DIM)
 	_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_panel.add_child(_tag)
+	_tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(_tag)
+	var line := ColorRect.new()
+	line.color = UIStyle.ACCENT_DIM
+	line.custom_minimum_size = Vector2(0, 1)
+	column.add_child(line)
 	_hint = UIStyle.label("", 10, UIStyle.TEXT_DIM)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_panel.add_child(_hint)
+	column.add_child(_hint)

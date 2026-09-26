@@ -156,6 +156,15 @@ func _build_lobby() -> void:
 	buttons.add_theme_constant_override("separation", 14)
 	_body.add_child(buttons)
 	if is_host:
+		# The host picks the map (after each match everyone votes on the next one).
+		var picker := OptionButton.new()
+		var paths: Array = NetScript.MAP_NAMES.keys()
+		for i in paths.size():
+			picker.add_item("MAP: " + NetScript.MAP_NAMES[paths[i]], i)
+			if paths[i] == _net.get("map_scene"):
+				picker.select(i)
+		picker.item_selected.connect(func(i: int) -> void: _net.set("map_scene", paths[i]))
+		buttons.add_child(picker)
 		buttons.add_child(_button("START MATCH", func() -> void: _net.call("start_match")))
 	else:
 		buttons.add_child(UIStyle.label("Waiting for the host to start...", 14, UIStyle.TEXT_DIM))
@@ -203,11 +212,14 @@ func _show_status() -> void:
 			continue
 		var info: Dictionary = servers.get("S%d" % (i + 1), {})
 		var names: Array = info.get("players", [])
+		# The map it's on right now (it changes after every match's vote).
+		var live_map := String(info.get("map", ""))
+		var on_map := "[%s]  " % live_map if live_map != "" else ""
 		if names.is_empty():
-			label.text = "empty"
+			label.text = on_map + "empty"
 			label.add_theme_color_override("font_color", UIStyle.TEXT_DIM)
 		else:
-			label.text = "%d/%d  %s" % [names.size(), NetScript.MAX_PLAYERS, ", ".join(PackedStringArray(names))]
+			label.text = "%s%d/%d  %s" % [on_map, names.size(), NetScript.MAX_PLAYERS, ", ".join(PackedStringArray(names))]
 			label.add_theme_color_override("font_color", UIStyle.ACCENT)
 	var text := ""
 	if is_instance_valid(_status_query) and _online_status.is_empty():

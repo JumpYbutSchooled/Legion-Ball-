@@ -34,7 +34,21 @@ const TRAINING_SCENE := "res://scenes/arena.tscn"
 const MAP_NAMES := {
 	"res://scenes/arena_sprawl.tscn": "SPRAWL",
 	"res://scenes/arena.tscn": "TRAINING",
+	"res://scenes/arena_coliseum.tscn": "COLISEUM",
+	"res://scenes/arena_box.tscn": "THE BOX",
+	"res://scenes/arena_thunderdome.tscn": "THUNDER DOME",
+	"res://scenes/arena_tunnels.tscn": "TUNNELS",
+	"res://scenes/arena_city.tscn": "CITY",
 }
+## The combat maps: what end-of-match votes, moderators and hosts choose between.
+const COMBAT_MAPS := [
+	"res://scenes/arena_sprawl.tscn",
+	"res://scenes/arena_coliseum.tscn",
+	"res://scenes/arena_box.tscn",
+	"res://scenes/arena_thunderdome.tscn",
+	"res://scenes/arena_tunnels.tscn",
+	"res://scenes/arena_city.tscn",
+]
 ## The map each online server runs, in the same order as SERVER_URLS. A server finds its
 ## own entry from Render's RENDER_EXTERNAL_HOSTNAME; a MAP env var ("sprawl" or
 ## "training") overrides it.
@@ -108,6 +122,8 @@ func player_color(id: int) -> Color:
 
 
 func player_name(id: int) -> String:
+	if id < 0:
+		return "TURRET"  # AI turrets (scripts/turrets.gd) deal damage as id -1.
 	return players.get(id, {}).get("name", "PLAYER %d" % id)
 
 
@@ -287,6 +303,20 @@ func leave() -> void:
 func start_match() -> void:
 	if not is_host():
 		return
+	in_match = true
+	_use_map.rpc(map_scene)
+	_load_arena.rpc()
+
+
+## Host only: everyone moves to map `path` now, scores reset (a moderator's switch).
+func change_map(path: String) -> void:
+	if not is_host() or not MAP_NAMES.has(path):
+		return
+	map_scene = path
+	for id in players:
+		players[id]["kills"] = 0
+		players[id]["deaths"] = 0
+	_sync_roster.rpc(players)
 	in_match = true
 	_use_map.rpc(map_scene)
 	_load_arena.rpc()

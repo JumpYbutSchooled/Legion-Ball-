@@ -8,6 +8,7 @@ const SERVICES := {
 	"Settings": "res://scripts/settings.gd",
 	"Net": "res://scripts/net/net.gd",
 	"Sfx": "res://scripts/sfx.gd",
+	"Music": "res://scripts/music.gd",
 	"Mod": "res://scripts/net/moderation.gd",
 	"Chat": "res://scripts/net/chat.gd",
 	"GlobalChat": "res://scripts/net/global_relay.gd",

@@ -38,6 +38,17 @@ const LaserShader := preload("res://shaders/dash_laser.gdshader")
 ## Impulse per second pulling a hooked rigid body toward the ball (scaled by tension).
 @export var yank_force := 35.0
 @export var beam_width := 0.13
+## Lock-on: an airborne target (nothing under it for air_gap metres) whose screen position
+## is inside this circle gets hooked even if the crosshair isn't exactly on it.
+@export var lock_radius_px := 60.0
+@export var air_gap := 2.5
+
+@export_group("Wall blast")
+## Hooking a wall (not the floor) sets off a small blast where the hook lands.
+@export var wall_blast_radius := 6.0
+## x4 online (ball.gd PVP_DAMAGE_SCALE) = 20 HP.
+@export var wall_blast_damage := 5.0
+@export var wall_blast_force := 25.0
 
 @export_group("Slam")
 ## Downward speed (m/s) needed to slam, and the speed where the slam is at full size.
@@ -71,6 +82,9 @@ var _hook_time := 0.0
 var _rehook := 0.0
 var _line: MeshInstance3D
 var _line_mat: ShaderMaterial
+## The airborne target the tether would hook (or null), and where it sits on screen.
+var lock_target: Node3D = null
+var lock_screen_pos := Vector2.ZERO
 
 
 func _build() -> void:
@@ -109,10 +123,16 @@ func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
 	if just_pressed:
 		_auto_hook = true
 	if not is_ready():
+		lock_target = null
 		_detach()
 		return
+	_update_lock()
 	_rehook = maxf(_rehook - delta, 0.0)
 	if pressed and not _attached and _auto_hook and _rehook == 0.0:
+		if lock_target:
+			# Locked onto someone in the air: hook them, wherever the crosshair ray went.
+			var p: Vector3 = lock_target.call("get_aim_point")
+			hit = {"position": p, "collider": lock_target, "normal": (manager.ball.global_position - p).normalized()}
 		_try_attach(hit)
 	elif not pressed and _attached:
 		_detach()
@@ -181,7 +201,9 @@ func _on_exit() -> void:
 func get_crosshair() -> Dictionary:
 	var aim: Vector3 = manager.aim_point
 	var in_range: bool = aim.distance_to(manager.ball.global_position) <= max_range
-	var info := {"kind": "tether", "in_range": in_range, "attached": _attached, "tension": tension}
+	var locked := lock_target != null and is_instance_valid(lock_target) and not _attached
+	var info := {"kind": "tether", "in_range": in_range or locked, "attached": _attached, "tension": tension,
+		"locked": locked, "lock_pos": lock_screen_pos}
 	if _attached:
 		info["anchor_screen"] = manager.screen_pos(_anchor_world())
 	return info
@@ -238,6 +260,45 @@ func _try_attach(hit: Dictionary) -> void:
 	manager.spawn_light(pos + normal * 0.2, 30.0, 6.0, 0.1, color)
 	manager.shake(0.4)
 	manager.play_sound("tether", global_position, -4.0)
+	if not _on_body and absf(normal.y) < 0.5:
+		_wall_blast(pos, normal)
+
+
+## Hooked a wall: the hook detonates where it bites, hurting anyone standing there.
+func _wall_blast(pos: Vector3, normal: Vector3) -> void:
+	manager.spawn_explosion({
+		"position": pos + normal * 0.6,
+		"color": color,
+		"radius": wall_blast_radius,
+		"damage": wall_blast_damage,
+		"force": wall_blast_force,
+		"spark_count": 160,
+		"spark_speed": 22.0,
+		"chunk_count": 14,
+		"light_energy": 140.0,
+		"warp_strength": 0.2,
+		"sound": "boom",
+	})
+
+
+## Finds an airborne lock target near the crosshair that's in range and in sight.
+func _update_lock() -> void:
+	lock_target = null
+	if _attached or not manager.camera:
+		return
+	for entry in manager.targets_on_screen(lock_radius_px, max_range, true):
+		var target: Node3D = entry["target"]
+		if _airborne(entry["point"], target):
+			lock_target = target
+			lock_screen_pos = entry["screen"]
+			return
+
+
+## True if there's nothing solid within air_gap metres under `point`.
+func _airborne(point: Vector3, target: Node3D) -> bool:
+	# Start just under the target so the ray doesn't hit the target itself.
+	var ground: Dictionary = manager.raycast(point + Vector3.DOWN * 0.6, point + Vector3.DOWN * (air_gap + 0.6))
+	return ground.is_empty() or ground["collider"] == target
 
 
 func _detach() -> void:

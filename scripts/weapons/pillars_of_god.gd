@@ -201,3 +201,7 @@ func _strike() -> void:
 				"flat_sparks": true,
 				"sound": "",
 			}))
+
+
+func refill() -> void:
+	_cooldown = 0.0

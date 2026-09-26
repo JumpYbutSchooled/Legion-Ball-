@@ -176,6 +176,13 @@ func manual_reload() -> void:
 		_start_reload()
 
 
+func refill() -> void:
+	reloading = false
+	reload = 0.0
+	ammo = magazine
+	_cooldown = 0.0
+
+
 func get_net_reload() -> float:
 	return reload if reloading else -1.0
 

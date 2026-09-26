@@ -139,6 +139,12 @@ func manual_reload() -> void:
 		_on_overheat()
 
 
+func refill() -> void:
+	heat = 0.0
+	overheated = false
+	_cooldown = 0.0
+
+
 ## Heat, plus 1 while venting an overheat (so other players see both).
 func get_net_reload() -> float:
 	return heat + (1.0 if overheated else 0.0)

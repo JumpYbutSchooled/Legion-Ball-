@@ -43,6 +43,18 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	var pad := event as InputEventJoypadButton
+	if pad and pad.pressed and pad.button_index == JOY_BUTTON_START:
+		if _root.visible:
+			resume()
+		else:
+			pause()
+		get_viewport().set_input_as_handled()
+		return
+	# ui_cancel includes the controller's B, which is the shield in game: B only backs
+	# out of the menu, it never opens it.
+	if pad and not _root.visible:
+		return
 	if event.is_action_pressed("ui_cancel"):
 		if _root.visible:
 			resume()

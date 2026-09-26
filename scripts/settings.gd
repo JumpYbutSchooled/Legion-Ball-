@@ -17,6 +17,12 @@ const DEFAULTS := {
 	## Multiplier on camera shake.
 	"camera_shake": 1.0,
 	"impact_frames": true,
+	## Background music volume, 0..1 (scripts/music.gd).
+	"music_volume": 0.6,
+	## Menu hover/click sounds.
+	"ui_sounds": true,
+	## The wireframe build-in when a map loads (scripts/map_intro.gd).
+	"map_intro": true,
 	"player_name": "PLAYER",
 	## Last address typed into Join, remembered for next time.
 	"last_join_ip": "127.0.0.1",

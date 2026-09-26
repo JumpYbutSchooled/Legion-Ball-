@@ -5,7 +5,8 @@ extends Control
 ## Set `pause_mode` before adding it to switch the first action between
 ## "INITIATE SIMULATION" (main menu) and "RESUME" (pause menu).
 
-signal play_pressed
+## Practice on the map at scene (offline).
+signal play_pressed(scene: String)
 signal resume_pressed
 signal main_menu_pressed
 signal quit_pressed
@@ -16,10 +17,24 @@ const LobbyPanel := preload("res://scripts/ui/lobby_panel.gd")
 const NetScript := preload("res://scripts/net/net.gd")
 const ModScript := preload("res://scripts/net/moderation.gd")
 const InputSetup := preload("res://scripts/input_setup.gd")
+const TechFrame := preload("res://scripts/ui/tech_frame.gd")
+const Sfx := preload("res://scripts/sfx.gd")
+const SettingsScript := preload("res://scripts/settings.gd")
+const MenuChat := preload("res://scripts/net/menu_chat.gd")
+const GLOBAL_COLOR := Color(1.0, 0.72, 0.3)
 
 var pause_mode := false
 
+## Main menu only: the global chat connection, the open chat page's log, and messages
+## that came in while another page was open.
+var _chat: Node
+var _chat_log: VBoxContainer
+var _chat_status: Label
+var _unread := 0
+
 var _page_holder: PanelContainer
+var _scroll: ScrollContainer
+var _frame: Control
 var _page_title: Label
 var _page: Control
 var _nav_buttons := {}
@@ -48,8 +63,14 @@ func _ready() -> void:
 	if pause_mode:
 		_nav(nav, "resume", "RESUME SIMULATION", func() -> void: resume_pressed.emit())
 	else:
-		_nav(nav, "play", "PRACTICE (SOLO)", func() -> void: play_pressed.emit())
+		_nav(nav, "play", "PRACTICE (SOLO)", func() -> void: _show_page("practice"))
 		_nav(nav, "multiplayer", "MULTIPLAYER", func() -> void: _show_page("multiplayer"))
+		_nav(nav, "chat", "GLOBAL CHAT", func() -> void: _show_page("chat"))
+		_chat = MenuChat.new()
+		_chat.name = "MenuChat"
+		add_child(_chat)
+		_chat.connect("message_received", _on_chat_message)
+		_chat.connect("status_changed", _on_chat_status)
 	_nav(nav, "armory", "ARMORY", func() -> void: _show_page("armory"))
 	_nav(nav, "controls", "CONTROLS", func() -> void: _show_page("controls"))
 	_nav(nav, "settings", "SETTINGS", func() -> void: _show_page("settings"))
@@ -79,12 +100,31 @@ func _ready() -> void:
 	_page_holder = PanelContainer.new()
 	_page_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(_page_holder)
+	_frame = TechFrame.new()
+	_page_holder.add_child(_frame)
 	# Back from a match (still connected): land on the lobby.
-	_show_page("multiplayer" if online and not pause_mode else "armory")
+	_show_page("multiplayer" if online and not pause_mode else "armory", true)
 	_intro.call_deferred()
 	visibility_changed.connect(func() -> void:
 		if is_visible_in_tree():
 			_intro())
+
+
+## With a controller, menus are driven by focus: put it on the first action.
+func _focus_first() -> void:
+	if not is_visible_in_tree() or get_viewport().gui_get_focus_owner():
+		return
+	for id in _nav_buttons:
+		var b: Button = _nav_buttons[id]
+		if b.visible:
+			b.grab_focus()
+			return
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# First controller press in a menu with nothing focused: start at the top.
+	if (event is InputEventJoypadButton and event.pressed) or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.5):
+		_focus_first()
 
 
 ## Buttons sweep in one after another; the page panel unfolds.
@@ -105,6 +145,8 @@ func _intro() -> void:
 	var tw := _page_holder.create_tween().set_parallel().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	tw.tween_property(_page_holder, "modulate:a", 1.0, 0.4).set_delay(0.12)
 	tw.tween_property(_page_holder, "scale", Vector2.ONE, 0.5).set_delay(0.12)
+	if not Input.get_connected_joypads().is_empty():
+		_focus_first.call_deferred()
 
 
 func _nav(parent: Control, id: String, text: String, action: Callable) -> void:
@@ -118,20 +160,40 @@ func _nav(parent: Control, id: String, text: String, action: Callable) -> void:
 	_animate_button(b)
 
 
-## Hover: the button leans out a little; press: a quick squash.
+## Hover (or controller focus): the button leans out with a tick sound and a quick
+## brightness flicker; press: a squash, a white flash and a click.
 static func _animate_button(b: Button) -> void:
-	b.mouse_entered.connect(func() -> void:
+	var hover := func() -> void:
 		b.pivot_offset = Vector2(0.0, b.size.y / 2.0)
-		b.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT) \
-			.tween_property(b, "scale", Vector2(1.04, 1.04), 0.18))
-	b.mouse_exited.connect(func() -> void:
+		var tw := b.create_tween().set_parallel().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(b, "scale", Vector2(1.04, 1.04), 0.18)
+		b.modulate = Color(1.6, 1.6, 1.6)
+		tw.tween_property(b, "modulate", Color.WHITE, 0.25).set_trans(Tween.TRANS_EXPO)
+		ui_sound(b, "ui_hover", -14.0)
+	var unhover := func() -> void:
 		b.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT) \
-			.tween_property(b, "scale", Vector2.ONE, 0.2))
+			.tween_property(b, "scale", Vector2.ONE, 0.2)
+	b.mouse_entered.connect(hover)
+	b.focus_entered.connect(hover)
+	b.mouse_exited.connect(unhover)
+	b.focus_exited.connect(unhover)
 	b.button_down.connect(func() -> void:
 		b.pivot_offset = Vector2(0.0, b.size.y / 2.0)
 		var tw := b.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tw.tween_property(b, "scale", Vector2(0.96, 0.92), 0.06)
-		tw.tween_property(b, "scale", Vector2(1.04, 1.04), 0.2))
+		tw.tween_property(b, "scale", Vector2(1.04, 1.04), 0.2)
+		b.modulate = Color(2.2, 2.2, 2.2)
+		b.create_tween().tween_property(b, "modulate", Color.WHITE, 0.3).set_trans(Tween.TRANS_EXPO)
+		ui_sound(b, "ui_click", -8.0))
+
+
+## A menu sound, unless turned off in settings.
+static func ui_sound(node: Node, sound: String, volume_db := 0.0) -> void:
+	if not node.is_inside_tree():
+		return
+	var tree := node.get_tree()
+	if SettingsScript.read(tree, "ui_sounds"):
+		Sfx.play_flat(tree, sound, volume_db, randf_range(0.97, 1.03))
 
 
 ## Page contents cascade in, line by line.
@@ -147,15 +209,24 @@ func _animate_page(box: Control) -> void:
 		i += 1
 
 
-func _show_page(id: String) -> void:
+func _show_page(id: String, quiet := false) -> void:
+	var changed := id != _current_page
 	_current_page = id
 	_listening = {}
-	for child in _page_holder.get_children():
-		child.queue_free()
+	if _scroll:
+		_scroll.queue_free()
+	_chat_log = null
+	_chat_status = null
 	# Pages scroll when they're taller than the window.
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_page_holder.add_child(scroll)
+	# The tech frame stays drawn on top of the page.
+	_page_holder.move_child(scroll, 0)
+	_scroll = scroll
+	if changed and not quiet:
+		_frame.call("glitch")
+		ui_sound(self, "ui_page", -10.0)
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -173,6 +244,10 @@ func _show_page(id: String) -> void:
 			_build_settings(box)
 		"moderation":
 			_build_moderation(box)
+		"chat":
+			_build_chat(box)
+		"practice":
+			_build_practice(box)
 	_animate_page(box)
 	for key in _nav_buttons:
 		var b: Button = _nav_buttons[key]
@@ -181,7 +256,7 @@ func _show_page(id: String) -> void:
 
 func _header(parent: Control, title: String, sub: String) -> void:
 	parent.add_child(UIStyle.label("// " + title, 26, UIStyle.ACCENT, true))
-	parent.add_child(UIStyle.label(sub, 13, UIStyle.TEXT_DIM))
+	parent.add_child(_wrapped(UIStyle.label(sub, 13, UIStyle.TEXT_DIM)))
 	var line := ColorRect.new()
 	line.color = UIStyle.ACCENT_DIM
 	line.custom_minimum_size = Vector2(0, 1)
@@ -229,19 +304,136 @@ func _show_weapon(detail: VBoxContainer, slot: int) -> void:
 	bar.color = color
 	bar.custom_minimum_size = Vector2(0, 3)
 	detail.add_child(bar)
-	detail.add_child(UIStyle.label("SLOT %02d  //  %s" % [slot + 1, info["tag"]], 13, color))
-	detail.add_child(UIStyle.label(info["name"], 34, Color.WHITE, true))
-	var summary := UIStyle.label(info["summary"], 16, UIStyle.TEXT)
-	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail.add_child(summary)
+	# Every line wraps: the page can't scroll sideways, so one long unwrapped line pushed
+	# the whole panel off the right edge of the screen.
+	detail.add_child(_wrapped(UIStyle.label("SLOT %02d  //  %s" % [slot + 1, info["tag"]], 13, color)))
+	detail.add_child(_wrapped(UIStyle.label(info["name"], 34, Color.WHITE, true)))
+	detail.add_child(_wrapped(UIStyle.label(info["summary"], 16, UIStyle.TEXT)))
 	detail.add_child(UIStyle.label("OPERATION", 13, UIStyle.TEXT_DIM))
 	for line in info["usage"]:
-		detail.add_child(UIStyle.label("  > " + line, 15, UIStyle.TEXT))
+		detail.add_child(_wrapped(UIStyle.label("  > " + line, 15, UIStyle.TEXT)))
 	detail.add_child(UIStyle.label("COMBO VECTOR", 13, UIStyle.TEXT_DIM))
-	var combo := UIStyle.label("  + " + info["combo"], 15, color)
-	combo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail.add_child(combo)
+	detail.add_child(_wrapped(UIStyle.label("  + " + info["combo"], 15, color)))
 	_animate_page(detail)
+
+
+## Lets a label wrap instead of widening its container.
+func _wrapped(label: Label) -> Label:
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return label
+
+
+# --- PRACTICE -------------------------------------------------------------------
+
+const MAP_BLURBS := {
+	"res://scenes/arena.tscn": "Target range: cube stacks, drones and dummies to shoot at.",
+	"res://scenes/arena_sprawl.tscn": "Huge walled sprawl: a hub, a ring road and six sectors.",
+	"res://scenes/arena_coliseum.tscn": "Roman amphitheatre: sand floor, stone tiers, a colonnade.",
+	"res://scenes/arena_box.tscn": "Literally just a big box. Pure movement and aim.",
+	"res://scenes/arena_thunderdome.tscn": "Steel arena under a lightning-struck dome.",
+	"res://scenes/arena_tunnels.tscn": "Underground maze of chambers and corridors. Close quarters.",
+	"res://scenes/arena_city.tscn": "Night city: multi-floor garages, skybridges and towers.",
+}
+
+
+func _build_practice(box: VBoxContainer) -> void:
+	_header(box, "PRACTICE", "SOLO  //  PICK A MAP  //  NOTHING CAN HURT YOU HERE")
+	for path in MAP_BLURBS:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 16)
+		box.add_child(row)
+		var b := _small_button(NetScript.MAP_NAMES.get(path, path), func() -> void: play_pressed.emit(path))
+		b.custom_minimum_size = Vector2(220, 0)
+		row.add_child(b)
+		row.add_child(_wrapped(UIStyle.label(MAP_BLURBS[path], 14, UIStyle.TEXT_DIM)))
+
+
+# --- GLOBAL CHAT ----------------------------------------------------------------
+
+func _build_chat(box: VBoxContainer) -> void:
+	_header(box, "GLOBAL CHAT", "EVERY ONLINE SERVER  //  YOU POST AS YOUR PILOT NAME, TAGGED MENU")
+	_unread = 0
+	_update_chat_nav()
+	_chat_status = UIStyle.label("", 12, UIStyle.TEXT_DIM)
+	box.add_child(_chat_status)
+	_on_chat_status(_chat.get("status"))
+	_chat_log = VBoxContainer.new()
+	_chat_log.add_theme_constant_override("separation", 4)
+	_chat_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(_chat_log)
+	for entry in _chat.get("history"):
+		_chat_line(entry)
+	if (_chat.get("history") as Array).is_empty():
+		_chat_log.add_child(UIStyle.label("No messages yet. Say hi.", 14, UIStyle.TEXT_DIM))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	box.add_child(row)
+	var input := LineEdit.new()
+	input.placeholder_text = "message everyone online..."
+	input.max_length = 120
+	input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(input)
+	var send := func() -> void:
+		if input.text.strip_edges() != "":
+			_chat.call("send", input.text)
+			input.text = ""
+			ui_sound(self, "ui_click", -10.0)
+	input.text_submitted.connect(func(_t: String) -> void: send.call())
+	row.add_child(_small_button("SEND", send))
+
+
+func _on_chat_message(entry: Dictionary) -> void:
+	if _chat_log and is_instance_valid(_chat_log):
+		if _chat_log.get_child_count() == 1 and _chat_log.get_child(0) is Label:
+			_chat_log.get_child(0).queue_free()  # The "no messages" note.
+		_chat_line(entry)
+		# Keep the newest in view.
+		if _scroll:
+			(func() -> void: _scroll.scroll_vertical = int(_scroll.get_v_scroll_bar().max_value)).call_deferred()
+	else:
+		_unread += 1
+		_update_chat_nav()
+
+
+func _on_chat_status(text: String) -> void:
+	if _chat_status and is_instance_valid(_chat_status):
+		var hints := {
+			"CONNECTING": "LINK  //  CONNECTING TO SERVER 1 (can take a minute if it's asleep)...",
+			"LINKED": "LINK  //  ONLINE",
+			"OUT OF DATE": "LINK  //  YOUR GAME IS OUT OF DATE: restart it to update",
+		}
+		_chat_status.text = hints.get(text, "LINK  //  " + text)
+		_chat_status.add_theme_color_override("font_color", UIStyle.ACCENT if text == "LINKED" else UIStyle.TEXT_DIM)
+
+
+func _update_chat_nav() -> void:
+	var b: Button = _nav_buttons.get("chat")
+	if b:
+		b.text = "[ GLOBAL CHAT (%d) ]" % _unread if _unread > 0 else "[ GLOBAL CHAT ]"
+
+
+## One chat line, formatted like the in-game chat box.
+func _chat_line(entry: Dictionary) -> void:
+	var label := RichTextLabel.new()
+	label.bbcode_enabled = true
+	label.fit_content = true
+	label.scroll_active = false
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_font_size_override("normal_font_size", 15)
+	label.add_theme_font_override("normal_font", UIStyle.font())
+	label.add_theme_font_override("bold_font", UIStyle.font(true))
+	var esc := func(s: String) -> String: return s.replace("[", "[lb]")
+	var text := "[color=#%s][b][%s][/b][/color] " % [GLOBAL_COLOR.to_html(false), esc.call(String(entry.get("server", "?")))]
+	if String(entry.get("title", "")) != "":
+		text += "[color=#%s][b][%s][/b][/color] " % [Color(entry.get("title_color", Color.WHITE)).to_html(false), esc.call(String(entry["title"]))]
+	text += "[color=#%s][b]%s[/b][/color]: " % [Color(entry.get("color", Color.WHITE)).to_html(false), esc.call(String(entry.get("name", "?")))]
+	text += "[color=#%s]%s[/color]" % [UIStyle.TEXT.to_html(false), esc.call(String(entry.get("text", "")))]
+	label.text = text
+	_chat_log.add_child(label)
+	while _chat_log.get_child_count() > MenuChat.HISTORY:
+		_chat_log.get_child(0).free()
 
 
 # --- CONTROLS -----------------------------------------------------------------
@@ -297,6 +489,15 @@ func _build_controls(box: VBoxContainer) -> void:
 	for entry in FIXED_CONTROLS:
 		fixed.add_child(UIStyle.label(entry[0], 15, UIStyle.ACCENT, true))
 		fixed.add_child(UIStyle.label(entry[1], 15, UIStyle.TEXT))
+	box.add_child(UIStyle.label("\nCONTROLLER", 13, UIStyle.TEXT_DIM))
+	var pad := GridContainer.new()
+	pad.columns = 4
+	pad.add_theme_constant_override("h_separation", 24)
+	pad.add_theme_constant_override("v_separation", 6)
+	box.add_child(pad)
+	for entry in InputSetup.PAD_HELP:
+		pad.add_child(UIStyle.label(entry[0], 15, UIStyle.ACCENT, true))
+		pad.add_child(UIStyle.label(entry[1], 15, UIStyle.TEXT))
 	box.add_child(UIStyle.label("\nCOMBAT NOTES", 13, UIStyle.TEXT_DIM))
 	var notes := UIStyle.label(
 		"MARKED targets (Swarm) take 1.5x damage from everything for 3s.\n"
@@ -317,7 +518,7 @@ func _refresh_bind_buttons() -> void:
 		var b: Button = entry[2]
 		if not is_instance_valid(b):
 			continue
-		var events := InputMap.action_get_events(entry[0]) if InputMap.has_action(entry[0]) else []
+		var events := InputSetup.kbm_events(entry[0])
 		var listening: bool = _listening.get("action", "") == entry[0] and _listening.get("slot", -1) == entry[1]
 		var text := "PRESS A KEY..." if listening else (InputSetup.event_label(events[entry[1]]) if entry[1] < events.size() else "-")
 		b.text = "[ " + text + " ]"
@@ -405,8 +606,16 @@ func _build_moderation(box: VBoxContainer) -> void:
 	if others == 0:
 		box.add_child(UIStyle.label("No other players on this server.", 15, UIStyle.TEXT_DIM))
 	box.add_child(_small_button("END MATCH", func() -> void: mod.call("end_match")))
+	box.add_child(UIStyle.label("\nSWITCH MAP  (now: %s)" % NetScript.MAP_NAMES.get(net.get("map_scene"), "?"), 13, UIStyle.TEXT_DIM))
+	var maps := HFlowContainer.new()
+	maps.add_theme_constant_override("h_separation", 10)
+	maps.add_theme_constant_override("v_separation", 8)
+	box.add_child(maps)
+	for path in NetScript.MAP_NAMES:
+		maps.add_child(_small_button(NetScript.MAP_NAMES[path], func() -> void: mod.call("switch_map", path)))
 	box.add_child(UIStyle.label(
 		"END MATCH resets everyone's score and starts a new round.\n"
+		+ "SWITCH MAP moves everyone to that map now (scores reset).\n"
 		+ "Bans last until this server restarts or goes to sleep.", 12, UIStyle.TEXT_DIM))
 
 
@@ -415,6 +624,7 @@ func _small_button(text: String, action: Callable) -> Button:
 	b.text = "[ " + text + " ]"
 	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	b.pressed.connect(action)
+	_animate_button(b)
 	return b
 
 
@@ -440,6 +650,9 @@ func _build_settings(box: VBoxContainer) -> void:
 	_slider(grid, s, "MOTION BLUR", "motion_blur", 0.0, 1.5, 0.05, "%.2f")
 	_slider(grid, s, "SCREEN EFFECTS", "screen_effects", 0.0, 1.5, 0.05, "%.2fx")
 	_slider(grid, s, "CAMERA SHAKE", "camera_shake", 0.0, 2.0, 0.05, "%.2fx")
+	_slider(grid, s, "MUSIC VOLUME", "music_volume", 0.0, 1.0, 0.05, "%.2f")
+	_toggle(grid, s, "MENU SOUNDS", "ui_sounds")
+	_toggle(grid, s, "MAP BUILD-IN", "map_intro")
 	_toggle(grid, s, "IMPACT FRAMES", "impact_frames")
 	_toggle(grid, s, "FULLSCREEN", "fullscreen")
 	_toggle(grid, s, "V-SYNC", "vsync")

@@ -137,6 +137,14 @@ func end_match() -> void:
 		_end_match.rpc_id(1)
 
 
+## Moves everyone on the server to map `path` straight away (scores reset).
+func switch_map(path: String) -> void:
+	if multiplayer.is_server():
+		_switch_map(path)
+	else:
+		_switch_map.rpc_id(1, path)
+
+
 # --- Client ---------------------------------------------------------------------------
 
 ## Once we're on a server's roster: say hello (device id for bans), then try the code.
@@ -299,6 +307,14 @@ func _set_god(on: bool) -> void:
 	players[peer]["god"] = on
 	_net.call("push_roster")
 	print("[server] %s gold shield %s" % [_player_name(peer), "ON" if on else "OFF"])
+
+
+## Moderators: change the map now. (Named to sort after the other RPCs.)
+@rpc("any_peer", "reliable")
+func _switch_map(path: String) -> void:
+	if multiplayer.is_server() and _is_moderator(_sender()) and _net.MAP_NAMES.has(path):
+		print("[server] %s switched the map to %s" % [_player_name(_sender()), _net.MAP_NAMES[path]])
+		_net.call("change_map", path)
 
 
 func _refresh_god_shields() -> void:

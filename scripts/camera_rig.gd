@@ -6,6 +6,11 @@ extends Node3D
 ## Sensitivity, FOV, shake and effect strength come from the player's Settings.
 
 const SettingsScript := preload("res://scripts/settings.gd")
+const InputSetup := preload("res://scripts/input_setup.gd")
+## Right stick: full tilt turns this many radians a second (times mouse sensitivity).
+const PAD_YAW_SPEED := 3.2
+const PAD_PITCH_SPEED := 2.2
+const PAD_DEADZONE := 0.18
 
 @export var target: Node3D
 @export var warp_rect: CanvasItem
@@ -159,6 +164,7 @@ func _process(delta: float) -> void:
 	if not (net and net.get("input_blocked")):
 		var turn := Input.get_axis("camera_left", "camera_right")
 		rotation.y -= turn * key_turn_speed * delta
+		_pad_look(delta)
 		# Hold I / O to zoom in / out.
 		var zoom := Input.get_axis("zoom_in", "zoom_out")
 		if zoom != 0.0:
@@ -232,7 +238,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			MOUSE_BUTTON_WHEEL_DOWN:
 				if event.ctrl_pressed:
 					_zoom(zoom_step)
-	elif event.is_action_pressed("ui_cancel"):
+	elif event.is_action_pressed("ui_cancel") and not event is InputEventJoypadButton:
+		# (Not the controller's B: that's the shield.)
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var sens := mouse_sensitivity * _sensitivity_scale
@@ -242,6 +249,30 @@ func _unhandled_input(event: InputEvent) -> void:
 			deg_to_rad(min_pitch_deg),
 			deg_to_rad(max_pitch_deg)
 		)
+
+
+## Right stick orbits the camera (any connected controller), with a curve so small tilts
+## aim finely.
+func _pad_look(delta: float) -> void:
+	var stick := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
+	if stick.length() < PAD_DEADZONE:
+		return
+	stick = stick.normalized() * inverse_lerp(PAD_DEADZONE, 1.0, minf(stick.length(), 1.0))
+	stick *= stick.length()
+	rotation.y -= stick.x * PAD_YAW_SPEED * _sensitivity_scale * delta
+	_pitch.rotation.x = clampf(
+		_pitch.rotation.x - stick.y * PAD_PITCH_SPEED * _sensitivity_scale * delta,
+		deg_to_rad(min_pitch_deg),
+		deg_to_rad(max_pitch_deg)
+	)
+
+
+## Remembers whether the player is on a controller or mouse and keyboard.
+func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.3):
+		InputSetup.using_pad = true
+	elif event is InputEventKey or event is InputEventMouseButton:
+		InputSetup.using_pad = false
 
 
 func _zoom(amount: float) -> void:

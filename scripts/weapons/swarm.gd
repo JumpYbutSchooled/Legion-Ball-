@@ -138,3 +138,7 @@ func _launch() -> void:
 		manager.spawn_light(tip, 30.0, 6.0, 0.06, color)
 		manager.play_sound("missile", tip, -6.0)
 	manager.shake(0.35)
+
+
+func refill() -> void:
+	_cooldown = 0.0

@@ -40,6 +40,7 @@ var _segments: Array = []
 ## [center, radius] of everything scattered so far.
 var _cover: Array = []
 var _spawns: Array[Vector3] = []
+var _turrets: Array[Vector3] = []
 var _phys := PhysicsMaterial.new()
 var _outer_mat := _solid(Color(0.34, 0.3, 0.4))
 var _wall_mat := _solid(Color(0.52, 0.48, 0.54))
@@ -57,12 +58,32 @@ func _ready() -> void:
 	_build_ring()
 	_build_spokes()
 	_pick_spawns()
+	_place_turrets()
 	_scatter_cover()
 
 
 ## Where players (re)spawn: one per sector near the hub first, then the outer band.
 func spawn_points() -> Array[Vector3]:
 	return _spawns
+
+
+## Where the AI turrets stand (scripts/turrets.gd).
+func turret_points() -> Array[Vector3]:
+	return _turrets
+
+
+## One turret beside each spoke, just out from the hub; cover is kept off them.
+func _place_turrets() -> void:
+	for k in SPOKES:
+		var p := Vector2.from_angle(_spoke_angle(k) + 0.14) * 135.0
+		_turrets.append(Vector3(p.x, 0.0, p.y))
+		_cover.append([p, 6.0])
+
+
+## Height where upward speed starts bleeding off (ball.gd max_height): just under the
+## top of the outer wall, so the bleed-off overshoot stops right about at its lip.
+func ceiling() -> float:
+	return OUTER_HEIGHT - 8.0
 
 
 ## The boundary, for the minimap.

@@ -35,6 +35,7 @@ const RailBolt := preload("res://scripts/weapons/rail_bolt.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 const DamageNumber := preload("res://scripts/damage_number.gd")
 const BallScript := preload("res://scripts/ball.gd")
+const InputSetup := preload("res://scripts/input_setup.gd")
 ## How fast the weapon turns to follow the aim (higher = snappier).
 const TURN_RATE := 30.0
 
@@ -102,6 +103,18 @@ func select(slot: int) -> void:
 	current_weapon().enter()
 
 
+## False while holstered (or putting it away).
+func is_drawn() -> bool:
+	var w = current_weapon()
+	return w.state == BladeWeapon.State.READY or w.state == BladeWeapon.State.ENTERING
+
+
+## After a respawn: every weapon loaded and ready (not just the equipped one).
+func refill_all() -> void:
+	for w in weapons:
+		w.refill()
+
+
 func toggle() -> void:
 	var w = current_weapon()
 	if w.state == BladeWeapon.State.READY or w.state == BladeWeapon.State.ENTERING:
@@ -137,8 +150,10 @@ func _physics_process(delta: float) -> void:
 
 	var hit := _raycast_crosshair()
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	# Skip the click that captures the mouse, so capturing doesn't also fire.
-	var pressed := controls and captured and _was_captured and Input.is_action_pressed("fire")
+	# Skip the click that captures the mouse, so capturing doesn't also fire. A controller
+	# doesn't need the mouse at all.
+	var aiming := (captured and _was_captured) or InputSetup.using_pad
+	var pressed := controls and aiming and Input.is_action_pressed("fire")
 	current_weapon().handle_fire(pressed, hit, delta)
 	_was_captured = captured
 
@@ -149,9 +164,8 @@ func _physics_process(delta: float) -> void:
 ## reload state (so others see reloads and Scatter's heat; -1 = none)].
 func get_net_state() -> Array:
 	var w = current_weapon()
-	var drawn: bool = w.state == BladeWeapon.State.READY or w.state == BladeWeapon.State.ENTERING
 	var locked: int = w.call("locked_peer") if w.has_method("locked_peer") else 0
-	return [aim_point, current, drawn, w.get_net_charge(), locked, w.get_net_reload()]
+	return [aim_point, current, is_drawn(), w.get_net_charge(), locked, w.get_net_reload()]
 
 
 ## Applies another player's weapon state from the network.
@@ -160,8 +174,7 @@ func apply_net_state(aim: Vector3, slot: int, drawn: bool, charge := 0.0, reload
 	if slot != current:
 		select(slot)
 	var w = current_weapon()
-	var is_drawn: bool = w.state == BladeWeapon.State.READY or w.state == BladeWeapon.State.ENTERING
-	if drawn != is_drawn:
+	if drawn != is_drawn():
 		toggle()
 	w.apply_net_charge(charge)
 	w.apply_net_reload(reload)

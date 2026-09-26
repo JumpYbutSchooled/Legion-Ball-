@@ -41,7 +41,12 @@ static func make_theme() -> Theme:
 	hover.border_color = ACCENT
 	var pressed := hover.duplicate() as StyleBoxFlat
 	pressed.bg_color = Color(0.35, 0.9, 1.0, 0.3)
-	var focus := StyleBoxEmpty.new()
+	# Focus (controller / keyboard): a bright outline just outside the button.
+	var focus := StyleBoxFlat.new()
+	focus.draw_center = false
+	focus.border_color = Color(0.7, 1.0, 1.0)
+	focus.set_border_width_all(2)
+	focus.set_expand_margin_all(3)
 	theme.set_stylebox("normal", "Button", normal)
 	theme.set_stylebox("hover", "Button", hover)
 	theme.set_stylebox("pressed", "Button", pressed)
@@ -54,8 +59,10 @@ static func make_theme() -> Theme:
 	theme.set_constant("h_separation", "Button", 10)
 	# Toggles are just the switch, no box behind them.
 	var empty := StyleBoxEmpty.new()
-	for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+	for state in ["normal", "hover", "pressed", "hover_pressed"]:
 		theme.set_stylebox(state, "CheckButton", empty)
+	theme.set_stylebox("focus", "CheckButton", focus)
+	theme.set_stylebox("focus", "HSlider", focus)
 
 	theme.set_stylebox("panel", "PanelContainer", panel_box())
 

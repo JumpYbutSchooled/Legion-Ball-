@@ -15,6 +15,11 @@ extends Node
 ## scripts/ui/lobby_panel.gd): links keep it up to date with their player lists, and a
 ## server with no link is empty (and asleep). The question and answer also go through
 ## the authentication step, then the asker hangs up.
+## Players sitting in the main menu can use global chat too (scripts/net/menu_chat.gd):
+## their game connects to the hub and says "listen" in the same step, stays pending like
+## a link, gets recent history and every new global message ("down"), and can post with
+## "say". The hub stamps those with the name they gave and server "MENU" (they have no
+## verified identity or staff title), and rate-limits them.
 ## For local testing: GLOBAL_HUB=1 makes a server the hub; GLOBAL_HUB_URL points a server
 ## at a hub.
 
@@ -36,6 +41,16 @@ const FOREVER := 1.0e7
 # peer id -> {"players": [names], "map": "SPRAWL"}.
 var _links := {}
 var _link_status := {}
+# Hub: menu players listening to global chat, peer id -> {"name", "sent": [times]}; and
+# the last few global messages, for anyone who starts listening.
+var _listeners := {}
+var _history: Array = []
+const HISTORY_MAX := 25
+const MENU_MAX_LISTENERS := 200
+## Menu players' rate limit: MENU_BURST messages per MENU_WINDOW seconds.
+const MENU_BURST := 3
+const MENU_WINDOW := 6.0
+const MENU_COLOR := Color(0.7, 0.78, 0.85)
 # Link servers: this server's own connection to the hub, while linked.
 var _link_api: SceneMultiplayer
 var _link_holder: Node
@@ -103,6 +118,9 @@ func _process(delta: float) -> void:
 			if not pending.has(id):
 				_links.erase(id)
 				_link_status.erase(id)
+		for id in _listeners.keys():
+			if not pending.has(id):
+				_listeners.erase(id)
 		return
 	if _hub_url() == "":
 		return
@@ -166,7 +184,7 @@ static func _unpack(data: PackedByteArray) -> Dictionary:
 func _on_hub_peer_authenticating(id: int) -> void:
 	await get_tree().create_timer(AUTH_WAIT).timeout
 	var api := multiplayer as SceneMultiplayer
-	if not _links.has(id) and api.get_authenticating_peers().has(id) and api.multiplayer_peer:
+	if not _links.has(id) and not _listeners.has(id) and api.get_authenticating_peers().has(id) and api.multiplayer_peer:
 		api.multiplayer_peer.disconnect_peer(id)
 
 
@@ -191,6 +209,41 @@ func _on_hub_auth(id: int, data: PackedByteArray) -> void:
 		"up":
 			if _links.has(id) and typeof(msg.get("entry")) == TYPE_DICTIONARY:
 				_relay(msg["entry"])
+		"listen":
+			# A main-menu player. Same version only (entries change between versions).
+			if String(msg.get("version", "")) != String(_net().get("version")) or _listeners.size() >= MENU_MAX_LISTENERS:
+				var api := multiplayer as SceneMultiplayer
+				api.send_auth(id, _pack({"t": "refused", "version": _net().get("version")}))
+				return
+			_listeners[id] = {"name": _menu_name(msg.get("name", "")), "sent": []}
+			(multiplayer as SceneMultiplayer).send_auth(id, _pack({"t": "history", "entries": _history}))
+		"say":
+			if _listeners.has(id):
+				_menu_say(id, String(msg.get("text", "")))
+
+
+## A name for a menu player: their own, cleaned, capped, never blank.
+func _menu_name(raw) -> String:
+	var n := String(raw).replace("\n", " ").replace("[", "(").replace("]", ")").strip_edges().substr(0, 16)
+	return n if n != "" else "PILOT"
+
+
+func _menu_say(id: int, text: String) -> void:
+	var listener: Dictionary = _listeners[id]
+	var now := Time.get_ticks_msec() / 1000.0
+	var times: Array = listener["sent"].filter(func(t: float) -> bool: return now - t < MENU_WINDOW)
+	if times.size() >= MENU_BURST:
+		return
+	times.append(now)
+	listener["sent"] = times
+	text = text.replace("\n", " ").replace("\r", " ").strip_edges().substr(0, 120)
+	if text == "":
+		return
+	print("[chat GLOBAL MENU] %s: %s" % [listener["name"], text])
+	_relay({
+		"name": listener["name"], "color": MENU_COLOR, "title": "", "title_color": Color.WHITE,
+		"text": text, "global": true, "server": "MENU",
+	})
 
 
 ## Who's on every server right now: the hub's own players plus what each link reported.
@@ -208,6 +261,11 @@ func _relay(entry: Dictionary) -> void:
 	var api := multiplayer as SceneMultiplayer
 	for id in _links:
 		api.send_auth(id, _pack({"t": "down", "entry": entry}))
+	for id in _listeners:
+		api.send_auth(id, _pack({"t": "down", "entry": entry}))
+	_history.append(entry)
+	while _history.size() > HISTORY_MAX:
+		_history.pop_front()
 	var chat := get_tree().root.get_node_or_null("Chat")
 	if chat:
 		chat.call("deliver_global", entry)

@@ -107,3 +107,7 @@ func _fire(hit: Dictionary) -> void:
 	manager.shake(shot_shake)
 	if _shots % 3 == 0:
 		manager.play_sound("zap", tip, -12.0)
+
+
+func refill() -> void:
+	_cooldown = 0.0

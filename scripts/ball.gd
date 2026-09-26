@@ -20,7 +20,7 @@ const Sfx := preload("res://scripts/sfx.gd")
 @export var jump_cooldown := 1.0
 @export var dash_speed := 40.0
 @export var dash_lift := 1.5
-@export var dash_cooldown := 1.0
+@export var dash_cooldown := 0.75
 ## In the air, looking further down than this (the camera direction's height, -1 =
 ## straight down), the dash goes where you look instead of along the ground.
 @export var dash_down_pitch := -0.3
@@ -88,6 +88,8 @@ var _move_dir := Vector3.ZERO
 var _grounded := false
 ## Speed being held by cruise (0 = not cruising).
 var _cruise_speed := 0.0
+## Online: already told the host we fell off (cleared on respawn).
+var _fall_reported := false
 
 
 func _ready() -> void:
@@ -144,7 +146,18 @@ func _physics_process(delta: float) -> void:
 		if mod:
 			mod.call("toggle_god_shield")
 
-	if (controls and Input.is_action_just_pressed("reset_ball")) or global_position.y < fall_reset_height:
+	var fell := global_position.y < fall_reset_height
+	if fell and _online() and not dead:
+		# Online, falling off is a death (the host credits whoever hit us last). If the
+		# host never answers (the match just ended), put the ball back once it's far down.
+		if not _fall_reported:
+			_fall_reported = true
+			var arena := _arena()
+			if arena:
+				arena.call("request_fall")
+		if global_position.y < fall_reset_height - 400.0:
+			_reset_requested = true
+	elif (controls and Input.is_action_just_pressed("reset_ball")) or fell:
 		_reset_requested = true
 
 	var grounded := _is_grounded()
@@ -250,6 +263,11 @@ func set_dead(is_dead: bool) -> void:
 func respawn_at(pos: Vector3) -> void:
 	_start_position = pos
 	_reset_requested = true
+	_fall_reported = false
+	# Come back with every weapon loaded, cooled and off cooldown.
+	var weapon := get_node_or_null("Weapon")
+	if weapon:
+		weapon.call("refill_all")
 
 
 ## Local player only: stunned (Nova stagger). Frozen in place in mid-air, no moving,

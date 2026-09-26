@@ -265,6 +265,9 @@ func _draw_tether(info: Dictionary, col: Color) -> void:
 	if not in_range:
 		main.a *= 0.35
 	_diamond(c, r, 0.0, main)
+	if info.get("locked", false):
+		# Airborne lock: brackets on the target the next press will hook.
+		_brackets(info["lock_pos"], 12.0, 0.0, col)
 	if info["attached"] and info.has("anchor_screen"):
 		# The anchor diamond spins faster and pinches tighter as the rope pulls harder.
 		var tension: float = info.get("tension", 0.0)

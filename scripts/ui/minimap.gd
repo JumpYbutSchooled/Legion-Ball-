@@ -113,6 +113,9 @@ func _collect_level() -> void:
 func _collect(node: Node) -> void:
 	for child in node.get_children():
 		_collect(child)
+	# Roofs and ceilings (map_builder.gd no_minimap) would hide everything under them.
+	if node.has_meta("no_minimap"):
+		return
 	var size := Vector3.ZERO
 	if node is CSGBox3D and (node as CSGBox3D).use_collision:
 		size = (node as CSGBox3D).size

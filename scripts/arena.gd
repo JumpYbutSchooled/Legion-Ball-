@@ -12,12 +12,18 @@ signal health_changed(id: int, hp: float)
 signal player_killed(victim: int, attacker: int)
 signal player_respawned(id: int)
 signal match_over(winner: int)
+## End-of-match map vote: the choices (scene paths) opened, and the running counts.
+signal vote_opened(options: Array)
+signal vote_counts(counts: Array)
 
 const Services := preload("res://scripts/services.gd")
 const PlayerScene := preload("res://scenes/player.tscn")
 const LocalViewScene := preload("res://scenes/local_view.tscn")
 const HudScript := preload("res://scripts/ui/hud.gd")
 const ShardBurst := preload("res://scripts/shard_burst.gd")
+const MapIntro := preload("res://scripts/map_intro.gd")
+const Turrets := preload("res://scripts/turrets.gd")
+const SettingsScript := preload("res://scripts/settings.gd")
 
 ## Spawn points spread round the middle of the map, facing inward.
 const SPAWN_RADIUS := 55.0
@@ -35,8 +41,19 @@ const PARRY_STUN := 5.0
 ## Health the killer gets back for each kill (capped at MAX_HEALTH).
 const KILL_HEAL := 30.0
 const KILLS_TO_WIN := 15
-## Seconds the winner banner shows before everyone returns to the lobby.
-const END_DELAY := 6.0
+## Seconds the winner banner (and the vote for the next map) shows before the next round.
+const END_DELAY := 12.0
+## Maps offered in the end-of-match vote.
+const VOTE_OPTIONS := 3
+## Falling off the map within this many seconds of being hit gives the hitter the kill.
+const FALL_CREDIT_TIME := 10.0
+## Holstered healing: HEAL_PER_SPEED HP a second for every 100 on the speedometer, up to
+## HEAL_MAX_RATE a second, and never past HEAL_CAP.
+const HEAL_PER_SPEED := 1.0
+const HEAL_MAX_RATE := 5.0
+const HEAL_CAP := 70.0
+## m/s to speedometer units (scripts/ui/speedometer.gd SCALE).
+const SPEEDO_SCALE := 5.0
 
 @onready var _players_root: Node3D = $Players
 
@@ -53,6 +70,13 @@ var _marks := {}
 var _blocks := {}
 var _parried := {}
 var _end_timer := -1.0
+## Host: who last damaged each player, and when: {victim: [attacker, msec]}.
+var _last_hit := {}
+## Host: healing built up but not yet sent (health goes out in whole points).
+var _heal_pending := {}
+## The map vote: its choices (every peer) and each voter's pick (host).
+var vote_options: Array = []
+var _votes := {}
 
 
 func _ready() -> void:
@@ -78,6 +102,21 @@ func _start(net: Node) -> void:
 				get_node(practice).queue_free()
 		net.connect("roster_changed", _sync_players)
 	_sync_players()
+	# AI turrets wherever the map wants them (Map/Layout.turret_points()).
+	var layout := get_node_or_null("Map/Layout")
+	if layout and layout.has_method("turret_points") and not (layout.call("turret_points") as Array).is_empty():
+		var turrets := Turrets.new()
+		turrets.name = "Turrets"
+		turrets.set("points", layout.call("turret_points"))
+		add_child(turrets)
+	# The map builds itself in as a wireframe (not on the server: nobody's watching).
+	if DisplayServer.get_name() != "headless" and has_node("Map") and SettingsScript.read(get_tree(), "map_intro"):
+		var intro := MapIntro.new()
+		intro.map = $Map
+		intro.hidden.append(_players_root)
+		if has_node("Turrets"):
+			intro.hidden.append($Turrets)
+		add_child(intro)
 
 
 func _net() -> Node:
@@ -128,10 +167,18 @@ func _spawn(id: int, index: int) -> void:
 	ball.name = "P%d" % id
 	ball.set_multiplayer_authority(id)
 	ball.position = spawn_point(index)
+	# Maps can set their own height ceiling (Map/Layout.ceiling()).
+	var layout := get_node_or_null("Map/Layout")
+	if layout and layout.has_method("ceiling"):
+		ball.set("max_height", layout.call("ceiling"))
 	_players_root.add_child(ball)
 	_players[id] = ball
 	health[id] = MAX_HEALTH
 	alive[id] = true
+	# Nobody can be hit while their map is still building in (map_intro.gd), and a
+	# moment after.
+	if is_online() and multiplayer.is_server():
+		_protect[id] = MapIntro.LENGTH + SPAWN_PROTECT
 	if id == multiplayer.get_unique_id():
 		var view := LocalViewScene.instantiate()
 		view.call("setup", ball)
@@ -148,9 +195,10 @@ func _spawn(id: int, index: int) -> void:
 
 
 func spawn_point(index: int) -> Vector3:
-	if not is_online():
-		return Vector3(0, 1, 60)  # Practice: the old start, facing the cubes.
 	var spots := _map_spawns()
+	if not is_online():
+		# Practice: the map's first spawn, or the training arena's old start by the cubes.
+		return spots[0] if not spots.is_empty() else Vector3(0, 1, 60)
 	if not spots.is_empty():
 		return spots[index % spots.size()]
 	var a := TAU * float(index % SPAWN_COUNT) / SPAWN_COUNT
@@ -176,7 +224,7 @@ func is_online() -> bool:
 
 
 func get_rules() -> Dictionary:
-	return {"respawn_time": RESPAWN_TIME, "kills_to_win": KILLS_TO_WIN, "max_health": MAX_HEALTH}
+	return {"respawn_time": RESPAWN_TIME, "kills_to_win": KILLS_TO_WIN, "max_health": MAX_HEALTH, "end_delay": END_DELAY}
 
 
 func player_ball(id: int) -> Node3D:
@@ -211,6 +259,11 @@ func request_stagger(victim: int, duration: float) -> void:
 ## The local player raised their shield for `duration` seconds.
 func request_block(duration: float) -> void:
 	_to_host("_host_block", [duration])
+
+
+## The local player fell off the map.
+func request_fall() -> void:
+	_to_host("_zfell", [])
 
 
 func _to_host(method: StringName, args: Array) -> void:
@@ -262,12 +315,40 @@ func _unblockable_hit(victim: int, amount: float) -> void:
 		_deal(victim, attacker, amount)
 
 
+## Host: an AI turret (scripts/turrets.gd) hit `victim`. Shields and god mode stop it;
+## a kill is nobody's (attacker -1).
+func turret_hit(victim: int, amount: float) -> void:
+	if not multiplayer.is_server() or match_done or _blocks.has(victim) or _is_god(victim):
+		return
+	_deal(victim, -1, amount)
+
+
+## The sender fell off the map: a death, credited to whoever hit them in the last
+## FALL_CREDIT_TIME seconds (or nobody). (Named to sort last, like _unblockable_hit.)
+@rpc("any_peer", "reliable")
+func _zfell() -> void:
+	if not multiplayer.is_server() or match_done:
+		return
+	var victim := _sender()
+	if not alive.get(victim, false):
+		return
+	var attacker := victim
+	var last: Array = _last_hit.get(victim, [])
+	if not last.is_empty() and Time.get_ticks_msec() - int(last[1]) <= FALL_CREDIT_TIME * 1000.0 \
+			and _players.has(last[0]):
+		attacker = last[0]
+	_set_health.rpc(victim, 0.0)
+	_kill(victim, attacker)
+
+
 ## Host only: take `amount` off `victim`, credited to `attacker` if it kills.
 func _deal(victim: int, attacker: int, amount: float) -> void:
 	if not alive.get(victim, false) or _protect.get(victim, 0.0) > 0.0 or _is_god(victim):
 		return
 	if _marks.get(victim, 0.0) > 0.0:
 		amount *= MARK_MULTIPLIER
+	if attacker != victim:
+		_last_hit[victim] = [attacker, Time.get_ticks_msec()]
 	var hp: float = health.get(victim, MAX_HEALTH) - amount
 	_set_health.rpc(victim, hp)
 	if hp <= 0.0:
@@ -306,19 +387,23 @@ func _host_block(duration: float) -> void:
 func _kill(victim: int, attacker: int) -> void:
 	var net := _net()
 	var roster: Dictionary = net.get("players")
-	if roster.has(attacker):
+	# Dying on your own (falling off with nobody to blame) is a death, not a kill.
+	var credited := attacker != victim and roster.has(attacker)
+	if credited:
 		roster[attacker]["kills"] = int(roster[attacker]["kills"]) + 1
 	if roster.has(victim):
 		roster[victim]["deaths"] = int(roster[victim]["deaths"]) + 1
 	net.call("push_roster")
 	_marks.erase(victim)
+	_last_hit.erase(victim)
 	_respawn_timers[victim] = RESPAWN_TIME
 	if attacker != victim and alive.get(attacker, false):
 		_set_health.rpc(attacker, minf(health.get(attacker, MAX_HEALTH) + KILL_HEAL, MAX_HEALTH))
 	_on_killed.rpc(victim, attacker)
-	if roster.has(attacker) and int(roster[attacker]["kills"]) >= KILLS_TO_WIN:
+	if credited and int(roster[attacker]["kills"]) >= KILLS_TO_WIN:
 		_on_match_over.rpc(attacker)
 		_end_timer = END_DELAY
+		_open_vote()
 
 
 func _physics_process(delta: float) -> void:
@@ -340,10 +425,84 @@ func _physics_process(delta: float) -> void:
 				_protect[id] = SPAWN_PROTECT
 				_set_health.rpc(id, MAX_HEALTH)
 				_on_respawn.rpc(id, _safest_spawn())
+	if not match_done:
+		_heal_holstered(delta)
 	if _end_timer > 0.0:
 		_end_timer -= delta
 		if _end_timer <= 0.0:
+			_close_vote()
 			_net().call("end_match")
+
+
+## Host: offer this map and a couple of others to vote on for the next round.
+func _open_vote() -> void:
+	var net := _net()
+	var maps: Array = net.COMBAT_MAPS.duplicate()
+	var here: String = net.get("map_scene")
+	maps.erase(here)
+	maps.shuffle()
+	var options: Array = []
+	if net.COMBAT_MAPS.has(here):
+		options.append(here)
+	for path in maps:
+		if options.size() >= VOTE_OPTIONS:
+			break
+		options.append(path)
+	_votes.clear()
+	_zvote_open.rpc(options)
+
+
+## Host: the most-voted map becomes the next one (ties: the earliest listed, so staying
+## put wins a tie). No votes at all: stay.
+func _close_vote() -> void:
+	if vote_options.is_empty():
+		return
+	var counts := _count_votes()
+	var best := 0
+	for i in counts.size():
+		if counts[i] > counts[best]:
+			best = i
+	_net().set("map_scene", vote_options[best])
+
+
+func _count_votes() -> Array:
+	var counts: Array = []
+	counts.resize(vote_options.size())
+	counts.fill(0)
+	for peer in _votes:
+		if _players.has(peer):
+			counts[_votes[peer]] += 1
+	return counts
+
+
+## Any peer: vote for option `index` (0-based).
+func cast_vote(index: int) -> void:
+	if not is_online() or index < 0 or index >= vote_options.size():
+		return
+	if multiplayer.is_server():
+		_zvote_cast(index)
+	else:
+		_zvote_cast.rpc_id(1, index)
+
+
+## Host: players with their weapon put away heal the faster they go (see HEAL_*).
+func _heal_holstered(delta: float) -> void:
+	for id in _players:
+		var ball: Node = _players[id]
+		var weapon := ball.get_node_or_null("Weapon")
+		var sync := ball.get_node_or_null("Sync")
+		var hp: float = health.get(id, MAX_HEALTH)
+		if not alive.get(id, false) or hp >= HEAL_CAP or not weapon or not sync or weapon.call("is_drawn"):
+			_heal_pending.erase(id)
+			continue
+		var speed: float = (sync.call("net_velocity") as Vector3).length() * SPEEDO_SCALE
+		var rate := minf(speed / 100.0 * HEAL_PER_SPEED, HEAL_MAX_RATE)
+		var pending: float = _heal_pending.get(id, 0.0) + rate * delta
+		if pending >= 1.0:
+			var whole := floorf(pending)
+			pending -= whole
+			_set_health.rpc(id, minf(hp + whole, HEAL_CAP))
+		_heal_pending[id] = pending
 
 
 ## The spawn point furthest from every living player.
@@ -445,6 +604,26 @@ func _apply_parry(attacker: int) -> void:
 	if ball and not ball.get("dead"):
 		var shooter: Node3D = _players.get(attacker)
 		ball.call("on_parried", shooter.global_position if shooter else Vector3.INF)
+
+
+## Map vote RPCs. (Named to sort after the others: Godot numbers RPCs alphabetically.)
+@rpc("any_peer", "reliable")
+func _zvote_cast(index: int) -> void:
+	if not multiplayer.is_server() or vote_options.is_empty() or index < 0 or index >= vote_options.size():
+		return
+	_votes[_sender()] = index
+	_zvote_tally.rpc(_count_votes())
+
+
+@rpc("authority", "call_local", "reliable")
+func _zvote_open(options: Array) -> void:
+	vote_options = options.filter(func(p) -> bool: return typeof(p) == TYPE_STRING)
+	vote_opened.emit(vote_options)
+
+
+@rpc("authority", "call_local", "reliable")
+func _zvote_tally(counts: Array) -> void:
+	vote_counts.emit(counts)
 
 
 @rpc("authority", "reliable")
