@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.2.0",
+        "date":  "2026-09-26",
+        "notes":  "Bigger blades (1.4x) that now wrap AROUND the ball instead of through it. Bigger ranges and areas on the new weapons. Lock-on for long-range weapons: Frost Lance, Gravity Well, Prism Cage, Echo Rifle, Splinter Bomb, Skylance, Shard Mortar, Beam Lance, Piercer, Arbalest, Ricochet Disc, Velocity Cannon and Hunter\u0027s Sigil."
+    },
+    {
         "version":  "1.1.0",
         "date":  "2026-09-25",
         "notes":  "THE ARSENAL: all 31 new weapons are playable. Drag them into your loadout in the Armory - freeze lances, gravity wells, cages, mines, time bubbles, teleport blades, jetpacks, wings, meteor slams, rideable spears, mortars, walls, tesla pylons, spike traps, drones, sabers that deflect shots, dash punches, buzzsaws, decoys, ramping lasers, piercing rifles, pinning crossbows, bouncing discs, and speed weapons. Equip three from one combo group for its set bonus."
