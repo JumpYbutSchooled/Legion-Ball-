@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.5.0",
+        "date":  "2026-09-27",
+        "notes":  "BIG UPDATE: 3 new modes (King of the Hill, Gun Game, Juggernaut), 5 new weapons (Plasma Net, Fibonacci Cannon, Hyper Dash, Air Burst, Asprint), 8 new maps (Jungle Gym, Parthenon, Garden of Eden, Infinity Castle, Big Toilet, The RV, Pallet Town, Backrooms). Kill feed shows weapons, rainbow owner tag, CS tag, pylon parry fix, controller menu scrolling, separate controller yaw/pitch sensitivity, speedometer volume, fix for falling through floors, Arbalest rebalance, marked players on the minimap."
+    },
+    {
         "version":  "1.4.6",
         "date":  "2026-09-26",
         "notes":  "New CREDITS tab. Owners can update the credits from the main menu without a game update."
