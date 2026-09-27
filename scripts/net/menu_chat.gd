@@ -12,8 +12,11 @@ signal message_received(entry: Dictionary)
 ## The hub (re)sent its recent history (on every connect): old messages, not new ones.
 signal history_loaded
 signal status_changed(text: String)
+## The hub's answer to send_credits().
+signal credits_result(ok: bool, text: String)
 
 const NetScript := preload("res://scripts/net/net.gd")
+const CreditsScript := preload("res://scripts/credits.gd")
 const RETRY := 5.0
 const HISTORY := 40
 
@@ -46,6 +49,17 @@ func is_linked() -> bool:
 	return _linked
 
 
+## Owners: saves new credits (editor text, scripts/credits.gd) through the hub, which
+## checks your staff code. The answer comes back as credits_result.
+func send_credits(text: String) -> void:
+	if not _linked:
+		credits_result.emit(false, "Not linked to the server yet. Try again in a moment.")
+		return
+	var settings := get_tree().root.get_node_or_null("Settings")
+	var code := String(settings.call("get_value", "mod_code")) if settings else ""
+	_api.send_auth(1, var_to_bytes({"t": "credits", "code": code, "text": text.substr(0, 4000)}))
+
+
 ## Posts to global chat (as your player name, tagged MENU). Dropped if not linked.
 func send(text: String) -> void:
 	text = text.replace("\n", " ").strip_edges().substr(0, 120)
@@ -56,6 +70,9 @@ func send(text: String) -> void:
 
 func _open() -> void:
 	var url: String = NetScript.SERVER_URLS[0]
+	# Testing against a local hub.
+	if OS.get_environment("MENU_CHAT_URL") != "":
+		url = OS.get_environment("MENU_CHAT_URL")
 	var peer := WebSocketMultiplayerPeer.new()
 	var tls := TLSOptions.client() if url.begins_with("wss") else null
 	if peer.create_client(url, tls) != OK:
@@ -93,6 +110,13 @@ func _on_auth(_id: int, data: PackedByteArray) -> void:
 		"down":
 			if typeof(msg.get("entry")) == TYPE_DICTIONARY:
 				_add(msg["entry"])
+		"credits":
+			var credits := get_tree().root.get_node_or_null("Credits")
+			if credits and typeof(msg.get("sections")) == TYPE_ARRAY:
+				# Cleaned again here: never trust what comes over the wire.
+				credits.call("store", CreditsScript.from_json(CreditsScript.to_json(msg["sections"])))
+		"credits_result":
+			credits_result.emit(bool(msg.get("ok", false)), String(msg.get("text", "")))
 		"refused":
 			# Different version (or the hub is full): stop trying until the menu reopens.
 			_refused = true

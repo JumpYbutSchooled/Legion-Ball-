@@ -28,6 +28,7 @@ const WeaponIcons := preload("res://scripts/ui/weapon_icons.gd")
 const MapGrid := preload("res://scripts/ui/map_grid.gd")
 const Graphics := preload("res://scripts/graphics.gd")
 const GLOBAL_COLOR := Color(1.0, 0.72, 0.3)
+const CreditsScript := preload("res://scripts/credits.gd")
 
 var pause_mode := false
 
@@ -52,6 +53,9 @@ var _page_title: Label
 var _page: Control
 var _nav_buttons := {}
 var _current_page := ""
+## Credits page: the owner's last save result, shown under the editor.
+var _credits_note := ""
+var _credits_draft := ""
 
 
 func _ready() -> void:
@@ -91,6 +95,7 @@ func _ready() -> void:
 	_nav(nav, "controls", "CONTROLS", func() -> void: _show_page("controls"))
 	_nav(nav, "settings", "SETTINGS", func() -> void: _show_page("settings"))
 	_nav(nav, "updates", "UPDATES", func() -> void: _show_page("updates"))
+	_nav(nav, "credits", "CREDITS", func() -> void: _show_page("credits"))
 	if pause_mode:
 		# Shown once the server accepts your moderator code, which can be after this is built.
 		_nav(nav, "moderation", "MODERATION", func() -> void: _show_page("moderation"))
@@ -303,6 +308,8 @@ func _show_page(id: String, quiet := false) -> void:
 			_build_practice(box)
 		"updates":
 			_build_updates(box)
+		"credits":
+			_build_credits(box)
 	if refresh:
 		scroll.modulate.a = 0.0
 		scroll.set_meta("keep", keep)
@@ -656,6 +663,75 @@ func _build_updates(box: VBoxContainer) -> void:
 		line.color = Color(UIStyle.ACCENT, 0.12)
 		line.custom_minimum_size = Vector2(0, 1)
 		box.add_child(line)
+
+
+# --- CREDITS --------------------------------------------------------------------
+
+## Who made the game (scripts/credits.gd: the newest copy downloaded, else the shipped
+## one). Owners get an editor below it on the main menu; saving goes through the hub.
+func _build_credits(box: VBoxContainer) -> void:
+	_header(box, "CREDITS", "THE PILOTS BEHIND LEGION BALL")
+	var credits := get_tree().root.get_node_or_null("Credits")
+	if credits:
+		credits.call("fetch")
+		if not credits.is_connected("updated", _on_credits_updated):
+			credits.connect("updated", _on_credits_updated)
+	var sections := CreditsScript.current()
+	if sections.is_empty():
+		box.add_child(UIStyle.label("No credits in this build.", 15, UIStyle.TEXT_DIM))
+	for s in sections:
+		var block := VBoxContainer.new()
+		block.add_theme_constant_override("separation", 2)
+		box.add_child(block)
+		block.add_child(UIStyle.label(String(s["title"]), 14, UIStyle.ACCENT, true))
+		block.add_child(_wrapped(UIStyle.label("   ".join(PackedStringArray(s["names"])), 20, Color.WHITE)))
+	var mod := _mod()
+	if not _chat or not mod or not mod.call("is_owner"):
+		return
+	var gold := Color(1.0, 0.78, 0.25)
+	var line := ColorRect.new()
+	line.color = Color(gold, 0.3)
+	line.custom_minimum_size = Vector2(0, 1)
+	box.add_child(line)
+	box.add_child(UIStyle.label("// OWNER: EDIT CREDITS", 16, gold, true))
+	box.add_child(_wrapped(UIStyle.label("One section a line:  TITLE: name, name, name. Saving updates everyone's credits (no game update needed).", 13, UIStyle.TEXT_DIM)))
+	var edit := TextEdit.new()
+	edit.text = _credits_draft if _credits_draft != "" else CreditsScript.to_text(sections)
+	edit.custom_minimum_size = Vector2(0, 220)
+	edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	edit.text_changed.connect(func() -> void: _credits_draft = edit.text)
+	box.add_child(edit)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	box.add_child(row)
+	var note := UIStyle.label(_credits_note, 13, UIStyle.TEXT_DIM)
+	row.add_child(_small_button("SAVE CREDITS", func() -> void:
+		_credits_draft = edit.text
+		_credits_note = "SAVING..."
+		note.text = _credits_note
+		if not _chat.is_connected("credits_result", _on_credits_result):
+			_chat.connect("credits_result", _on_credits_result)
+		_chat.call("send_credits", edit.text)
+		ui_sound(self, "ui_click", -10.0)))
+	row.add_child(_small_button("RESET TEXT", func() -> void:
+		_credits_draft = ""
+		_credits_note = ""
+		_show_page("credits", true)))
+	row.add_child(note)
+
+
+func _on_credits_updated() -> void:
+	if _current_page == "credits":
+		_show_page("credits", true)
+
+
+func _on_credits_result(ok: bool, text: String) -> void:
+	_credits_note = text
+	if ok:
+		_credits_draft = ""
+	if _current_page == "credits":
+		_show_page("credits", true)
 
 
 # --- PRACTICE -------------------------------------------------------------------

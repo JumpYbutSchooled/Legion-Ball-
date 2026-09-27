@@ -24,6 +24,7 @@ extends Node
 ## at a hub.
 
 const ModScript := preload("res://scripts/net/moderation.gd")
+const CreditsScript := preload("res://scripts/credits.gd")
 const KEY_SALT := "leigon-global-chat"
 ## Seconds the hub waits for a new connection to say "player" or prove it's a link.
 const AUTH_WAIT := 3.0
@@ -59,6 +60,12 @@ var _retry := -1.0
 var _ping := 0.0
 var _idle := 0.0
 var _queue: Array = []
+# Hub: the credits an owner last saved (sent to menu players as they connect), whether a
+# save to GitHub is under way, and save attempts per menu player.
+var _credits_live: Array = []
+var _credits_busy := false
+var _credits_tries := {}
+const CREDITS_MAX_TRIES := 6
 
 
 func _ready() -> void:
@@ -123,6 +130,7 @@ func _process(delta: float) -> void:
 		for id in _listeners.keys():
 			if not pending.has(id):
 				_listeners.erase(id)
+				_credits_tries.erase(id)
 		return
 	if _hub_url() == "":
 		return
@@ -219,9 +227,14 @@ func _on_hub_auth(id: int, data: PackedByteArray) -> void:
 				return
 			_listeners[id] = {"name": _menu_name(msg.get("name", "")), "sent": []}
 			(multiplayer as SceneMultiplayer).send_auth(id, _pack({"t": "history", "entries": _history}))
+			if not _credits_live.is_empty():
+				(multiplayer as SceneMultiplayer).send_auth(id, _pack({"t": "credits", "sections": _credits_live}))
 		"say":
 			if _listeners.has(id):
 				_menu_say(id, String(msg.get("text", "")))
+		"credits":
+			if _listeners.has(id):
+				_credits_edit(id, msg)
 
 
 ## A name for a menu player: their own, cleaned, capped, never blank.
@@ -359,3 +372,96 @@ func _process_link(delta: float) -> void:
 		if _ping <= 0.0:
 			_ping = PING
 			_hello()
+
+
+# --- CREDITS --------------------------------------------------------------------
+
+## An owner (from the main menu) changing the credits: check their code, commit the new
+## credits to the repo's credits branch (so every game downloads them), then send them to
+## every menu player right away. Needs GITHUB_TOKEN on this server (a GitHub token that
+## can write this repo's contents).
+func _credits_edit(id: int, msg: Dictionary) -> void:
+	var api := multiplayer as SceneMultiplayer
+	var reply := func(ok: bool, text: String) -> void:
+		if api.multiplayer_peer and api.get_authenticating_peers().has(id):
+			api.send_auth(id, _pack({"t": "credits_result", "ok": ok, "text": text}))
+	var tries: int = _credits_tries.get(id, 0)
+	if tries >= CREDITS_MAX_TRIES:
+		reply.call(false, "Too many tries. Reopen the game and try again.")
+		return
+	_credits_tries[id] = tries + 1
+	var real := OS.get_environment("OWNER_CODE").strip_edges()
+	var typed := String(msg.get("code", "")).strip_edges()
+	# Compared as hashes so the check takes the same time whatever was typed.
+	if real == "" or typed.sha256_text() != real.sha256_text():
+		reply.call(false, "Only the owner can change the credits (check your staff code in Settings).")
+		return
+	var sections := CreditsScript.from_text(String(msg.get("text", "")))
+	if sections.is_empty():
+		reply.call(false, "Nothing to save: write one section a line, like  OWNER: JumpY")
+		return
+	var token := OS.get_environment("GITHUB_TOKEN").strip_edges()
+	if token == "":
+		reply.call(false, "Server 1 has no GITHUB_TOKEN set, so the credits can't be saved.")
+		return
+	if _credits_busy:
+		reply.call(false, "Another save is still going. Try again in a moment.")
+		return
+	_credits_busy = true
+	var error: String = await _credits_commit(CreditsScript.to_json(sections), token)
+	_credits_busy = false
+	if error != "":
+		print("[credits] save failed: %s" % error)
+		reply.call(false, "Couldn't save to GitHub: %s" % error)
+		return
+	print("[credits] updated by %s" % _listeners.get(id, {}).get("name", "?"))
+	_credits_live = sections
+	for listener in _listeners:
+		if api.get_authenticating_peers().has(listener):
+			api.send_auth(listener, _pack({"t": "credits", "sections": sections}))
+	reply.call(true, "Saved. Everyone gets the new credits.")
+
+
+## Writes the credits file on the credits branch. Returns "" or what went wrong.
+func _credits_commit(content: String, token: String) -> String:
+	var url := "https://api.github.com/repos/%s/contents/%s" % [CreditsScript.REPO, CreditsScript.FILE]
+	var headers := PackedStringArray([
+		"User-Agent: LegionBall-Server",
+		"Authorization: Bearer " + token,
+		"Accept: application/vnd.github+json",
+		"X-GitHub-Api-Version: 2022-11-28",
+	])
+	# The file's current version id, which GitHub needs to replace it.
+	var got: Array = await _http(url + "?ref=" + CreditsScript.BRANCH, headers, HTTPClient.METHOD_GET, "")
+	var body := {
+		"message": "Update credits (from in game)",
+		"content": Marshalls.utf8_to_base64(content),
+		"branch": CreditsScript.BRANCH,
+	}
+	if got[0] == 200:
+		var data = JSON.parse_string(got[1])
+		if typeof(data) == TYPE_DICTIONARY and data.has("sha"):
+			body["sha"] = data["sha"]
+	elif got[0] != 404:
+		return "GitHub said %d" % got[0]
+	var put: Array = await _http(url, headers + PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_PUT, JSON.stringify(body))
+	if put[0] == 200 or put[0] == 201:
+		return ""
+	if put[0] == 401 or put[0] == 403:
+		return "the server's GITHUB_TOKEN isn't allowed to write the repo (%d)" % put[0]
+	return "GitHub said %d" % put[0]
+
+
+## One HTTP request: [status code (0 = no answer), body text].
+func _http(url: String, headers: PackedStringArray, method: int, body: String) -> Array:
+	var req := HTTPRequest.new()
+	req.timeout = 15.0
+	add_child(req)
+	if req.request(url, headers, method, body) != OK:
+		req.queue_free()
+		return [0, ""]
+	var res: Array = await req.request_completed
+	req.queue_free()
+	if res[0] != HTTPRequest.RESULT_SUCCESS:
+		return [0, ""]
+	return [res[1], (res[3] as PackedByteArray).get_string_from_utf8()]
