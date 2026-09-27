@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.4.5",
+        "date":  "2026-09-26",
+        "notes":  "Way more warping (speed, dash, weapons, nearby blasts) and much better explosions: fireball, smoke, embers, core flash, ground ring, double sparks."
+    },
+    {
         "version":  "1.4.4",
         "date":  "2026-09-26",
         "notes":  "Testers can now switch maps. Mods and the owner can FLY (V; Space up, C down) - and anyone can in practice. New numpad staff keys: Numpad 0 opens the moderation menu, Numpad Enter opens quick moderation actions (then Numpad 1-9). Owner health is back to the normal 100."
