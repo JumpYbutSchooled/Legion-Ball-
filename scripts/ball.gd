@@ -104,6 +104,11 @@ var _dilate_timer := 0.0
 var _dilate_mult := 1.0
 ## Crystal Saber: shots parried while this runs deflect without launching us.
 var deflect_timer := 0.0
+## Staff flight (fly_toggle): no gravity, move where the camera looks, Space up, C down.
+## Mods and the owner online (checked on this computer, which moves this ball); anyone in
+## practice.
+var flying := false
+var _fly_check := 0.0
 ## An AI pilot (bot_brain.gd, on the host): it steers with bot_move (world direction),
 ## looks along bot_look, and presses buttons with bot_press() instead of the keyboard.
 var bot := false
@@ -187,6 +192,14 @@ func _physics_process(delta: float) -> void:
 	if _mod and _mod.call("is_frozen", player_id()):
 		_stagger_timer = maxf(_stagger_timer, 0.1)
 	var controls := _controls_enabled()
+	if controls and not bot and Input.is_action_just_pressed("fly"):
+		set_flying(not flying)
+	# Lost the right to fly (demoted, or joined a server): land.
+	_fly_check -= delta
+	if flying and _fly_check <= 0.0:
+		_fly_check = 1.0
+		if not can_fly():
+			set_flying(false)
 
 	if controls and _block_cd == 0.0 and _pressed("block"):
 		_start_block()
@@ -223,7 +236,7 @@ func _physics_process(delta: float) -> void:
 	_move_dir = dir
 	_grounded = grounded
 
-	if dir != Vector3.ZERO:
+	if dir != Vector3.ZERO and not flying:
 		# Only push while under the speed cap in the requested direction,
 		# so speed gained from a dash is kept rather than clamped.
 		if linear_velocity.dot(dir) < max_speed * (_chill_mult if _chill_timer > 0.0 else 1.0):
@@ -234,7 +247,7 @@ func _physics_process(delta: float) -> void:
 
 	_update_skid(grounded, dir, delta)
 
-	if controls and grounded and _jump_timer == 0.0 and _pressed("jump"):
+	if controls and grounded and not flying and _jump_timer == 0.0 and _pressed("jump"):
 		_jump_timer = jump_cooldown
 		apply_central_impulse(Vector3.UP * jump_impulse)
 		jumped.emit()
@@ -243,6 +256,25 @@ func _physics_process(delta: float) -> void:
 	if controls and _dash_timer == 0.0 and _pull_timer <= 0.0 and _pressed("dash"):
 		_dash_timer = dash_cooldown
 		_dash_requested = true
+
+
+## Mods and the owner online; anyone in practice. Never bots.
+func can_fly() -> bool:
+	if bot:
+		return false
+	var net := get_tree().root.get_node_or_null("Net")
+	if not net or not net.get("online"):
+		return true
+	var mod := get_tree().root.get_node_or_null("Mod")
+	return mod != null and int(mod.call("my_level")) >= 2
+
+
+func set_flying(on: bool) -> void:
+	if on and not can_fly():
+		return
+	flying = on
+	gravity_scale = 0.0 if on else 1.0
+	Sfx.play_flat(get_tree(), "dash" if on else "jump", -8.0, 1.4 if on else 0.8)
 
 
 ## False while a menu has taken over input (e.g. the pause menu during an online match).
@@ -353,6 +385,9 @@ func stagger(duration: float) -> void:
 ## Hidden, untouchable and uncontrollable while dead.
 func set_dead(is_dead: bool) -> void:
 	dead = is_dead
+	if is_dead and flying:
+		flying = false
+		gravity_scale = 1.0
 	visible = not is_dead
 	$CollisionShape3D.set_deferred("disabled", is_dead)
 	if is_multiplayer_authority():
@@ -583,7 +618,10 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		if weapon:
 			weapon.call_deferred("play_sound", "dash", state.transform.origin, -2.0)
 
-	_cruise(state)
+	if flying:
+		_fly(state)
+	else:
+		_cruise(state)
 
 	# Speed cap and height ceiling.
 	var v := state.linear_velocity
@@ -597,6 +635,24 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if state.transform.origin.y > max_height and v.y > 0.0:
 		v.y *= 0.8
 	state.linear_velocity = v
+
+
+## Flying: glide toward where WASD points relative to the camera (up and down included),
+## Space to rise, C to sink; no gravity (gravity_scale 0).
+func _fly(state: PhysicsDirectBodyState3D) -> void:
+	var want := Vector3.ZERO
+	if _controls_enabled():
+		var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+		var look := _camera_look()
+		var right := look.cross(Vector3.UP).normalized() if absf(look.y) < 0.99 else _get_camera_forward().cross(Vector3.UP).normalized()
+		want = right * input.x - look * input.y
+		if Input.is_action_pressed("jump"):
+			want += Vector3.UP
+		if Input.is_action_pressed("fly_down"):
+			want += Vector3.DOWN
+	var goal := want.limit_length(1.0) * max_speed * 1.6
+	state.linear_velocity = state.linear_velocity.lerp(goal, minf(state.step * 5.0, 1.0))
+	state.angular_velocity = state.angular_velocity.lerp(Vector3.ZERO, minf(state.step * 3.0, 1.0))
 
 
 ## Holds high speed while you steer the way you're going: the horizontal speed can't

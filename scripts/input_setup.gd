@@ -38,6 +38,12 @@ const KEYS := {
 	"block": [KEY_Q],
 	"scoreboard": [KEY_TAB],
 	"chat": [KEY_SLASH],
+	# Staff: fly (mods and the owner online; anyone in practice), the moderation menu and
+	# the quick moderation actions (then numpad 1-9 pick one).
+	"fly": [KEY_V],
+	"fly_down": [KEY_C],
+	"mod_menu": [KEY_KP_0],
+	"mod_quick": [KEY_KP_ENTER],
 }
 
 ## Keys bound to their right-hand copy only (so left Shift stays free).
@@ -136,6 +142,11 @@ const REBINDABLE := [
 	["scoreboard", "Scoreboard"],
 	["chat", "Server chat"],
 	["chat_global", "Global chat"],
+	"STAFF",
+	["fly", "Fly on / off (mods, owner; practice)"],
+	["fly_down", "Fly down (Space: up)"],
+	["mod_menu", "Moderation menu"],
+	["mod_quick", "Quick moderation (then numpad 1-9)"],
 ]
 
 

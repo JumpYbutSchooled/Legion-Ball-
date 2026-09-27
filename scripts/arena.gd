@@ -41,8 +41,6 @@ const SPAWN_RADIUS := 55.0
 const SPAWN_COUNT := 8
 
 const MAX_HEALTH := 100.0
-## The owner's max health (max_health_of).
-const OWNER_HEALTH := 1000.0
 const RESPAWN_TIME := 3.0
 ## After respawning, hits are ignored for this long.
 const SPAWN_PROTECT := 2.0
@@ -261,18 +259,10 @@ func refresh_god_shields() -> void:
 
 
 ## Host: the owner's gold shield is up, so nothing touches them.
-## Full health for id: OWNER_HEALTH for the owner, MAX_HEALTH for everyone else.
+## Full health for id: MAX_HEALTH, unless the owner has set theirs (moderation.gd set_stats).
 func max_health_of(id: int) -> float:
-	# The owner can set anyone's max health (moderation.gd set_stats).
 	var custom := float(_roster().get(id, {}).get("max_hp", 0.0))
-	if custom > 0.0:
-		return custom
-	var role: String = _roster().get(id, {}).get("role", "")
-	if not is_online() and id == multiplayer.get_unique_id():
-		var mod := get_tree().root.get_node_or_null("Mod")
-		if mod:
-			role = mod.call("staff_role")
-	return OWNER_HEALTH if role == "owner" else MAX_HEALTH
+	return custom if custom > 0.0 else MAX_HEALTH
 
 
 func _is_god(id: int) -> bool:

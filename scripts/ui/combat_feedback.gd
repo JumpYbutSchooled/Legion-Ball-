@@ -17,6 +17,7 @@ var ball: RigidBody3D
 var _draw_layer: Control
 var _vignette: ColorRect
 var _perf: Label
+var _fly_tag: Label
 var _hit_t := 99.0
 var _hit_size := 1.0
 var _kill_t := 99.0
@@ -49,6 +50,14 @@ func _ready() -> void:
 	_perf.offset_top = 4
 	_perf.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	add_child(_perf)
+	_fly_tag = UIStyle.label("// FLYING  -  SPACE UP, C DOWN, V TO LAND", 13, Color(1.0, 0.78, 0.25), true)
+	_fly_tag.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_fly_tag.offset_top = -150
+	_fly_tag.offset_left = -260
+	_fly_tag.offset_right = 260
+	_fly_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fly_tag.visible = false
+	add_child(_fly_tag)
 	if ball:
 		var weapon := ball.get_node_or_null("Weapon")
 		if weapon and weapon.has_signal("damage_dealt"):
@@ -124,6 +133,7 @@ func _process(delta: float) -> void:
 	if show:
 		var pulse := 0.75 + 0.25 * sin(Time.get_ticks_msec() / 1000.0 * lerpf(3.0, 9.0, _low))
 		(_vignette.material as ShaderMaterial).set_shader_parameter("amount", _low * pulse)
+	_fly_tag.visible = ball != null and bool(ball.get("flying"))
 	if _setting("show_fps"):
 		var net := get_tree().root.get_node_or_null("Net")
 		var ping: int = net.get("ping_ms") if net and net.get("online") else -1

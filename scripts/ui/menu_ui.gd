@@ -950,8 +950,8 @@ func _on_roster_changed() -> void:
 		_show_page("moderation", true)
 
 
-## Staff tools, by level: testers (1) jump to players; moderators (2) also bring, slay,
-## freeze, mute, kick, ban, announce, end the match and switch maps; the owner (3) also
+## Staff tools, by level: testers (1) jump to players and switch maps; moderators (2) also
+## bring, slay, freeze, mute, kick, ban, announce and end the match; the owner (3) also
 ## launches players, kills or heals everyone, freezes everyone, low gravity, and picks
 ## which weapons everyone may use. The server checks every request itself.
 func _build_moderation(box: VBoxContainer) -> void:
@@ -1074,7 +1074,8 @@ func _build_moderation(box: VBoxContainer) -> void:
 			health; RESET puts them back to normal).\n"
 		help += "LAUNCH flings a player skyward. KILL ALL / HEAL ALL / FREEZE ALL affect everyone else.\n" \
 			+ "Locked weapons holster and can't be picked; lock all to disarm everyone.\n"
-	if level >= 2:
+	# Testers can switch maps too.
+	if level >= 1:
 		box.add_child(UIStyle.label("\nSWITCH MAP  (now: %s)" % NetScript.MAP_NAMES.get(net.get("map_scene"), "?"), 13, UIStyle.TEXT_DIM))
 		var maps := _flow(box)
 		for path in NetScript.MAP_NAMES:

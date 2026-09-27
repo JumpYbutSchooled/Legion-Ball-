@@ -7,6 +7,7 @@ const MenuUI := preload("res://scripts/ui/menu_ui.gd")
 const MENU_SCENE := "res://scenes/menu.tscn"
 
 var _root: Control
+var _ui: Control
 
 
 func _ready() -> void:
@@ -32,6 +33,7 @@ func _ready() -> void:
 	var ui := MenuUI.new()
 	ui.pause_mode = true
 	_root.add_child(ui)
+	_ui = ui
 	ui.resume_pressed.connect(resume)
 	ui.main_menu_pressed.connect(func() -> void:
 		resume()
@@ -43,6 +45,12 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Numpad 0 (rebindable): straight to the moderation page (Practice Admin offline).
+	if event.is_action_pressed("mod_menu") and not _root.visible and _staff_page_allowed():
+		pause()
+		_ui.call("_show_page", "moderation")
+		get_viewport().set_input_as_handled()
+		return
 	var pad := event as InputEventJoypadButton
 	if pad and pad.pressed and pad.button_index == JOY_BUTTON_START:
 		if _root.visible:
@@ -61,6 +69,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			pause()
 		get_viewport().set_input_as_handled()
+
+
+func _staff_page_allowed() -> bool:
+	var net := get_tree().root.get_node_or_null("Net")
+	if not net or not net.get("online"):
+		return true
+	var mod := get_tree().root.get_node_or_null("Mod")
+	return mod != null and int(mod.call("my_level")) >= 1
 
 
 ## Offline this freezes the game. Online the match can't stop for one player, so it

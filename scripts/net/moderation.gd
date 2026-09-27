@@ -530,7 +530,8 @@ func _set_god(on: bool) -> void:
 ## Moderators: change the map now. (Named to sort after the other RPCs.)
 @rpc("any_peer", "reliable")
 func _switch_map(path: String) -> void:
-	if multiplayer.is_server() and _is_moderator(_sender()) and _net.MAP_NAMES.has(path):
+	# Testers can switch maps too (moderators, the owner and a LAN host as well).
+	if multiplayer.is_server() and (_is_moderator(_sender()) or _level(_sender()) >= 1) and _net.MAP_NAMES.has(path):
 		print("[server] %s switched the map to %s" % [_player_name(_sender()), _net.MAP_NAMES[path]])
 		_net.call("change_map", path)
 

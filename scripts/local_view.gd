@@ -9,6 +9,7 @@ const Minimap := preload("res://scripts/ui/minimap.gd")
 const LockWarning := preload("res://scripts/ui/lock_warning.gd")
 const ChatBox := preload("res://scripts/ui/chat_box.gd")
 const CombatFeedback := preload("res://scripts/ui/combat_feedback.gd")
+const QuickMod := preload("res://scripts/ui/quick_mod.gd")
 
 
 func setup(ball: RigidBody3D) -> void:
@@ -23,6 +24,9 @@ func setup(ball: RigidBody3D) -> void:
 	var feedback := CombatFeedback.new()
 	feedback.ball = ball
 	add_child(feedback)
+	var quick := QuickMod.new()
+	quick.ball = ball
+	add_child(quick)
 	var rig := $CameraRig
 	var camera := $CameraRig/Pitch/SpringArm3D/Camera3D
 	var weapon := ball.get_node("Weapon")
