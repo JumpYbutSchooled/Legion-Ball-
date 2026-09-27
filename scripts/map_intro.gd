@@ -8,6 +8,9 @@ extends Node
 ## and local: the host just keeps everyone spawn-protected for its length (arena.gd).
 ## Jump or fire skips to the end. Settings "map_intro" turns it off.
 
+## The map has gone solid (arena.gd merges its boxes then).
+signal done
+
 const WireShader := preload("res://shaders/build_wire.gdshader")
 const Sfx := preload("res://scripts/sfx.gd")
 
@@ -117,6 +120,7 @@ func _detonate() -> void:
 		if is_instance_valid(node):
 			node.visible = true
 	_set_blocked(false)
+	done.emit()
 	_flash.color.a = 0.85
 	Sfx.play_flat(get_tree(), "impact_boom", 0.0)
 	var cam := get_viewport().get_camera_3d()

@@ -34,6 +34,7 @@ const NetScript := preload("res://scripts/net/net.gd")
 const Graphics := preload("res://scripts/graphics.gd")
 const BotBrain := preload("res://scripts/bot_brain.gd")
 const SpeedTrail := preload("res://scripts/speed_trail.gd")
+const MapMerge := preload("res://scripts/map_merge.gd")
 
 ## Spawn points spread round the middle of the map, facing inward.
 const SPAWN_RADIUS := 55.0
@@ -143,9 +144,15 @@ func _start(net: Node) -> void:
 		turrets.set("points", layout.call("turret_points"))
 		add_child(turrets)
 	# The map builds itself in as a wireframe (not on the server: nobody's watching).
-	if DisplayServer.get_name() != "headless" and has_node("Map") and SettingsScript.read(get_tree(), "map_intro"):
+	# Combine the map's thousands of boxes into a few meshes (same look, far fewer draw
+	# calls) - after the build-in if it plays, since that animates the boxes one by one.
+	var intro_on: bool = DisplayServer.get_name() != "headless" and has_node("Map") and SettingsScript.read(get_tree(), "map_intro")
+	if DisplayServer.get_name() != "headless" and has_node("Map") and not intro_on:
+		_merge_map.call_deferred()
+	if intro_on:
 		var intro := MapIntro.new()
 		intro.map = $Map
+		intro.done.connect(_merge_map)
 		intro.hidden.append(_players_root)
 		if has_node("Turrets"):
 			intro.hidden.append($Turrets)
@@ -158,6 +165,14 @@ func _exit_tree() -> void:
 		var mod := get_tree().root.get_node_or_null("Mod")
 		if mod:
 			mod.call("practice_reset")
+
+
+## Combine the map's static boxes (map_merge.gd). Once only.
+func _merge_map() -> void:
+	if not is_inside_tree() or has_meta("merged") or not has_node("Map"):
+		return
+	set_meta("merged", true)
+	MapMerge.merge($Map)
 
 
 func _net() -> Node:

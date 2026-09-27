@@ -6,6 +6,8 @@ extends CanvasLayer
 ## away.
 ## Reads the level itself: every box collider under the arena's Map node, plus the map's
 ## outline() if it has one (sprawl_map.gd).
+## The level (hundreds of shapes on the big maps) is drawn ONCE into a texture; each frame
+## only that picture, the players, the sigil tags and your arrow are drawn.
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
 
@@ -32,6 +34,11 @@ var _shapes: Array = []  # [footprint, top height], lowest first
 var _bounds := Rect2()
 var _collected := false
 var _seen := {}  # peer id -> [last seen position (x, z), seconds since]
+## The level, pre-drawn (at LEVEL_RES x the box size, so it stays sharp).
+const LEVEL_RES := 2.0
+var _level_view: SubViewport
+var _level_canvas: Control
+var _to_screen := Transform2D.IDENTITY
 var _check_timer := 0.0
 
 
@@ -45,6 +52,23 @@ func _ready() -> void:
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_panel.draw.connect(_draw_map)
 	add_child(_panel)
+	_level_view = SubViewport.new()
+	_level_view.size = Vector2i(int(SIZE * LEVEL_RES), int(SIZE * LEVEL_RES))
+	_level_view.transparent_bg = true
+	_level_view.disable_3d = true
+	_level_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	add_child(_level_view)
+	_level_canvas = Control.new()
+	_level_canvas.size = Vector2(_level_view.size)
+	_level_canvas.draw.connect(_draw_level)
+	_level_view.add_child(_level_canvas)
+	# A new UI colour: draw the level again in it.
+	var settings := get_tree().root.get_node_or_null("Settings")
+	if settings:
+		settings.connect("changed", func() -> void:
+			if _collected:
+				_level_canvas.queue_redraw()
+				_level_view.render_target_update_mode = SubViewport.UPDATE_ONCE)
 
 
 func _process(delta: float) -> void:
@@ -83,6 +107,32 @@ func _physics_process(delta: float) -> void:
 func _arena() -> Node:
 	var scene := get_tree().current_scene
 	return scene if scene and scene.has_method("player_ball") else null
+
+
+## The level itself, drawn into the texture (at LEVEL_RES scale).
+func _draw_level() -> void:
+	_level_canvas.draw_set_transform_matrix(Transform2D(0.0, Vector2(LEVEL_RES, LEVEL_RES), 0.0, Vector2.ZERO) * _to_screen)
+	var ground := Color(UIStyle.ACCENT, 0.07)
+	if _outline.size() >= 3:
+		_level_canvas.draw_colored_polygon(_outline, ground)
+	else:
+		for poly in _floors:
+			_level_canvas.draw_colored_polygon(poly, ground)
+	for shape in _shapes:
+		var k := clampf(shape[1] / 40.0, 0.0, 1.0)
+		var col := Color(UIStyle.ACCENT, lerpf(0.16, 0.75, k))
+		_level_canvas.draw_colored_polygon(shape[0], col)
+		# Zoomed out this far, thin walls are under a pixel wide: outline the tall ones.
+		if k > 0.5:
+			var loop := PackedVector2Array(shape[0])
+			loop.append(loop[0])
+			_level_canvas.draw_polyline(loop, col, -1.0)
+	# The level's edge.
+	var edges: Array = [_outline] if _outline.size() >= 3 else _floors
+	for loop_points in edges:
+		var edge := PackedVector2Array(loop_points)
+		edge.append(edge[0])
+		_level_canvas.draw_polyline(edge, Color(UIStyle.ACCENT, 0.8), -1.0)
 
 
 func _collect_level() -> void:
@@ -140,38 +190,17 @@ func _draw_map() -> void:
 		return
 	if not _collected:
 		_collect_level()
+		# The whole level, north up, fitted inside the box.
+		var span := maxf(maxf(_bounds.size.x, _bounds.size.y), 1.0)
+		var zoom := (SIZE - PAD * 2.0) / span
+		_to_screen = Transform2D(0.0, Vector2(zoom, zoom), 0.0, Vector2(SIZE, SIZE) / 2.0 + Vector2(0.0, 4.0)) * Transform2D(0.0, -_bounds.get_center())
+		# Draw the level into its texture, once.
+		_level_canvas.queue_redraw()
+		_level_view.render_target_update_mode = SubViewport.UPDATE_ONCE
 	var rect := Rect2(Vector2.ZERO, Vector2(SIZE, SIZE))
-	var center := rect.size / 2.0
-	# The whole level, north up, fitted inside the box.
-	var span := maxf(maxf(_bounds.size.x, _bounds.size.y), 1.0)
-	var zoom := (SIZE - PAD * 2.0) / span
-	var to_screen := Transform2D(0.0, Vector2(zoom, zoom), 0.0, center + Vector2(0.0, 4.0)) * Transform2D(0.0, -_bounds.get_center())
-
+	var to_screen := _to_screen
 	_panel.draw_rect(rect, Color(0.02, 0.05, 0.08, 0.62))
-	_panel.draw_set_transform_matrix(to_screen)
-	var ground := Color(UIStyle.ACCENT, 0.07)
-	if _outline.size() >= 3:
-		_panel.draw_colored_polygon(_outline, ground)
-	else:
-		for poly in _floors:
-			_panel.draw_colored_polygon(poly, ground)
-	for shape in _shapes:
-		var k := clampf(shape[1] / 40.0, 0.0, 1.0)
-		var col := Color(UIStyle.ACCENT, lerpf(0.16, 0.75, k))
-		_panel.draw_colored_polygon(shape[0], col)
-		# Zoomed out this far, thin walls are under a pixel wide: outline the tall ones.
-		if k > 0.5:
-			var loop := PackedVector2Array(shape[0])
-			loop.append(loop[0])
-			_panel.draw_polyline(loop, col, -1.0)
-	# The level's edge.
-	var edges: Array = [_outline] if _outline.size() >= 3 else _floors
-	for loop_points in edges:
-		var edge := PackedVector2Array(loop_points)
-		edge.append(edge[0])
-		_panel.draw_polyline(edge, Color(UIStyle.ACCENT, 0.8), -1.0)
-	_panel.draw_set_transform_matrix(Transform2D.IDENTITY)
-
+	_panel.draw_texture_rect(_level_view.get_texture(), rect, false)
 	# Other players, where they were last seen; pinned to the edge if off the map.
 	var net := get_tree().root.get_node_or_null("Net")
 	var arena := _arena()

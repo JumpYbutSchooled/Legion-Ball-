@@ -296,6 +296,8 @@ func _build_ui() -> void:
 	vp.own_world_3d = true
 	vp.transparent_bg = true
 	vp.msaa_3d = Viewport.MSAA_4X
+	# Only rendered while the wheel is open (the panel is hidden otherwise).
+	vp.render_target_update_mode = SubViewport.UPDATE_WHEN_PARENT_VISIBLE
 	holder.add_child(vp)
 	var cam := Camera3D.new()
 	cam.fov = 40.0
