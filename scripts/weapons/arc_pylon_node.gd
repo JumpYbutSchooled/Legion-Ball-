@@ -83,5 +83,11 @@ func _physics_process(delta: float) -> void:
 		var p: Vector3 = best.call("get_aim_point")
 		manager.call("spawn_beam", top, (p - top).normalized(), top.distance_to(p), 0.25, 0.12, 14.0, color)
 		manager.call("spawn_light", p, 20.0, 5.0, 0.1, color)
-		manager.call("hit_object", best, damage, p, (p - top).normalized(), 3.0)
+		if best.has_method("take_pylon_hit"):
+			# Players: a raised shield breaks the pylon (arena.gd), no stun for the owner.
+			best.call("take_pylon_hit", damage, top)
+			manager.call("report_damage", best, damage, p)
+			best.call("receive_impulse", (p - top).normalized() * 3.0)
+		else:
+			manager.call("hit_object", best, damage, p, (p - top).normalized(), 3.0)
 		manager.call("play_sound", "zap", top, -6.0)

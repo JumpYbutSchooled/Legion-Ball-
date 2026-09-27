@@ -10,6 +10,7 @@ extends CanvasLayer
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
 const Sfx := preload("res://scripts/sfx.gd")
+const SettingsScript := preload("res://scripts/settings.gd")
 const InputSetup := preload("res://scripts/input_setup.gd")
 
 const SCALE := 5.0
@@ -92,10 +93,13 @@ func _change_tier(from: int, to: int, dir: int) -> void:
 	_shard_color = TIER_COLORS[from] if dir > 0 else TIER_COLORS[to]
 	_make_shards()
 	_tier = to
+	var volume: float = SettingsScript.read(get_tree(), "speedometer_volume")
+	if volume <= 0.01:
+		return
 	if dir > 0:
-		Sfx.play_flat(get_tree(), "infinity" if to == 5 else "shatter", -6.0, 1.0 + to * 0.08)
+		Sfx.play_flat(get_tree(), "infinity" if to == 5 else "shatter", -6.0 + linear_to_db(volume), 1.0 + to * 0.08)
 	else:
-		Sfx.play_flat(get_tree(), "unshatter", -8.0, 1.0 + to * 0.08)
+		Sfx.play_flat(get_tree(), "unshatter", -8.0 + linear_to_db(volume), 1.0 + to * 0.08)
 
 
 ## Glass pieces covering the dial: rings of wedges, each flung outward with a spin.

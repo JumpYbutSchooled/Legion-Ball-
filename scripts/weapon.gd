@@ -50,6 +50,9 @@ var current := 0
 ## This ball's loadout (weapon ids for keys 1-6, weapon_info.gd). Set by the arena
 ## before the ball is added (from the roster online, Settings offline).
 var loadout: Array = WeaponInfo.DEFAULT_LOADOUT.duplicate()
+## How many weapons the loadout holds: 6 normally; game modes change it (Gun Game 1,
+## Juggernaut every weapon). The staff weapons come after it.
+var loadout_size := WeaponInfo.LOADOUT_SIZE
 ## The weapon id in each slot: the loadout, then the staff weapons (keys 7-9).
 var slot_ids: Array = []
 
@@ -69,8 +72,8 @@ func _ready() -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	# The player's own loadout, then the staff weapons: every ball has those too, so a
 	# moderator's or the owner's shows up on their ball for everyone.
-	slot_ids = WeaponInfo.slot_ids(loadout)
-	loadout = slot_ids.slice(0, WeaponInfo.LOADOUT_SIZE)
+	slot_ids = WeaponInfo.slot_ids(loadout, loadout_size)
+	loadout = slot_ids.slice(0, loadout_size)
 	for id in slot_ids:
 		weapons.append(_make(id))
 	weapons[current].enter()
@@ -90,19 +93,38 @@ func _make(id: String) -> Node3D:
 
 ## Swaps in a new loadout (keys 1-6); the staff weapons stay. Every computer does this
 ## for a player at the same moment (their respawn), so slot numbers stay in step.
-func set_loadout(ids: Array) -> void:
-	var fresh := WeaponInfo.valid_loadout(ids)
+func set_loadout(ids: Array, size := WeaponInfo.LOADOUT_SIZE) -> void:
+	var fresh := WeaponInfo.valid_loadout(ids, size)
 	if fresh == loadout:
 		return
 	var was_drawn := is_drawn()
-	for i in WeaponInfo.LOADOUT_SIZE:
+	var old_size := loadout_size
+	for i in old_size:
 		weapons[i].queue_free()
+	var staff := weapons.slice(old_size)
 	loadout = fresh
-	slot_ids = WeaponInfo.slot_ids(loadout)
-	for i in WeaponInfo.LOADOUT_SIZE:
-		weapons[i] = _make(slot_ids[i])
+	loadout_size = fresh.size()
+	slot_ids = WeaponInfo.slot_ids(loadout, loadout_size)
+	weapons = []
+	for i in loadout_size:
+		weapons.append(_make(slot_ids[i]))
+	weapons.append_array(staff)
+	# Same weapon kind as before: a staff weapon stays itself, a loadout slot stays in range.
+	current = current - old_size + loadout_size if current >= old_size else mini(current, loadout_size - 1)
 	if was_drawn:
 		current_weapon().enter()
+
+
+## Slots this player may use right now: the loadout, then any staff weapons unlocked.
+func unlocked_count() -> int:
+	return WeaponInfo.unlocked_count(get_tree(), loadout_size)
+
+
+## The slot a number key (0-8) picks: keys 1-6 the loadout, 7-9 the staff weapons.
+func _key_slot(key: int) -> int:
+	if key < WeaponInfo.LOADOUT_SIZE:
+		return key if key < loadout_size else -1
+	return loadout_size + key - WeaponInfo.LOADOUT_SIZE
 
 
 func slot_id(slot: int) -> String:
@@ -187,7 +209,7 @@ func _physics_process(delta: float) -> void:
 	var controls := _controls_enabled()
 	if not _slot_allowed(current):
 		# The owner locked this weapon: switch to one that's allowed, or put it away.
-		var other := _first_allowed(WeaponInfo.unlocked_count(get_tree()))
+		var other := _first_allowed(unlocked_count())
 		if other >= 0:
 			select(other)
 		else:
@@ -200,16 +222,18 @@ func _physics_process(delta: float) -> void:
 			var shown: bool = not settings.call("get_value", "show_staff_weapons")
 			settings.call("set_value", "show_staff_weapons", shown)
 			staff_weapons_toggled.emit(shown)
-	var unlocked := WeaponInfo.unlocked_count(get_tree())
+	var unlocked := unlocked_count()
 	if current >= unlocked:
 		# Staff weapon no longer available (hidden with 0, or left the server).
 		var fallback := _first_allowed(unlocked)
 		if fallback >= 0:
 			select(fallback)
 	if controls:
-		for slot in mini(SLOT_ACTIONS.size(), unlocked):
-			if Input.is_action_just_pressed(SLOT_ACTIONS[slot]):
-				select(slot)
+		for key in SLOT_ACTIONS.size():
+			if Input.is_action_just_pressed(SLOT_ACTIONS[key]):
+				var slot := _key_slot(key)
+				if slot >= 0 and slot < unlocked:
+					select(slot)
 				break
 		if Input.is_action_just_pressed("toggle_weapon"):
 			toggle()
@@ -223,6 +247,9 @@ func _physics_process(delta: float) -> void:
 	var aiming := (captured and _was_captured) or InputSetup.using_pad
 	var pressed := controls and aiming and Input.is_action_pressed("fire")
 	# Inside an enemy Time Dilator our weapons charge, cool down and fire slower.
+	# Mid-rush (Hyper Dash, Asprint) nothing else fires.
+	if ball.call("is_rushing") and not current_weapon().get("fires_while_rushing"):
+		pressed = false
 	current_weapon().handle_fire(pressed, hit, delta * ball.call("weapon_time_scale"))
 	_was_captured = captured
 

@@ -50,6 +50,14 @@ const MAP_NAMES := {
 	"res://scenes/arena_enterprise.tscn": "ENTERPRISE",
 	"res://scenes/arena_gotham.tscn": "GOTHAM",
 	"res://scenes/arena_chess.tscn": "CHESS BOARD",
+	"res://scenes/arena_jungle_gym.tscn": "JUNGLE GYM",
+	"res://scenes/arena_parthenon.tscn": "THE PARTHENON",
+	"res://scenes/arena_eden.tscn": "GARDEN OF EDEN",
+	"res://scenes/arena_infinity_castle.tscn": "INFINITY CASTLE",
+	"res://scenes/arena_toilet.tscn": "BIG TOILET",
+	"res://scenes/arena_rv.tscn": "THE RV",
+	"res://scenes/arena_pallet_town.tscn": "PALLET TOWN",
+	"res://scenes/arena_backrooms.tscn": "THE BACKROOMS",
 }
 ## The combat maps: what end-of-match votes, moderators and hosts choose between.
 const COMBAT_MAPS := [
@@ -70,6 +78,14 @@ const COMBAT_MAPS := [
 	"res://scenes/arena_enterprise.tscn",
 	"res://scenes/arena_gotham.tscn",
 	"res://scenes/arena_chess.tscn",
+	"res://scenes/arena_jungle_gym.tscn",
+	"res://scenes/arena_parthenon.tscn",
+	"res://scenes/arena_eden.tscn",
+	"res://scenes/arena_infinity_castle.tscn",
+	"res://scenes/arena_toilet.tscn",
+	"res://scenes/arena_rv.tscn",
+	"res://scenes/arena_pallet_town.tscn",
+	"res://scenes/arena_backrooms.tscn",
 ]
 ## The map each online server runs, in the same order as SERVER_URLS. A server finds its
 ## own entry from Render's RENDER_EXTERNAL_HOSTNAME; a MAP env var ("sprawl" or
@@ -84,9 +100,13 @@ const CONNECT_TIMEOUT := 8.0
 const SERVER_WAKE_TIMEOUT := 100.0
 const SERVER_RETRY_DELAY := 3.0
 
-## Game modes: every man for himself, or two teams (no friendly fire, team kills win).
-const MODES := ["ffa", "teams"]
-const MODE_NAMES := {"ffa": "FREE FOR ALL", "teams": "TEAM DEATHMATCH"}
+## Game modes (rules in arena.gd): every man for himself; two teams (no friendly fire,
+## team kills win); King of the Hill (most time on the hill in 5 minutes); Gun Game (a new
+## random weapon every kill, first to 15); Juggernaut (1000 health, no healing, every
+## weapon, first to 15).
+const MODES := ["ffa", "teams", "koth", "gungame", "juggernaut"]
+const MODE_NAMES := {"ffa": "FREE FOR ALL", "teams": "TEAM DEATHMATCH", "koth": "KING OF THE HILL",
+	"gungame": "GUN GAME", "juggernaut": "JUGGERNAUT"}
 const TEAM_NAMES := ["RED", "BLUE"]
 const TEAM_COLORS := [Color(1.0, 0.32, 0.26), Color(0.28, 0.58, 1.0)]
 

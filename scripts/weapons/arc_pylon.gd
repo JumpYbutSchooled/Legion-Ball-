@@ -14,6 +14,17 @@ func _build() -> void:
 		add_blade(side, 0.0, shape)
 
 
+## Our pylon was parried (arena.gd): it shatters.
+func break_pylon() -> void:
+	if not _pylon or not is_instance_valid(_pylon):
+		return
+	var at := _pylon.global_position + Vector3.UP * 1.3
+	manager.spawn_explosion({"position": at, "color": color, "radius": 2.5, "damage": 0.0, "force": 0.0,
+		"spark_count": 80, "chunk_count": 14, "light_energy": 60.0, "warp_strength": 0.15, "sound": "zap"})
+	manager.despawn_node(_pylon)
+	_pylon = null
+
+
 func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta: float) -> void:
 	if not just or not can_fire():
 		return

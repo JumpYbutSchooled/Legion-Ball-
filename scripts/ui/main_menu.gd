@@ -2,6 +2,7 @@ extends Control
 ## Main menu: simulation-grid backdrop, a glitching title, and the shared menu panels.
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
+const PadScroll := preload("res://scripts/ui/pad_scroll.gd")
 const MenuUI := preload("res://scripts/ui/menu_ui.gd")
 const GridShader := preload("res://shaders/sim_grid.gdshader")
 const Services := preload("res://scripts/services.gd")
@@ -98,6 +99,7 @@ func _whats_new() -> void:
 		box.add_child(UIStyle.label("WHAT'S NEW SINCE v%s" % seen, 13, UIStyle.TEXT_DIM))
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	PadScroll.attach(scroll)
 	scroll.custom_minimum_size = Vector2(0, mini(120 + news.size() * 70, 360))
 	box.add_child(scroll)
 	var list := VBoxContainer.new()

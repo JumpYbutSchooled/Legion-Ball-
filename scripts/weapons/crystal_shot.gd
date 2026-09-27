@@ -37,7 +37,7 @@ var carry := false
 ## Arbalest: a target shoved into a wall (one within PIN_REACH behind it, along the shove)
 ## is pinned to it for this long, the moment it would get there.
 var pin := 0.0
-const PIN_REACH := 14.0
+const PIN_REACH := 22.0
 ## Roughly how fast a shoved target flies (m/s): when the pin lands.
 const PIN_FLIGHT_SPEED := 35.0
 ## Only leave spawn_script behind if it struck something (Prism Cage).

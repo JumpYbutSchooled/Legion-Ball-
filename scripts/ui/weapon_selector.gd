@@ -106,7 +106,7 @@ func _input_blocked() -> bool:
 
 
 func _browse(step: int) -> void:
-	var total := WeaponInfo.unlocked_count(get_tree())
+	var total: int = weapon.call("unlocked_count")
 	if not _open:
 		_open = true
 		_candidate = weapon.get("current")
@@ -160,7 +160,7 @@ func _refresh() -> void:
 
 
 func _count() -> int:
-	return maxi(WeaponInfo.unlocked_count(get_tree()), 1)
+	return maxi(int(weapon.call("unlocked_count")) if weapon else WeaponInfo.LOADOUT_SIZE, 1)
 
 
 ## The wheel: a slowly turning tick ring, one thin segment per slot with its number (the

@@ -5,6 +5,12 @@ signal dashed
 signal jumped
 ## Emitted after the ball is put back at the start (R key or falling off).
 signal respawned
+## A rush (start_rush: Hyper Dash, Asprint) ended at `pos`: into a wall, into `hit` (a
+## player or target it reached), or out of time (`hit` null for walls and time).
+signal rush_ended(pos: Vector3, hit: Node3D, into_wall: bool)
+## Looping maps (map_builder.gd wrap) moved the ball by `offset`, speed kept: the camera
+## and trail jump with it.
+signal wrapped(offset: Vector3)
 
 const DashLaser := preload("res://scripts/dash_laser.gd")
 const ShieldScript := preload("res://scripts/shield.gd")
@@ -315,6 +321,16 @@ func take_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
 		arena.call("request_hit", player_id(), amount * PVP_DAMAGE_SCALE)
 
 
+## An Arc Pylon's zap from rom: an ordinary hit, except a raised shield breaks the
+## pylon instead of stunning whoever planted it (the host decides; arena.gd).
+func take_pylon_hit(amount: float, from: Vector3) -> void:
+	if is_blocking():
+		_shield.call("hit_flash")
+	var arena := _arena()
+	if arena:
+		arena.call("request_pylon_zap", player_id(), amount * PVP_DAMAGE_SCALE, from)
+
+
 ## A Tears of an Angel missile: an ordinary hit, except that parrying it kills whoever
 ## fired it (the host decides; arena.gd).
 func take_tears_hit(amount: float, _pos: Vector3, _dir: Vector3) -> void:
@@ -515,11 +531,21 @@ func _online() -> bool:
 	return net != null and net.get("online")
 
 
+## When this player's Hunter mark (Hunter's Sigil, Swarm) runs out: shown on everyone's
+## minimap until then (ui/minimap.gd).
+var _marked_until := 0.0
+
+
+func is_marked_now() -> bool:
+	return Time.get_ticks_msec() / 1000.0 < _marked_until
+
+
 ## Glow the ball to show a status (every computer): "mark" violet, "stagger" gold.
 func show_status(kind: String, duration: float) -> void:
 	match kind:
 		"mark":
 			_status_color = Color(0.6, 0.35, 1.0)
+			_marked_until = maxf(_marked_until, Time.get_ticks_msec() / 1000.0 + duration)
 		"chill", "cage":
 			_status_color = Color(0.5, 0.85, 1.0)
 		"pull":
@@ -553,12 +579,22 @@ func _update_status_glow(delta: float) -> void:
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if not is_multiplayer_authority():
 		return
+	if _wrap_offset != Vector3.ZERO:
+		var moved := state.transform
+		moved.origin += _wrap_offset
+		state.transform = moved
+		wrapped.emit.call_deferred(_wrap_offset)
+		_wrap_offset = Vector3.ZERO
+		_last_safe = Vector3.INF
+		reset_physics_interpolation()
+	_guard_tunnel(state)
 	if _reset_requested:
 		_reset_requested = false
 		_dash_requested = false
 		state.transform = Transform3D(Basis.IDENTITY, _start_position)
 		state.linear_velocity = Vector3.ZERO
 		state.angular_velocity = Vector3.ZERO
+		_last_safe = Vector3.INF
 		reset_physics_interpolation()
 		# Back up top: a fall from here on is a new one.
 		_fall_reported = false
@@ -570,6 +606,7 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		state.linear_velocity = Vector3.ZERO
 		state.angular_velocity = Vector3.ZERO
 		_teleport_to = Vector3.INF
+		_last_safe = Vector3.INF
 		_dash_requested = false
 		reset_physics_interpolation()
 		return
@@ -580,6 +617,12 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		_dash_requested = false
 		state.linear_velocity = -state.total_gravity * state.step
 		state.angular_velocity = Vector3.ZERO
+		return
+
+	if _rush_time > 0.0:
+		_dash_requested = false
+		_knockback = Vector3.ZERO
+		_rush_step(state)
 		return
 
 	if _knockback != Vector3.ZERO:
@@ -635,6 +678,113 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if state.transform.origin.y > max_height and v.y > 0.0:
 		v.y *= 0.8
 	state.linear_velocity = v
+
+
+## Looping maps: move by this much at the next physics step, keeping the speed.
+var _wrap_offset := Vector3.ZERO
+
+
+func wrap_by(offset: Vector3) -> void:
+	_wrap_offset += offset
+
+
+# --- Rush (Hyper Dash, Asprint) ------------------------------------------------------
+
+var _rush_time := 0.0
+var _rush_dir := Vector3.ZERO
+var _rush_speed := 0.0
+var _rush_target: Node3D = null
+var _rush_homing := false
+
+
+## Fly at `speed` along `dir` (or homing on `target`) for up to `max_time` seconds,
+## ignoring gravity, the dash and knockback, until hitting a wall or a player (or the
+## target). rush_ended says how it ended. Owner's computer only.
+func start_rush(dir: Vector3, speed: float, max_time: float, target: Node3D = null) -> void:
+	_rush_dir = dir.normalized() if dir.length() > 0.01 else -global_basis.z
+	_rush_speed = speed
+	_rush_time = max_time
+	_rush_target = target
+	_rush_homing = target != null
+
+
+func is_rushing() -> bool:
+	return _rush_time > 0.0
+
+
+func _rush_step(state: PhysicsDirectBodyState3D) -> void:
+	_rush_time -= state.step
+	var origin := state.transform.origin
+	if _rush_homing:
+		if not is_instance_valid(_rush_target) or not _rush_target.call("is_alive"):
+			_end_rush(state, null, false)
+			return
+		var to: Vector3 = (_rush_target.call("get_aim_point") as Vector3) - origin
+		if to.length() < 2.4:
+			_end_rush(state, _rush_target, false)
+			return
+		_rush_dir = to.normalized()
+	else:
+		# Straight line: any other player (or target) in the way stops it.
+		for t in get_tree().get_nodes_in_group("lock_targets"):
+			if t != self and t.call("is_alive") and ((t.call("get_aim_point") as Vector3) - origin).length() < 2.4:
+				_end_rush(state, t, false)
+				return
+	var reach := _radius + _rush_speed * state.step + 0.3
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + _rush_dir * reach, collision_mask, [get_rid()])
+	var wall := state.get_space_state().intersect_ray(query)
+	if not wall.is_empty():
+		var hit: Object = wall["collider"]
+		_end_rush(state, hit as Node3D if hit.has_method("take_hit") else null, not hit.has_method("take_hit"))
+		return
+	if _rush_time <= 0.0:
+		_end_rush(state, null, false)
+		return
+	state.linear_velocity = _rush_dir * _rush_speed
+	state.angular_velocity = Vector3.UP.cross(_rush_dir) * _rush_speed / _radius
+
+
+func _end_rush(state: PhysicsDirectBodyState3D, hit: Node3D, into_wall: bool) -> void:
+	_rush_time = 0.0
+	_rush_target = null
+	# Most of the speed is spent on the impact.
+	state.linear_velocity = _rush_dir * _rush_speed * (0.05 if into_wall else 0.25)
+	rush_ended.emit.call_deferred(state.transform.origin, hit, into_wall)
+
+
+## Where the ball's centre was last physics step. A hard hit from another ball at speed
+## can shove the ball through a thin floor or wall (the solver pushes it out the wrong
+## side). If the centre crossed a surface since last step, put it back on the side it
+## came from, with its speed into that surface removed.
+var _last_safe := Vector3.INF
+
+
+func _guard_tunnel(state: PhysicsDirectBodyState3D) -> void:
+	var pos := state.transform.origin
+	var from := _last_safe
+	_last_safe = pos
+	if from == Vector3.INF:
+		return
+	var moved := pos - from
+	# Teleports (respawns, map portals, staff tools) jump much further than a step's motion.
+	var expected := maxf(state.linear_velocity.length(), top_speed) * state.step
+	if moved.length_squared() < 0.0001 or moved.length() > expected * 3.0 + 2.0:
+		return
+	var query := PhysicsRayQueryParameters3D.create(from, pos, collision_mask, [get_rid()])
+	var hit := state.get_space_state().intersect_ray(query)
+	if hit.is_empty() or not hit["collider"] is StaticBody3D:
+		return
+	var normal: Vector3 = hit["normal"]
+	if moved.dot(normal) >= 0.0:
+		return
+	var fixed := state.transform
+	fixed.origin = hit["position"] + normal * (_radius + 0.02)
+	state.transform = fixed
+	var v := state.linear_velocity
+	var into := v.dot(normal)
+	if into < 0.0:
+		state.linear_velocity = v - normal * into
+	_last_safe = fixed.origin
 
 
 ## Flying: glide toward where WASD points relative to the camera (up and down included),

@@ -4,10 +4,12 @@ extends CanvasLayer
 ## arena's signals and the Net roster. Added by the arena for the local player online.
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
+const Rainbow := preload("res://scripts/ui/rainbow.gd")
 const ModScript := preload("res://scripts/net/moderation.gd")
 const Killstreak := preload("res://scripts/ui/killstreak.gd")
 const NetScript := preload("res://scripts/net/net.gd")
 const MapGrid := preload("res://scripts/ui/map_grid.gd")
+const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const FEED_TIME := 5.0
 const FEED_MAX := 5
 
@@ -38,6 +40,8 @@ var _vote_left := 0.0
 var _vote_title: Label
 ## Team game: the score across the top.
 var _team_label: RichTextLabel
+## King of the Hill / Gun Game / Juggernaut: the mode's line across the top.
+var _mode_label: Label
 
 
 func _ready() -> void:
@@ -94,6 +98,14 @@ func _ready() -> void:
 	var mod_node := get_tree().root.get_node_or_null("Mod")
 	if mod_node:
 		mod_node.connect("announced", _on_announced)
+	_mode_label = UIStyle.label("", 16, Color(1.0, 0.78, 0.25), true)
+	_mode_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mode_label.custom_minimum_size = Vector2(900, 0)
+	_mode_label.position = Vector2(-450, 64)
+	_mode_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_mode_label.add_theme_constant_override("outline_size", 5)
+	root.add_child(_mode_label)
 
 	# Killstreak skull, top-centre.
 	_streak = Killstreak.new()
@@ -183,6 +195,36 @@ func _process(delta: float) -> void:
 	if _vote_box.visible:
 		_vote_left = maxf(_vote_left - delta, 0.0)
 		_refresh_vote()
+	_update_mode_line()
+
+
+## The mode's own line under the top of the screen (nothing for FFA / teams).
+func _update_mode_line() -> void:
+	var mode: String = arena.call("game_mode") if arena else "ffa"
+	var me := multiplayer.get_unique_id()
+	var roster: Dictionary = _net.get("players") if _net else {}
+	var mine: Dictionary = roster.get(me, {})
+	var goal := int(arena.call("get_rules")["kills_to_win"])
+	match mode:
+		"koth":
+			var left := int(arena.call("koth_time_left"))
+			var leader := -1
+			for id in roster:
+				if leader < 0 or int(roster[id].get("score", 0)) > int(roster[leader].get("score", 0)):
+					leader = id
+			var text := "KING OF THE HILL  //  %d:%02d LEFT  //  YOU %ds" % [left / 60, left % 60, int(mine.get("score", 0))]
+			if leader >= 0 and leader != me:
+				text += "  //  LEADER %s %ds" % [_name(leader), int(roster[leader].get("score", 0))]
+			if arena.call("on_hill", me):
+				text += "  //  ON THE HILL"
+			_mode_label.text = text
+		"gungame":
+			var gun := WeaponInfo.by_id(String(mine.get("gun", "")))
+			_mode_label.text = "GUN GAME  //  %s  //  KILLS %d / %d" % [String(gun.get("name", "?")), int(mine.get("kills", 0)), goal]
+		"juggernaut":
+			_mode_label.text = "JUGGERNAUT  //  NO HEALING  //  KILLS %d / %d" % [int(mine.get("kills", 0)), goal]
+		_:
+			_mode_label.text = ""
 
 
 ## One line of whatever staff have imposed on us: frozen, weapons locked or restricted,
@@ -341,6 +383,11 @@ func _on_killed(victim: int, attacker: int) -> void:
 	# Nobody to blame (fell off the map): "NAME  >>  THE VOID".
 	var solo := attacker == victim
 	var text := "%s  >>  THE VOID" % _name(victim) if solo else "%s  >>  %s" % [_name(attacker), _name(victim)]
+	# The weapon that did it (the killer's held weapon, host's view).
+	var weapon := String(arena.get("last_kill_weapon")) if arena else ""
+	if not solo and weapon != "":
+		var info := WeaponInfo.by_id(weapon)
+		text = "%s  [%s]  %s" % [_name(attacker), String(info.get("name", weapon)).to_upper(), _name(victim)]
 	var line := UIStyle.label(text, 15, Color.WHITE)
 	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	line.custom_minimum_size = Vector2(356, 0)
@@ -405,15 +452,19 @@ func _rebuild_board() -> void:
 	for child in _board_rows.get_children():
 		child.queue_free()
 	var rules: Dictionary = arena.call("get_rules")
-	var teams: bool = rules.get("mode", "ffa") == "teams"
+	var mode: String = rules.get("mode", "ffa")
+	var teams := mode == "teams"
+	var koth := mode == "koth"
 	var time := int(arena.call("match_time"))
-	_board_rows.add_child(UIStyle.label("// SCOREBOARD  //  %s  //  FIRST TO %d" % [NetScript.MODE_NAMES["teams" if teams else "ffa"], int(rules["kills_to_win"])], 16, UIStyle.ACCENT, true))
+	var goal := "MOST HILL TIME IN %d:00" % int(rules.get("koth_time", 300.0) / 60.0) if koth else "FIRST TO %d" % int(rules["kills_to_win"])
+	_board_rows.add_child(UIStyle.label("// SCOREBOARD  //  %s  //  %s" % [NetScript.MODE_NAMES.get(mode, "FREE FOR ALL"), goal], 16, UIStyle.ACCENT, true))
 	_board_rows.add_child(UIStyle.label("MATCH TIME  %02d:%02d" % [time / 60, time % 60], 14, UIStyle.TEXT))
 	if not _net:
 		return
 	var roster: Dictionary = _net.get("players")
 	var ids := roster.keys()
-	ids.sort_custom(func(a: int, b: int) -> bool: return int(roster[a]["kills"]) > int(roster[b]["kills"]))
+	var key := "score" if koth else "kills"
+	ids.sort_custom(func(a: int, b: int) -> bool: return int(roster[a].get(key, 0)) > int(roster[b].get(key, 0)))
 	if not teams:
 		for id in ids:
 			_board_row(id, roster)
@@ -440,8 +491,12 @@ func _board_row(id: int, roster: Dictionary) -> void:
 	var tag := "[%s]" % title[0] if not title.is_empty() else ("[BOT]" if roster[id].get("bot", false) else "")
 	var title_label := UIStyle.label(tag, 13, title[1] if not title.is_empty() else UIStyle.TEXT_DIM)
 	title_label.custom_minimum_size = Vector2(90, 0)
+	Rainbow.set_on(title_label, not title.is_empty() and ModScript.is_rainbow_title(title[0]))
 	row.add_child(title_label)
-	row.add_child(UIStyle.label("%3d K   %3d D" % [int(roster[id]["kills"]), int(roster[id]["deaths"])], 16, UIStyle.TEXT))
+	var stats := "%3d K   %3d D" % [int(roster[id]["kills"]), int(roster[id]["deaths"])]
+	if arena and arena.call("game_mode") == "koth":
+		stats += "   %3ds HILL" % int(roster[id].get("score", 0))
+	row.add_child(UIStyle.label(stats, 16, UIStyle.TEXT))
 	_board_rows.add_child(row)
 
 func _name(id: int) -> String:

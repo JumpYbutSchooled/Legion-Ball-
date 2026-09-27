@@ -12,6 +12,10 @@ extends Node3D
 ## A map can be built bigger than it's written: override map_size() (2 = twice as big in
 ## every direction). Everything the builder makes, the lights, spawns, turrets, outline,
 ## ceiling and fall height all scale with it; sp() scales a point for anything else.
+## A map can loop (Infinity Castle, the Backrooms): set _wrap to its size on the axes it
+## repeats along (0 = doesn't). Cross an edge and you come out of the opposite one at the
+## same speed; copies of the map all round make it look endless. The map is centred on
+## the origin along every wrapped axis.
 ## Randomness must come from a fixed seed (_rng) so every computer builds the same map.
 ## Builds in _ready, which runs before the parent Map's, so Map's particle colliders
 ## cover all of it.
@@ -28,6 +32,10 @@ var _rng := RandomNumberGenerator.new()
 var _phys := PhysicsMaterial.new()
 ## How much bigger than written this map is built (map_size()).
 var map_scale := 1.0
+## Looping maps: the size the map repeats at along each axis (0 = no loop). See above.
+var _wrap := Vector3.ZERO
+## How close to an edge (m) a piece has to be to be solid on the far side too.
+const WRAP_MARGIN := 12.0
 
 
 func _ready() -> void:
@@ -36,6 +44,9 @@ func _ready() -> void:
 	_build()
 	if map_scale != 1.0:
 		_scale_the_rest()
+	if _wrap != Vector3.ZERO:
+		_make_wrap_copies()
+	set_physics_process(_wrap != Vector3.ZERO)
 
 
 ## Overridden by maps that are built bigger than they're written.
@@ -73,6 +84,7 @@ func _scale_the_rest() -> void:
 		_outline[i] *= map_scale
 	_ceiling *= map_scale
 	_fall *= map_scale
+	_wrap *= map_scale
 
 
 ## Overridden by each map.
@@ -98,6 +110,76 @@ func ceiling() -> float:
 
 func fall_height() -> float:
 	return _fall
+
+
+# --- Looping ------------------------------------------------------------------------------
+
+## Copies of the map in every neighbouring cell: looks only, except pieces near an edge,
+## which are solid in the neighbour too (so a floor carries on across the seam).
+func _make_wrap_copies() -> void:
+	var offsets: Array[Vector3] = []
+	for ix in ([-1, 0, 1] if _wrap.x > 0.0 else [0]):
+		for iy in ([-1, 0, 1] if _wrap.y > 0.0 else [0]):
+			for iz in ([-1, 0, 1] if _wrap.z > 0.0 else [0]):
+				if ix != 0 or iy != 0 or iz != 0:
+					offsets.append(Vector3(ix * _wrap.x, iy * _wrap.y, iz * _wrap.z))
+	var half := _wrap / 2.0
+	for node in get_children():
+		var body := node as StaticBody3D
+		var mesh: MeshInstance3D = node as MeshInstance3D
+		if body:
+			for c in body.get_children():
+				if c is MeshInstance3D:
+					mesh = c
+		if not mesh:
+			continue
+		var reach := 0.0
+		if body:
+			for c in body.get_children():
+				var shape := c as CollisionShape3D
+				if shape and shape.shape is BoxShape3D:
+					reach = (shape.shape as BoxShape3D).size.length() / 2.0
+		for off in offsets:
+			var at: Vector3 = (body.transform.origin if body else mesh.transform.origin) + off
+			var near := true
+			for axis in 3:
+				if _wrap[axis] > 0.0 and absf(at[axis]) > half[axis] + WRAP_MARGIN + reach:
+					near = false
+			if body and near:
+				var solid_copy := body.duplicate() as StaticBody3D
+				solid_copy.transform.origin = at
+				add_child(solid_copy)
+			else:
+				var look := MeshInstance3D.new()
+				look.mesh = mesh.mesh
+				look.material_override = mesh.material_override
+				look.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				look.transform = (body.transform if body else mesh.transform) * (mesh.transform if body else Transform3D.IDENTITY)
+				look.transform.origin = at if not body else look.transform.origin + off
+				add_child(look)
+
+
+## Anyone this computer moves (its own ball, the host's bots) who crossed an edge comes
+## out of the opposite one.
+func _physics_process(_delta: float) -> void:
+	var players := get_node_or_null("../../Players")
+	if not players:
+		return
+	var half := _wrap / 2.0
+	for ball in players.get_children():
+		if not ball.is_multiplayer_authority() or not ball.has_method("wrap_by") or ball.get("_wrap_offset") != Vector3.ZERO:
+			continue
+		var p: Vector3 = (ball as Node3D).global_position
+		var shift := Vector3.ZERO
+		for axis in 3:
+			if _wrap[axis] <= 0.0:
+				continue
+			if p[axis] > half[axis]:
+				shift[axis] = -_wrap[axis]
+			elif p[axis] < -half[axis]:
+				shift[axis] = _wrap[axis]
+		if shift != Vector3.ZERO:
+			ball.call("wrap_by", shift)
 
 
 # --- Pieces ---------------------------------------------------------------------------

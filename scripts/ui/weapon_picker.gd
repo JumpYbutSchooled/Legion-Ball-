@@ -7,6 +7,7 @@ extends Control
 signal picked(slot: int, id: String)
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
+const PadScroll := preload("res://scripts/ui/pad_scroll.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const WeaponIcons := preload("res://scripts/ui/weapon_icons.gd")
 const TILE := 72.0
@@ -51,6 +52,7 @@ func _ready() -> void:
 
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	PadScroll.attach(scroll)
 	scroll.custom_minimum_size = Vector2(8 * (TILE + 8) + 24, minf(get_viewport_rect().size.y - 220.0, 620.0))
 	column.add_child(scroll)
 	var groups := VBoxContainer.new()

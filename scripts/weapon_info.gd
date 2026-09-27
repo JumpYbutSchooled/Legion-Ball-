@@ -300,7 +300,7 @@ const WEAPONS := {
 		"summary": "3-round hitscan bursts that punch through every player in a line.",
 		"combo": "Line them up with GRAVITY WELL."},
 	"arbalest": {"built": true, "script": "res://scripts/weapons/arbalest.gd",
-		"usage": ["LMB  fire a heavy bolt that shoves hard", "Very fast bolt that homes on the lock and shoves hard", "A wall behind them (14m): slammed into it and PINNED for 1.5s", "0.9s cooldown"],
+		"usage": ["LMB  fire a heavy bolt that shoves hard", "Very fast bolt that homes on the lock and shoves hard", "A wall behind them (22m): slammed into it and PINNED for 2s", "0.9s cooldown"],
 		"name": "ARBALEST", "tag": "HEAVY BOLT", "group": "marksman",
 		"color": Color(0.7, 0.35, 0.1), "layout": "A crossbow: a horizontal bow of two blades over one straight stock.",
 		"summary": "A heavy bolt; anyone it knocks into a wall is pinned there (staggered).",
@@ -330,7 +330,36 @@ const WEAPONS := {
 		"color": Color(0.1, 1.0, 0.8), "layout": "Two long streamers trailing from the back.",
 		"summary": "Leave a trail that speeds you up and cuts enemies who cross it.",
 		"combo": "Loop your trail round a fight with BUZZSAW."},
-
+	"plasma_net": {"built": true, "script": "res://scripts/weapons/plasma_net.gd",
+		"usage": ["LMB  fire a huge hexagon net ~50m ahead (or at the first wall)", "It hangs in mid-air for 20s", "Any foe that touches it is STUNNED for 4s", "12s cooldown; firing again replaces it"],
+		"name": "PLASMA NET", "tag": "HANGING SNARE", "group": "fortress",
+		"color": Color(0.25, 1.0, 0.75), "layout": "Two long blades spread wide like a net-gun's arms.",
+		"summary": "Fire a large net that lingers in the air and stuns whoever flies into it.",
+		"combo": "Net a choke point, then SHARD MORTAR whoever gets caught."},
+	"fibonacci_cannon": {"built": true, "script": "res://scripts/weapons/fibonacci_cannon.gd",
+		"usage": ["LMB (hold)  10 rounds, infinite range", "Damage follows Fibonacci: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34", "Fires faster as the magazine empties", "Empty: 5s reload"],
+		"name": "FIBONACCI CANNON", "tag": "GOLDEN RATIO", "group": "marksman",
+		"color": Color(1.0, 0.78, 0.25), "layout": "A spiral of five blades, each longer than the last.",
+		"summary": "Every shot hits harder than the last, all the way to 34.",
+		"combo": "Tag them with HUNTER'S SIGIL before the big numbers."},
+	"hyper_dash": {"built": true, "script": "res://scripts/weapons/hyper_dash.gd",
+		"usage": ["HOLD LMB 3s  charge a super dash", "Release at full charge: fly where you look at top speed", "Dash and other weapons are off until you hit something", "Hit a wall or a player: a big explosion"],
+		"name": "HYPER DASH", "tag": "SUPER DASH", "group": "momentum",
+		"color": Color(0.3, 0.6, 1.0), "layout": "Four blades swept back like a jet's wings.",
+		"summary": "Charge up and blast yourself into foes at full speed.",
+		"combo": "Line it up through a PLASMA NET catch."},
+	"air_burst": {"built": true, "script": "res://scripts/weapons/air_burst.gd",
+		"usage": ["LMB  a small speed boost for you", "...and a short-range homing shot at the lock", "It hits them with your velocity: faster = harder"],
+		"name": "AIR BURST", "tag": "VELOCITY TRANSFER", "group": "momentum",
+		"color": Color(0.7, 0.95, 1.0), "layout": "Two short fins flared out behind the ball.",
+		"summary": "Transfers your velocity to the person you hit.",
+		"combo": "Get fast with SLIPSTREAM, then hand it all over."},
+	"asprint": {"built": true, "script": "res://scripts/weapons/asprint.gd",
+		"usage": ["Lock a foe, LMB  go to top speed and fly at them", "You home in on them: you are the bullet", "Heavy hit and a big throw on impact", "Needs a lock; 9s cooldown"],
+		"name": "ASPRINT", "tag": "HUMAN BULLET", "group": "momentum",
+		"color": Color(1.0, 0.3, 0.5), "layout": "One long spike straight ahead, like a lance.",
+		"summary": "Instant top speed, locked onto a foe: you fly at them as the bullet.",
+		"combo": "Follow up with VELOCITY CANNON while you're still fast."},
 	# --- Staff ("god") weapons: always white, never in the pool ------------------------
 	"rain_of_god": {
 		"name": "RAIN OF GOD", "tag": "STAFF // FIFTY GUNS", "access": "mod", "built": true,
@@ -410,21 +439,35 @@ static func partners(id: String) -> Array:
 	return in_group(g).filter(func(o: String) -> bool: return o != id) if g != "" else []
 
 
-## A usable loadout from anything: LOADOUT_SIZE unique, built pool weapons, gaps filled
-## from the default.
-static func valid_loadout(ids) -> Array:
+## A usable loadout from anything: `size` (LOADOUT_SIZE unless a game mode says otherwise)
+## unique, built pool weapons, gaps filled from the default, then the rest of the pool.
+static func valid_loadout(ids, size := LOADOUT_SIZE) -> Array:
 	var out: Array = []
 	if typeof(ids) == TYPE_ARRAY or typeof(ids) == TYPE_PACKED_STRING_ARRAY:
 		for id in ids:
 			var s := String(id)
-			if out.size() < LOADOUT_SIZE and not out.has(s) and not is_staff(s) and is_built(s):
+			if out.size() < size and not out.has(s) and not is_staff(s) and is_built(s):
 				out.append(s)
-	for id in DEFAULT_LOADOUT:
-		if out.size() >= LOADOUT_SIZE:
+	for id in DEFAULT_LOADOUT + built_pool():
+		if out.size() >= size:
 			break
 		if not out.has(id):
 			out.append(id)
 	return out
+
+
+## Every built pool weapon (Juggernaut carries them all).
+static func built_pool() -> Array:
+	return pool().filter(func(id: String) -> bool: return is_built(id))
+
+
+## Pool weapons that can't hurt anyone on their own (Gun Game skips them).
+const NO_DAMAGE := ["time_dilator", "hunters_sigil", "jet_crystals", "winglets", "crystal_wall", "mirage"]
+
+
+## Built pool weapons that deal damage (what Gun Game hands out).
+static func damaging_pool() -> Array:
+	return built_pool().filter(func(id: String) -> bool: return not NO_DAMAGE.has(id))
 
 
 ## How many of each group a loadout has: {group: count}.
@@ -454,17 +497,17 @@ static func local_loadout(tree: SceneTree) -> Array:
 
 
 ## Every weapon a ball carries, by slot: the loadout, then the staff weapons.
-static func slot_ids(loadout: Array) -> Array:
-	return valid_loadout(loadout) + STAFF
+static func slot_ids(loadout: Array, size := LOADOUT_SIZE) -> Array:
+	return valid_loadout(loadout, size) + STAFF
 
 
 ## How many slots (from the first) this player may use right now: the loadout, then the
 ## staff weapons their role unlocks (none while hidden with key 0).
-static func unlocked_count(tree: SceneTree) -> int:
+static func unlocked_count(tree: SceneTree, size := LOADOUT_SIZE) -> int:
 	var role := weapon_role(tree)
 	var settings := tree.root.get_node_or_null("Settings") if tree else null
 	var shown: bool = settings.call("get_value", "show_staff_weapons") if settings else true
-	var n := LOADOUT_SIZE
+	var n := size
 	for id in STAFF:
 		if not shown or not ACCESS[by_id(id)["access"]].has(role):
 			break

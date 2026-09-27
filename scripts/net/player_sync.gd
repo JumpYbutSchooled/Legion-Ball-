@@ -6,6 +6,7 @@ extends Node
 ## Also places the floating name tag over other players' balls.
 
 const ModScript := preload("res://scripts/net/moderation.gd")
+const Rainbow := preload("res://scripts/ui/rainbow.gd")
 const SEND_RATE := 30.0
 ## How quickly remote balls catch up to the received state.
 const SMOOTHING := 18.0
@@ -70,6 +71,8 @@ func _refresh_name() -> void:
 	_title_text = "[%s]" % title[0] if not title.is_empty() else ""
 	if _title and not title.is_empty():
 		_title.modulate = title[1]
+	if _title:
+		Rainbow.set_on(_title, not title.is_empty() and ModScript.is_rainbow_title(title[0]))
 
 
 func _physics_process(delta: float) -> void:

@@ -10,6 +10,8 @@ extends Node3D
 
 signal health_changed(id: int, hp: float)
 signal player_killed(victim: int, attacker: int)
+## Weapon id of the kill player_killed is about to report ("" = none: the void, staff).
+var last_kill_weapon := ""
 signal player_respawned(id: int)
 signal match_over(winner: int)
 ## End-of-match vote: the map choices (scene paths, plus "random") opened, and who has
@@ -27,6 +29,7 @@ const LocalViewScene := preload("res://scenes/local_view.tscn")
 const HudScript := preload("res://scripts/ui/hud.gd")
 const ShardBurst := preload("res://scripts/shard_burst.gd")
 const MapIntro := preload("res://scripts/map_intro.gd")
+const HillScript := preload("res://scripts/koth_hill.gd")
 const Turrets := preload("res://scripts/turrets.gd")
 const SettingsScript := preload("res://scripts/settings.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
@@ -52,6 +55,10 @@ const PARRY_STUN := 5.0
 ## Health the killer gets back for each kill (capped at MAX_HEALTH).
 const KILL_HEAL := 30.0
 const KILLS_TO_WIN := 15
+## Juggernaut: everyone's full health (and no healing at all).
+const JUGGERNAUT_HEALTH := 1000.0
+## King of the Hill: seconds a round lasts; most seconds on the hill wins.
+const KOTH_TIME := 300.0
 ## Team game: the first team to this many kills wins.
 const TEAM_KILLS_TO_WIN := 30
 ## Seconds the winner banner (and the vote for the next map) shows before the next round.
@@ -100,6 +107,15 @@ var _match_start := 0
 ## This arena was loaded for an online match (so losing the connection means we're
 ## leaving: never fall back to spawning a practice player).
 var _started_online := false
+## Gun Game (host): players already handed their first weapon this round.
+var _gun_given := {}
+## King of the Hill: the hill (everyone gets it from the host; radius 0 = no hill), each
+## player's seconds on it (host), and the next time the scores go out.
+var hill_pos := Vector3.ZERO
+var hill_radius := 0.0
+var _hill_time := {}
+var _hill_push := 0.0
+var _hill_node: Node3D
 
 
 func _ready() -> void:
@@ -134,6 +150,8 @@ func _start(net: Node) -> void:
 				get_node(practice).queue_free()
 		net.connect("roster_changed", _sync_players)
 	_sync_players()
+	if net.get("online") and multiplayer.is_server() and game_mode() == "koth":
+		_place_hill.call_deferred()
 	# AI turrets wherever the map wants them (Map/Layout.turret_points()).
 	var layout := get_node_or_null("Map/Layout")
 	if layout and layout.has_method("turret_points") and not (layout.call("turret_points") as Array).is_empty():
@@ -210,6 +228,12 @@ func _sync_players() -> void:
 
 ## A player's loadout (weapon ids for keys 1-6) from the roster.
 func loadout_of(id: int) -> Array:
+	match game_mode():
+		"juggernaut":
+			return WeaponInfo.built_pool()
+		"gungame":
+			var pool := WeaponInfo.damaging_pool()
+			return [String(_roster().get(id, {}).get("gun", pool[0]))]
 	return WeaponInfo.valid_loadout(_roster().get(id, {}).get("loadout", []))
 
 
@@ -224,7 +248,8 @@ func refresh_loadout(id: int) -> void:
 	var ball: Node = _players.get(id)
 	if not ball:
 		return
-	ball.get_node("Weapon").call("set_loadout", loadout_of(id))
+	var ids := loadout_of(id)
+	ball.get_node("Weapon").call("set_loadout", ids, ids.size())
 	_apply_set_perks(id)
 
 
@@ -262,7 +287,9 @@ func refresh_god_shields() -> void:
 ## Full health for id: MAX_HEALTH, unless the owner has set theirs (moderation.gd set_stats).
 func max_health_of(id: int) -> float:
 	var custom := float(_roster().get(id, {}).get("max_hp", 0.0))
-	return custom if custom > 0.0 else MAX_HEALTH
+	if custom > 0.0:
+		return custom
+	return JUGGERNAUT_HEALTH if game_mode() == "juggernaut" else MAX_HEALTH
 
 
 func _is_god(id: int) -> bool:
@@ -287,7 +314,9 @@ func _spawn(id: int, index: int) -> void:
 	if layout and layout.has_method("fall_height"):
 		ball.set("fall_reset_height", layout.call("fall_height"))
 	# Their own weapons (the roster's loadout), built when the ball is added.
-	ball.get_node("Weapon").set("loadout", loadout_of(id))
+	var ids := loadout_of(id)
+	ball.get_node("Weapon").set("loadout", ids)
+	ball.get_node("Weapon").set("loadout_size", ids.size())
 	_players_root.add_child(ball)
 	_apply_set_perks(id)
 	# A glowing trail behind the ball when it's going fast, in its player's colour.
@@ -357,7 +386,8 @@ func is_online() -> bool:
 func get_rules() -> Dictionary:
 	var teams := is_team_game()
 	return {"respawn_time": RESPAWN_TIME, "kills_to_win": _win_target(),
-		"max_health": MAX_HEALTH, "end_delay": END_DELAY, "mode": "teams" if teams else "ffa"}
+		"max_health": MAX_HEALTH, "end_delay": END_DELAY, "mode": "teams" if teams else game_mode(),
+		"koth_time": KOTH_TIME}
 
 
 ## Kills to win: KILLS_TO_WIN (TEAM_KILLS_TO_WIN in a team game), or a server's
@@ -425,6 +455,11 @@ func request_block(duration: float) -> void:
 ## Like request_hit, from a Tears of an Angel missile: parrying it kills the shooter.
 func request_tears_hit(victim: int, amount: float) -> void:
 	_to_host("_zztears_hit", [victim, amount])
+
+
+## An Arc Pylon at `from` zapped player `victim`: see _zzzpylon_zap.
+func request_pylon_zap(victim: int, amount: float, from: Vector3) -> void:
+	_to_host("_zzzpylon_zap", [victim, amount, from])
 
 
 ## A weapon put a status on player `victim` (chill, freeze, cage, pin, pull; weapon.gd
@@ -641,9 +676,11 @@ func _kill(victim: int, attacker: int) -> void:
 	_marks.erase(victim)
 	_last_hit.erase(victim)
 	_respawn_timers[victim] = RESPAWN_TIME
-	if attacker != victim and alive.get(attacker, false):
+	if attacker != victim and alive.get(attacker, false) and game_mode() != "juggernaut":
 		_set_health.rpc(attacker, minf(health.get(attacker, max_health_of(attacker)) + KILL_HEAL, max_health_of(attacker)))
-	_on_killed.rpc(victim, attacker)
+	_on_killed.rpc(victim, attacker, _held_weapon(attacker) if attacker != victim else "")
+	if credited and game_mode() == "gungame":
+		_give_gun(attacker)
 	if is_team_game():
 		# Team game: the killer's team scores; first to TEAM_KILLS_TO_WIN wins (winner is
 		# sent as -1 for red, -2 for blue).
@@ -655,6 +692,8 @@ func _kill(victim: int, attacker: int) -> void:
 				_on_match_over.rpc(-1 - team)
 				_end_timer = END_DELAY
 				_open_vote()
+	elif game_mode() == "koth":
+		pass  # The hill decides (_koth_tick).
 	elif credited and int(roster[attacker]["kills"]) >= _win_target():
 		_on_match_over.rpc(attacker)
 		_end_timer = END_DELAY
@@ -682,7 +721,19 @@ func _physics_process(delta: float) -> void:
 				_set_health.rpc(id, max_health_of(id))
 				_on_respawn.rpc(id, _safest_spawn())
 	if not match_done:
-		_heal_holstered(delta)
+		if game_mode() != "juggernaut":
+			_heal_holstered(delta)
+		if game_mode() == "koth":
+			_koth_tick(delta)
+		elif game_mode() == "gungame":
+			# Anyone still unarmed (joined while their roster entry was on its way).
+			_hill_push -= delta
+			if _hill_push <= 0.0:
+				_hill_push = 1.0
+				for id in _players:
+					if not _roster().get(id, {}).has("gun") or not _gun_given.has(id):
+						_gun_given[id] = true
+						_give_gun(id)
 	if _end_timer > 0.0:
 		_end_timer -= delta
 		if _end_timer <= 0.0:
@@ -818,6 +869,8 @@ func _bot_call(id: int, method: StringName, args: Array) -> void:
 			ball.call("on_parried", shooter.global_position if shooter else Vector3.INF)
 		"_zzparry_at":
 			ball.call("on_parried", args[0])
+		"_zzzpylon_broken":
+			_break_pylon(ball)
 		"_apply_stagger":
 			ball.call("stagger_controls", args[0])
 		"_zzapply_status":
@@ -835,8 +888,9 @@ func _set_health(id: int, hp: float) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _on_killed(victim: int, attacker: int) -> void:
+func _on_killed(victim: int, attacker: int, weapon: String) -> void:
 	alive[victim] = false
+	last_kill_weapon = weapon
 	var ball: Node3D = _players.get(victim)
 	if ball:
 		var burst := ShardBurst.new()
@@ -853,6 +907,13 @@ func _on_killed(victim: int, attacker: int) -> void:
 		get_tree().call_group("impact_frames", "trigger", ball.global_position, burst.color,
 			_kill_weapon(attacker), attacker == me or victim == me)
 	player_killed.emit(victim, attacker)
+
+
+## Host: the weapon id player `id` is holding ("" if unknown), for the kill feed.
+func _held_weapon(id: int) -> String:
+	var ball: Node = _players.get(id)
+	var weapon := ball.get_node_or_null("Weapon") if ball else null
+	return String(weapon.call("slot_id", weapon.get("current"))) if weapon else ""
 
 
 ## Weapon id whose impact frames a kill plays: our own last hit if it was ours (""),
@@ -935,6 +996,8 @@ func _zzvote_state(map_votes: Dictionary, mode_votes: Dictionary) -> void:
 func _zzhello() -> void:
 	if multiplayer.is_server():
 		_zzclock.rpc_id(_sender(), match_time(), team_scores)
+		if hill_radius > 0.0:
+			_zzzhill.rpc_id(_sender(), hill_pos, hill_radius)
 
 
 @rpc("authority", "reliable")
@@ -993,7 +1056,7 @@ func staff_kill(victim: int, by: int) -> void:
 	_marks.erase(victim)
 	_last_hit.erase(victim)
 	_respawn_timers[victim] = RESPAWN_TIME
-	_on_killed.rpc(victim, by)
+	_on_killed.rpc(victim, by, "")
 
 
 ## Host: the owner healed `id` to full.
@@ -1047,6 +1110,39 @@ func _zzteleport(pos: Vector3) -> void:
 		ball.call("teleport", pos)
 
 
+## Host: an Arc Pylon zap. On a raised shield the defender parries it (launched, like a
+## turret's shot) and the pylon breaks; the planter is NOT stunned. Otherwise damage.
+@rpc("any_peer", "reliable")
+func _zzzpylon_zap(victim: int, amount: float, from: Vector3) -> void:
+	if not multiplayer.is_server() or match_done:
+		return
+	var attacker := _sender()
+	if attacker == victim or not alive.get(victim, false) or _is_god(victim) or _same_team(attacker, victim):
+		return
+	if _blocks.has(victim):
+		if not _parried.has(victim):
+			_parried[victim] = true
+			_to_peer(victim, "_zzparry_at", [from])
+		_to_peer(attacker, "_zzzpylon_broken", [])
+		return
+	_deal(victim, attacker, amount, from)
+
+
+## Our Arc Pylon was parried: it breaks. (Named to sort last.)
+@rpc("authority", "reliable")
+func _zzzpylon_broken() -> void:
+	_break_pylon(_players.get(multiplayer.get_unique_id()))
+
+
+func _break_pylon(ball: Node) -> void:
+	var manager: Node = ball.get_node_or_null("Weapon") if ball else null
+	if not manager:
+		return
+	for w in manager.get_children():
+		if w.has_method("break_pylon"):
+			w.call("break_pylon")
+
+
 ## Our shield parried a turret's shot from `from`. (Named to sort last.)
 @rpc("authority", "reliable")
 func _zzparry_at(from: Vector3) -> void:
@@ -1060,3 +1156,127 @@ func _apply_stagger(duration: float) -> void:
 	var ball: Node3D = _players.get(multiplayer.get_unique_id())
 	if ball:
 		ball.call("stagger_controls", duration)
+
+
+# --- Game modes (Net.MODES) --------------------------------------------------------
+
+## The mode this round is played in ("ffa" offline).
+func game_mode() -> String:
+	var net := _net()
+	return String(net.get("game_mode")) if net and net.get("online") else "ffa"
+
+
+## Gun Game (host): hand player `id` a new random weapon (never the one they hold). Bots
+## only get the guns they know how to use.
+func _give_gun(id: int) -> void:
+	if not multiplayer.is_server() or not _roster().has(id):
+		return
+	var pool: Array = ["gatling", "railgun", "scatter"] if NetScript.is_bot(id) else WeaponInfo.damaging_pool()
+	var held := String(_roster()[id].get("gun", ""))
+	var choices := pool.filter(func(w: String) -> bool: return w != held)
+	_zzzgun.rpc(id, choices[randi() % choices.size()])
+
+
+## Everyone: player `id`'s Gun Game weapon is now `gun`. (Named to sort last.)
+@rpc("authority", "call_local", "reliable")
+func _zzzgun(id: int, gun: String) -> void:
+	if not WeaponInfo.damaging_pool().has(gun):
+		return
+	var roster := _roster()
+	if roster.has(id):
+		roster[id]["gun"] = gun
+	refresh_loadout(id)
+	var ball: Node = _players.get(id)
+	var weapon: Node = ball.get_node_or_null("Weapon") if ball else null
+	if weapon and (id == multiplayer.get_unique_id() or (NetScript.is_bot(id) and multiplayer.is_server())):
+		weapon.call("select", 0)
+
+
+## King of the Hill (host): put the hill at the map's focus point: Map/Layout.hill_point()
+## if the map says, else the ground in the middle of the spawn points (or, if that's a
+## rooftop, the spawn nearest the middle).
+func _place_hill() -> void:
+	var spots := _map_spawns()
+	var layout := get_node_or_null("Map/Layout")
+	var pos := Vector3.ZERO
+	var spread := 60.0
+	if not spots.is_empty():
+		var mid := Vector3.ZERO
+		var low := INF
+		for p in spots:
+			mid += p
+			low = minf(low, p.y)
+		mid /= spots.size()
+		spread = 0.0
+		for p in spots:
+			spread += Vector2(p.x - mid.x, p.z - mid.z).length()
+		spread /= spots.size()
+		var ray := PhysicsRayQueryParameters3D.create(Vector3(mid.x, low + 200.0, mid.z), Vector3(mid.x, low - 200.0, mid.z))
+		var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+		if not hit.is_empty() and hit["position"].y < low + 20.0:
+			pos = hit["position"]
+		else:
+			var best: Vector3 = spots[0]
+			for p in spots:
+				if Vector2(p.x - mid.x, p.z - mid.z).length() < Vector2(best.x - mid.x, best.z - mid.z).length():
+					best = p
+			pos = best - Vector3.UP * 0.5
+	if layout and layout.has_method("hill_point"):
+		pos = layout.call("hill_point")
+	_zzzhill.rpc(pos, clampf(spread * 0.15, 7.0, 18.0))
+
+
+## Everyone: where the hill is (drawn as a glowing gold ring and column). (Sorts last.)
+@rpc("authority", "call_local", "reliable")
+func _zzzhill(pos: Vector3, radius: float) -> void:
+	hill_pos = pos
+	hill_radius = radius
+	if DisplayServer.get_name() == "headless":
+		return
+	if _hill_node:
+		_hill_node.queue_free()
+	_hill_node = HillScript.new()
+	_hill_node.set("radius", radius)
+	_hill_node.position = pos
+	add_child(_hill_node)
+
+
+## True if player `id` is standing in the hill.
+func on_hill(id: int) -> bool:
+	var ball: Node3D = _players.get(id)
+	if hill_radius <= 0.0 or not ball or not alive.get(id, false):
+		return false
+	var d := ball.global_position - hill_pos
+	return Vector2(d.x, d.z).length() <= hill_radius and d.y > -3.0 and d.y < 10.0
+
+
+## Seconds left in a King of the Hill round.
+func koth_time_left() -> float:
+	return maxf(KOTH_TIME - match_time(), 0.0)
+
+
+## Host, every physics step in King of the Hill: everyone on the hill scores time; scores
+## go out once a second as the roster's "score"; at KOTH_TIME the most time wins.
+func _koth_tick(delta: float) -> void:
+	for id in _players:
+		if on_hill(id):
+			_hill_time[id] = float(_hill_time.get(id, 0.0)) + delta
+	_hill_push -= delta
+	var over := match_time() >= KOTH_TIME
+	if _hill_push <= 0.0 or over:
+		_hill_push = 1.0
+		var roster := _roster()
+		for id in roster:
+			roster[id]["score"] = int(_hill_time.get(id, 0.0))
+		_net().call("push_roster")
+	if over:
+		var winner := -1
+		var best := -1.0
+		for id in _roster():
+			var t := float(_hill_time.get(id, 0.0))
+			if t > best:
+				best = t
+				winner = id
+		_on_match_over.rpc(winner)
+		_end_timer = END_DELAY
+		_open_vote()

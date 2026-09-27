@@ -29,17 +29,26 @@ const STAFF_FILE := "user://staff.cfg"
 const MAX_ATTEMPTS := 5
 ## The same code box takes any staff code; the server checks each against its own
 ## environment variable. Owners are also moderators, and get the owner weapons.
-const ROLE_CODES := [["owner", "OWNER_CODE"], ["mod", "MOD_CODE"], ["tester", "TESTER_CODE"]]
+const ROLE_CODES := [["owner", "OWNER_CODE"], ["mod", "MOD_CODE"], ["tester", "TESTER_CODE"], ["cs", "CS_CODE"]]
+## Customer Service (CS) is a title only, no powers. Its code works without setting
+## CS_CODE on the servers: this is its SHA-256 (CS_CODE, if set, is used instead).
+const CS_CODE_HASH := "7bccae9cb091542259416cb6168646bf27876544fcda7a099abffaf279d09248"
 ## Title shown by each role's name: [text, colour].
 const TITLES := {
 	"owner": ["OWNER", Color(1.0, 0.78, 0.2)],
 	"mod": ["MOD", Color(0.35, 0.9, 1.0)],
 	"tester": ["TESTER", Color(0.35, 1.0, 0.35)],
+	"cs": ["CS", Color(0.72, 0.35, 1.0)],
 }
+
+
+## The OWNER title is drawn in a moving rainbow (scripts/ui/rainbow.gd).
+static func is_rainbow_title(title: String) -> bool:
+	return title == "OWNER"
 
 ## True once the server has accepted this player's moderator (or owner) code.
 var is_mod := false
-## "owner", "mod", "tester" or "", as confirmed by the server.
+## "owner", "mod", "tester", "cs" or "", as confirmed by the server.
 var role := ""
 ## The gold shield in offline practice (online it's in the server's roster: "god").
 var offline_god := false
@@ -402,6 +411,7 @@ func _role_result(new_role: String) -> void:
 		"owner": "Owner mode unlocked.",
 		"mod": "Moderator tools unlocked.",
 		"tester": "Tester title unlocked.",
+		"cs": "Customer Service title unlocked.",
 	}
 	_net.call("_set_status", status.get(new_role, "Wrong code."))
 	mod_changed.emit()
@@ -468,7 +478,8 @@ func _login(code: String) -> void:
 	var new_role := ""
 	for entry in ROLE_CODES:
 		var real := OS.get_environment(entry[1]).strip_edges()
-		if real != "" and typed == real.sha256_text():
+		var real_hash := real.sha256_text() if real != "" else (CS_CODE_HASH if entry[0] == "cs" else "")
+		if real_hash != "" and typed == real_hash:
 			new_role = entry[0]
 			break
 	var moderates := new_role == "owner" or new_role == "mod"
@@ -482,7 +493,7 @@ func _login(code: String) -> void:
 			_net.call("push_roster")
 		print("[server] %s is %s" % [_player_name(peer), new_role])
 	# Testers aren't moderators: skip the older "moderator yes/no" reply for them.
-	if new_role != "tester":
+	if new_role != "tester" and new_role != "cs":
 		_login_result.rpc_id(peer, moderates)
 	_role_result.rpc_id(peer, new_role)
 

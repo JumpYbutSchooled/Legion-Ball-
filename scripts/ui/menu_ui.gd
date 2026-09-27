@@ -12,6 +12,8 @@ signal main_menu_pressed
 signal quit_pressed
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
+const Rainbow := preload("res://scripts/ui/rainbow.gd")
+const PadScroll := preload("res://scripts/ui/pad_scroll.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const LobbyPanel := preload("res://scripts/ui/lobby_panel.gd")
 const NetScript := preload("res://scripts/net/net.gd")
@@ -278,6 +280,7 @@ func _show_page(id: String, quiet := false) -> void:
 	# Pages scroll when they're taller than the window.
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	PadScroll.attach(scroll)
 	_page_holder.add_child(scroll)
 	# The tech frame stays drawn on top of the page.
 	_page_holder.move_child(scroll, 0)
@@ -755,6 +758,14 @@ const MAP_BLURBS := {
 	"res://scenes/arena_enterprise.tscn": "Fight on a starship's saucer, neck and warp nacelles in deep space.",
 	"res://scenes/arena_gotham.tscn": "Dark gothic city: towers, fire escapes, an elevated train and the signal.",
 	"res://scenes/arena_chess.tscn": "A giant chess board floating in the void, every piece in place.",
+	"res://scenes/arena_jungle_gym.tscn": "A kids' playground at toy scale: decks, slides, monkey bars, swings and a sandbox.",
+	"res://scenes/arena_parthenon.tscn": "The Acropolis of Athens: the ruined Parthenon, the Erechtheion and a gateway on the rock.",
+	"res://scenes/arena_eden.tscn": "Dante's Earthly Paradise atop Mount Purgatory: seven terraces, two rivers, the Tree of Knowledge.",
+	"res://scenes/arena_infinity_castle.tscn": "An endless fortress of rooms and stairs at every height. It loops forever, even down.",
+	"res://scenes/arena_toilet.tscn": "A bathroom at mouse size: skate the toilet bowl, the bathtub half-pipe, the sink.",
+	"res://scenes/arena_rv.tscn": "Breaking Bad's RV in the desert at 8x size, with the lab inside.",
+	"res://scenes/arena_pallet_town.tscn": "Where the Pokemon journey starts: two houses, Oak's lab, the sea and Route 1.",
+	"res://scenes/arena_backrooms.tscn": "Level 0: endless yellow rooms, damp carpet, humming lights. It never ends (it loops).",
 }
 
 
@@ -875,7 +886,10 @@ func _chat_line(entry: Dictionary) -> void:
 	var esc := func(s: String) -> String: return s.replace("[", "[lb]")
 	var text := "[color=#%s][b][%s][/b][/color] " % [GLOBAL_COLOR.to_html(false), esc.call(String(entry.get("server", "?")))]
 	if String(entry.get("title", "")) != "":
-		text += "[color=#%s][b][%s][/b][/color] " % [Color(entry.get("title_color", Color.WHITE)).to_html(false), esc.call(String(entry["title"]))]
+		if ModScript.is_rainbow_title(String(entry["title"])):
+			text += Rainbow.bbcode("[b][%s][/b]" % esc.call(String(entry["title"]))) + " "
+		else:
+			text += "[color=#%s][b][%s][/b][/color] " % [Color(entry.get("title_color", Color.WHITE)).to_html(false), esc.call(String(entry["title"]))]
 	text += "[color=#%s][b]%s[/b][/color]: " % [Color(entry.get("color", Color.WHITE)).to_html(false), esc.call(String(entry.get("name", "?")))]
 	text += "[color=#%s]%s[/color]" % [UIStyle.TEXT.to_html(false), esc.call(String(entry.get("text", "")))]
 	label.text = text
@@ -1064,6 +1078,7 @@ func _build_moderation(box: VBoxContainer) -> void:
 		var title := ModScript.title_of(players[id])
 		var title_label := UIStyle.label("[%s]" % title[0] if not title.is_empty() else "", 14, title[1] if not title.is_empty() else UIStyle.TEXT)
 		title_label.custom_minimum_size = Vector2(80, 0)
+		Rainbow.set_on(title_label, not title.is_empty() and ModScript.is_rainbow_title(title[0]))
 		row.add_child(title_label)
 		var buttons := HFlowContainer.new()
 		buttons.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1215,12 +1230,15 @@ func _build_settings(box: VBoxContainer) -> void:
 	_slider(audio, s, "MASTER VOLUME", "master_volume", 0.0, 1.0, 0.05, "%.2f")
 	_slider(audio, s, "EFFECTS VOLUME", "sfx_volume", 0.0, 1.0, 0.05, "%.2f")
 	_slider(audio, s, "MUSIC VOLUME", "music_volume", 0.0, 1.0, 0.05, "%.2f")
+	_slider(audio, s, "SPEEDOMETER SOUNDS", "speedometer_volume", 0.0, 1.0, 0.05, "%.2f")
 	_toggle(audio, s, "MENU SOUNDS", "ui_sounds")
 
 	box.add_child(UIStyle.label("GAMEPLAY & HUD", 14, UIStyle.ACCENT, true))
 	var play := _settings_grid(box)
 	_slider(play, s, "MOUSE SENSITIVITY", "mouse_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
 	_toggle(play, s, "INVERT MOUSE Y", "invert_mouse_y")
+	_slider(play, s, "CONTROLLER TURN (YAW)", "pad_yaw_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
+	_slider(play, s, "CONTROLLER LOOK (PITCH)", "pad_pitch_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
 	_toggle(play, s, "HIT MARKERS", "hit_markers")
 	_toggle(play, s, "DAMAGE DIRECTION", "damage_indicators")
 	_toggle(play, s, "SHOW FPS / PING", "show_fps")

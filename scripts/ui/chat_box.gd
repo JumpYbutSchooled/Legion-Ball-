@@ -7,6 +7,8 @@ extends CanvasLayer
 ## Messages come from the Chat service (scripts/net/chat.gd).
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
+const Rainbow := preload("res://scripts/ui/rainbow.gd")
+const ModScript := preload("res://scripts/net/moderation.gd")
 
 const WIDTH := 460.0
 ## Lines shown while closed, and how long each stays before fading.
@@ -145,7 +147,10 @@ func _add_line(entry: Dictionary, age: float) -> void:
 	if entry.get("global", false):
 		text += "[color=#%s][b][GLOBAL · %s][/b][/color] " % [GLOBAL_COLOR.to_html(false), _escape(String(entry.get("server", "?")))]
 	if entry.get("title", "") != "":
-		text += "[color=#%s][b][%s][/b][/color] " % [Color(entry["title_color"]).to_html(false), entry["title"]]
+		if ModScript.is_rainbow_title(String(entry["title"])):
+			text += Rainbow.bbcode("[b][%s][/b]" % entry["title"]) + " "
+		else:
+			text += "[color=#%s][b][%s][/b][/color] " % [Color(entry["title_color"]).to_html(false), entry["title"]]
 	text += "[color=#%s][b]%s[/b][/color]: " % [Color(entry["color"]).to_html(false), _escape(entry["name"])]
 	text += "[color=#%s]%s[/color]" % [UIStyle.TEXT.to_html(false), _escape(entry["text"])]
 	label.text = text

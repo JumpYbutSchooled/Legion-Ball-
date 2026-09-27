@@ -231,6 +231,20 @@ func _draw_map() -> void:
 		diamond.append(diamond[0])
 		_panel.draw_polyline(diamond, Color.WHITE, 1.5)
 
+	# Marked players (Hunter's Sigil, Swarm): a violet diamond where they are right now,
+	# walls or not, on everyone's minimap for as long as the mark lasts.
+	if arena:
+		for other in arena.get_node("Players").get_children():
+			if other == ball or not other.has_method("is_marked_now") or not other.call("is_marked_now"):
+				continue
+			var op: Vector3 = (other as Node3D).global_position
+			var at: Vector2 = (to_screen * Vector2(op.x, op.z)).clamp(Vector2(8, 8), rect.size - Vector2(8, 8))
+			var mr := 6.5 * pulse
+			var gem := PackedVector2Array([at + Vector2(0, -mr), at + Vector2(mr, 0), at + Vector2(0, mr), at + Vector2(-mr, 0)])
+			_panel.draw_colored_polygon(gem, Color(0.65, 0.35, 1.0, 0.9))
+			gem.append(gem[0])
+			_panel.draw_polyline(gem, Color.WHITE, 1.5)
+
 	# You: an arrow where you are, pointing the way the camera looks.
 	var fwd := -cam.global_basis.z
 	var facing := Vector2(fwd.x, fwd.z)

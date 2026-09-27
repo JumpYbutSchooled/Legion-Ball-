@@ -53,6 +53,8 @@ const DEFAULTS := {
 	## Volumes, 0..1 (music_volume is above).
 	"master_volume": 1.0,
 	"sfx_volume": 1.0,
+	## The speedometer's tier-change sounds (shatter / infinity), 0..1.
+	"speedometer_volume": 1.0,
 	## Feedback and HUD extras.
 	"hit_markers": true,
 	"damage_indicators": true,
@@ -63,6 +65,9 @@ const DEFAULTS := {
 	"motion_controls": false,
 	"motion_sensitivity": 1.0,
 	"motion_invert_y": false,
+	## Controller right stick: turn (yaw) and look up/down (pitch) speeds.
+	"pad_yaw_sensitivity": 1.0,
+	"pad_pitch_sensitivity": 1.0,
 	## Menu and HUD accent colour (ui_style.gd ACCENTS).
 	"ui_color": "CYAN",
 	"vsync": true,

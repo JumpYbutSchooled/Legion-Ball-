@@ -7,7 +7,8 @@ extends Node3D
 
 const SettingsScript := preload("res://scripts/settings.gd")
 const InputSetup := preload("res://scripts/input_setup.gd")
-## Right stick: full tilt turns this many radians a second (times mouse sensitivity).
+## Right stick: full tilt turns this many radians a second (times the controller yaw /
+## pitch sensitivity settings).
 const PAD_YAW_SPEED := 3.2
 const PAD_PITCH_SPEED := 2.2
 const PAD_DEADZONE := 0.18
@@ -83,6 +84,8 @@ var _jump_lag := 0.0
 var _dash_lag := 0.0
 var _pivot_height := 0.0
 var _sensitivity_scale := 1.0
+var _pad_yaw_scale := 1.0
+var _pad_pitch_scale := 1.0
 var _shake_scale := 1.0
 var _effects_scale := 1.0
 var _motion := false
@@ -134,6 +137,8 @@ func _update_shake(delta: float, speed: float) -> void:
 func _apply_settings() -> void:
 	var tree := get_tree()
 	_sensitivity_scale = SettingsScript.read(tree, "mouse_sensitivity")
+	_pad_yaw_scale = SettingsScript.read(tree, "pad_yaw_sensitivity")
+	_pad_pitch_scale = SettingsScript.read(tree, "pad_pitch_sensitivity")
 	base_fov = SettingsScript.read(tree, "fov")
 	_shake_scale = SettingsScript.read(tree, "camera_shake")
 	_effects_scale = SettingsScript.read(tree, "screen_effects")
@@ -162,6 +167,11 @@ func _ready() -> void:
 			target.connect("dashed", _on_dashed)
 		if target.has_signal("jumped"):
 			target.connect("jumped", func() -> void: _jump_lag = 1.0)
+		if target.has_signal("wrapped"):
+			# A looping map moved the ball to the far side: jump with it, no sweep across.
+			target.connect("wrapped", func(offset: Vector3) -> void:
+				global_position += offset
+				reset_physics_interpolation())
 
 
 func _on_dashed() -> void:
@@ -297,9 +307,9 @@ func _pad_look(delta: float) -> void:
 		return
 	stick = stick.normalized() * inverse_lerp(PAD_DEADZONE, 1.0, minf(stick.length(), 1.0))
 	stick *= stick.length()
-	rotation.y -= stick.x * PAD_YAW_SPEED * _sensitivity_scale * delta
+	rotation.y -= stick.x * PAD_YAW_SPEED * _pad_yaw_scale * delta
 	_pitch.rotation.x = clampf(
-		_pitch.rotation.x - stick.y * PAD_PITCH_SPEED * _sensitivity_scale * delta * (-1.0 if _invert_y else 1.0),
+		_pitch.rotation.x - stick.y * PAD_PITCH_SPEED * _pad_pitch_scale * delta * (-1.0 if _invert_y else 1.0),
 		deg_to_rad(min_pitch_deg),
 		deg_to_rad(max_pitch_deg)
 	)

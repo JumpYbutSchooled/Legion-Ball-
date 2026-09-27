@@ -27,6 +27,14 @@ const VIEWS := {
 	"enterprise": [Vector3(-210, 130, -230), Vector3(0, -20, 150)],
 	"gotham": [Vector3(-20, 95, 175), Vector3(0, 40, 0)],
 	"chess": [Vector3(0, 125, 230), Vector3(0, 0, 0)],
+	"jungle_gym": [Vector3(55, 38, 85), Vector3(0, 10, -5)],
+	"parthenon": [Vector3(-60, 62, 110), Vector3(16, 50, 0)],
+	"eden": [Vector3(0, 160, 260), Vector3(0, 55, 0)],
+	"infinity_castle": [Vector3(60, 30, 70), Vector3(0, 0, 0)],
+	"toilet": [Vector3(0, 45, 60), Vector3(0, 15, -40)],
+	"rv": [Vector3(70, 30, 80), Vector3(0, 12, 0)],
+	"pallet_town": [Vector3(-20, 75, 140), Vector3(-10, 0, 0)],
+	"backrooms": [Vector3(0, 4, 0), Vector3(20, 3, -40)],
 }
 
 var _queue: Array = []
