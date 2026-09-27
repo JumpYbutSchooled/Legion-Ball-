@@ -3,15 +3,15 @@ shader_type canvas_item;
 // expanding shockwave ring on dash. Strength goes above 1 for the dash burst.
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
-uniform float strength : hint_range(0.0, 4.0) = 0.0;
+uniform float strength : hint_range(0.0, 10.0) = 0.0;
 // 0 -> 1 as the shockwave ring expands; 1 = off.
 uniform float shock_progress : hint_range(0.0, 1.0) = 1.0;
-uniform float shock_power = 0.15;
-uniform float shock_width = 0.1;
+uniform float shock_power = 0.32;
+uniform float shock_width = 0.13;
 // How hard the screen bends toward the edges, per unit of strength.
-uniform float bend = 0.18;
-uniform float blur_amount = 0.16;
-uniform float aberration = 0.02;
+uniform float bend = 0.22;
+uniform float blur_amount = 0.2;
+uniform float aberration = 0.035;
 
 void fragment() {
 	vec2 dir0 = SCREEN_UV - vec2(0.5);
@@ -42,7 +42,7 @@ void fragment() {
 	col /= float(SAMPLES);
 
 	// Chromatic aberration, extra along the shock ring.
-	float ca = strength * aberration * edge + ring * 0.04;
+	float ca = strength * aberration * edge + ring * 0.09;
 	col.r = mix(col.r, texture(screen_tex, uv - dir * ca).r, 0.8);
 	col.b = mix(col.b, texture(screen_tex, uv + dir * ca).b, 0.8);
 

@@ -31,6 +31,7 @@ const Sfx := preload("res://scripts/sfx.gd")
 const DamageNumber := preload("res://scripts/damage_number.gd")
 const BallScript := preload("res://scripts/ball.gd")
 const InputSetup := preload("res://scripts/input_setup.gd")
+const SettingsScript := preload("res://scripts/settings.gd")
 const WallRipple := preload("res://scripts/wall_ripple.gd")
 ## How fast the weapon turns to follow the aim (higher = snappier).
 const TURN_RATE := 30.0
@@ -749,10 +750,20 @@ func _light(pos: Vector3, energy: float, light_range: float, lifetime: float, co
 	_add_effect(flare, pos)
 
 
+## Every weapon's warp bubbles are boosted here (bigger, stronger, lingering), scaled by
+## the player's screen effects setting.
+const WARP_BOOST := 2.4
+const WARP_RADIUS_BOOST := 1.6
+
 func _warp(pos: Vector3, strength: float, end_radius: float) -> void:
+	var effects: float = SettingsScript.read(get_tree(), "screen_effects")
+	if effects <= 0.0:
+		return
 	var warp := MuzzleWarp.new()
-	warp.strength = strength
-	warp.end_radius = end_radius
+	# Past ~0.6 the bend tears the picture instead of rippling it.
+	warp.strength = minf(strength * WARP_BOOST, 0.6) * effects
+	warp.end_radius = end_radius * WARP_RADIUS_BOOST
+	warp.lifetime = clampf(0.14 + end_radius * 0.03, 0.18, 0.5)
 	_add_effect(warp, pos)
 
 

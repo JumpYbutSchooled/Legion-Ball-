@@ -47,17 +47,17 @@ const RECENTER_PITCH := -0.25
 
 @export_group("Warp")
 @export var base_fov := 70.0
-@export var max_speed_fov := 30.0
-@export var dash_fov_kick := 35.0
-@export var max_fov := 120.0
+@export var max_speed_fov := 40.0
+@export var dash_fov_kick := 48.0
+@export var max_fov := 132.0
 @export var warp_start_speed := 18.0
 @export var warp_full_speed := 55.0
 ## Warp shader strength at top speed.
-@export var speed_warp_strength := 1.5
+@export var speed_warp_strength := 2.8
 ## Warp shader strength at the peak of a dash.
-@export var dash_warp_strength := 3.0
+@export var dash_warp_strength := 5.5
 @export var dash_kick_decay := 2.2
-@export var shockwave_time := 0.28
+@export var shockwave_time := 0.42
 
 @export_group("Shake")
 ## Max lens offset from shot shake (at full trauma).
@@ -75,6 +75,8 @@ const RECENTER_PITCH := -0.25
 @onready var _camera: Camera3D = $Pitch/SpringArm3D/Camera3D
 
 var _dash_kick := 0.0
+## Extra warp from explosions going off near the camera, fades away.
+var _blast_warp := 0.0
 var _warp := 0.0
 var _shock := 1.0  # Shockwave progress, 0 -> 1. 1 means inactive.
 var _jump_lag := 0.0
@@ -94,6 +96,22 @@ var _shake_time := 0.0
 var _noise := FastNoiseLite.new()
 ## Rushing-air loop, louder and higher the faster the ball goes.
 var _wind: AudioStreamPlayer
+
+
+## An explosion went off at pos: the closer (in blast radii), the harder the screen
+## warps, rings with a shockwave and shakes.
+func blast_nearby(pos: Vector3, radius: float) -> void:
+	if not _camera:
+		return
+	var reach := radius * 5.0 + 10.0
+	var k := clampf(1.0 - _camera.global_position.distance_to(pos) / reach, 0.0, 1.0)
+	if k <= 0.0:
+		return
+	var size := clampf(radius / 8.0, 0.35, 1.6)
+	_blast_warp = maxf(_blast_warp, k * k * 3.2 * size)
+	add_shake(k * 0.9 * size)
+	if k > 0.25:
+		_shock = 0.0
 
 
 ## Adds a jolt of shake (0..1). Squared when applied, so small hits stay subtle.
@@ -128,6 +146,7 @@ func _apply_settings() -> void:
 func _ready() -> void:
 	# Moved in _process, so it must not be physics-interpolated.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	add_to_group("camera_rig")
 	_apply_settings()
 	var settings := get_tree().root.get_node_or_null("Settings")
 	if settings:
@@ -208,13 +227,15 @@ func _update_warp(delta: float) -> void:
 	_shock = minf(_shock + delta / shockwave_time, 1.0)
 
 	var goal := maxf(speed_amount * speed_warp_strength, ease(_dash_kick, 0.5) * dash_warp_strength) * _effects_scale
+	_blast_warp = move_toward(_blast_warp, 0.0, delta * 7.0)
+	goal += _blast_warp * _effects_scale
 	# Hit instantly on the way up, ease down.
 	if goal > _warp:
 		_warp = goal
 	else:
 		_warp = lerpf(_warp, goal, 1.0 - exp(-7.0 * delta))
 
-	var fov_kick := speed_amount * max_speed_fov + ease(_dash_kick, 0.5) * dash_fov_kick
+	var fov_kick := speed_amount * max_speed_fov + ease(_dash_kick, 0.5) * dash_fov_kick + _blast_warp * 2.5
 	var fov_goal := base_fov + fov_kick * minf(_effects_scale, 1.0)
 	var fov_rate := 60.0 if fov_goal > _camera.fov else 7.0
 	_camera.fov = minf(lerpf(_camera.fov, fov_goal, 1.0 - exp(-fov_rate * delta)), max_fov)
