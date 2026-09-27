@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.4.4",
+        "date":  "2026-09-26",
+        "notes":  "Testers can now switch maps. Mods and the owner can FLY (V; Space up, C down) - and anyone can in practice. New numpad staff keys: Numpad 0 opens the moderation menu, Numpad Enter opens quick moderation actions (then Numpad 1-9). Owner health is back to the normal 100."
+    },
+    {
         "version":  "1.4.3",
         "date":  "2026-09-26",
         "notes":  "Big performance boost with no change to the graphics: the minimap was redrawing the whole map every frame, and maps drew thousands of separate pieces. Frame rates are up to 8x higher (Gotham went from about 50 to over 400 FPS)."
