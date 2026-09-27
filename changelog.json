@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.4.6",
+        "date":  "2026-09-26",
+        "notes":  "New CREDITS tab. Owners can update the credits from the main menu without a game update."
+    },
+    {
         "version":  "1.4.5",
         "date":  "2026-09-26",
         "notes":  "Way more warping (speed, dash, weapons, nearby blasts) and much better explosions: fireball, smoke, embers, core flash, ground ring, double sparks."
