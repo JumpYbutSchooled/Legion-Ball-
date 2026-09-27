@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.4.3",
+        "date":  "2026-09-26",
+        "notes":  "Big performance boost with no change to the graphics: the minimap was redrawing the whole map every frame, and maps drew thousands of separate pieces. Frame rates are up to 8x higher (Gotham went from about 50 to over 400 FPS)."
+    },
+    {
         "version":  "1.4.2",
         "date":  "2026-09-26",
         "notes":  "Bots now always hold the gun they fire (weapon locks were leaving them stuck on the Gatling). New PRACTICE ADMIN page in the practice pause menu: gold shield, low gravity, launch yourself, and set your own speed."
