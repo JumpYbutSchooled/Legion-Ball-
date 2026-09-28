@@ -1,5 +1,10 @@
 [
     {
+        "version":  "1.5.1",
+        "date":  "2026-09-27",
+        "notes":  "Reworked 8 maps that used other companies\u0027 characters or places into original versions: Enterprise is now Starship (an original arrowhead hull), plus Darkhaven, Desert Camper, Endless Fortress, Seaside Village, Station Trench, Superspeedway and Big Oval. The Portal Gun is now the Rift Gun. Added a first-time tutorial, full controller and Steam Deck support, display options (window mode, resolution, UI scale), and crash-safe settings saves. Fixed camera clipping through ceilings, a turret error on join, and huge load-in freezes on Endless Fortress, Backrooms and Eden (down from up to 9s to under half a second)."
+    },
+    {
         "version":  "1.5.0",
         "date":  "2026-09-27",
         "notes":  "BIG UPDATE: 3 new modes (King of the Hill, Gun Game, Juggernaut), 5 new weapons (Plasma Net, Fibonacci Cannon, Hyper Dash, Air Burst, Asprint), 8 new maps (Jungle Gym, Parthenon, Garden of Eden, Endless Fortress, Big Toilet, Desert Camper, Seaside Village, Backrooms). Kill feed shows weapons, rainbow owner tag, CS tag, pylon parry fix, controller menu scrolling, separate controller yaw/pitch sensitivity, speedometer volume, fix for falling through floors, Arbalest rebalance, marked players on the minimap."
