@@ -1,5 +1,10 @@
 [
     {
+        "version":  "2.1.0",
+        "date":  "2026-09-27",
+        "notes":  "New staff title: NAME CREATOR (pink), unlocked with the NAMECREATOR_CODE server code. Title only, same as Customer Service - no moderator or owner powers."
+    },
+    {
         "version":  "2.0.0",
         "date":  "2026-09-27",
         "notes":  "Legion Ball is now Ballistic. Renamed everywhere players see it: the title screen, window title, main menu, credits and error messages. Existing players keep their settings, keybinds, staff code and device ID automatically the next time they launch."

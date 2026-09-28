@@ -9,6 +9,7 @@ extends Node
 ## Staff weapons also work in offline practice once a server has confirmed the code
 ## (STAFF_FILE), and key 0 hides or shows them (weapon.gd).
 ##   tester - a green TESTER title
+##   namecreator - a pink NAME CREATOR title, no powers (NAMECREATOR_CODE)
 ## The server checks every request, so a modified game can't fake being a mod.
 ## On a player-hosted game the host can moderate without a code.
 ## Bans live in the server's memory: they last until that server restarts or sleeps.
@@ -29,7 +30,7 @@ const STAFF_FILE := "user://staff.cfg"
 const MAX_ATTEMPTS := 5
 ## The same code box takes any staff code; the server checks each against its own
 ## environment variable. Owners are also moderators, and get the owner weapons.
-const ROLE_CODES := [["owner", "OWNER_CODE"], ["mod", "MOD_CODE"], ["tester", "TESTER_CODE"], ["cs", "CS_CODE"]]
+const ROLE_CODES := [["owner", "OWNER_CODE"], ["mod", "MOD_CODE"], ["tester", "TESTER_CODE"], ["cs", "CS_CODE"], ["namecreator", "NAMECREATOR_CODE"]]
 ## Customer Service (CS) is a title only, no powers. Its code works without setting
 ## CS_CODE on the servers: this is its SHA-256 (CS_CODE, if set, is used instead).
 const CS_CODE_HASH := "7bccae9cb091542259416cb6168646bf27876544fcda7a099abffaf279d09248"
@@ -39,6 +40,7 @@ const TITLES := {
 	"mod": ["MOD", Color(0.35, 0.9, 1.0)],
 	"tester": ["TESTER", Color(0.35, 1.0, 0.35)],
 	"cs": ["CS", Color(0.72, 0.35, 1.0)],
+	"namecreator": ["NAME CREATOR", Color(1.0, 0.45, 0.75)],
 }
 
 
@@ -412,6 +414,7 @@ func _role_result(new_role: String) -> void:
 		"mod": "Moderator tools unlocked.",
 		"tester": "Tester title unlocked.",
 		"cs": "Customer Service title unlocked.",
+		"namecreator": "Name Creator title unlocked.",
 	}
 	_net.call("_set_status", status.get(new_role, "Wrong code."))
 	mod_changed.emit()
@@ -493,7 +496,7 @@ func _login(code: String) -> void:
 			_net.call("push_roster")
 		print("[server] %s is %s" % [_player_name(peer), new_role])
 	# Testers aren't moderators: skip the older "moderator yes/no" reply for them.
-	if new_role != "tester" and new_role != "cs":
+	if new_role != "tester" and new_role != "cs" and new_role != "namecreator":
 		_login_result.rpc_id(peer, moderates)
 	_role_result.rpc_id(peer, new_role)
 
