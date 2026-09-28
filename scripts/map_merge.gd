@@ -13,15 +13,19 @@ const CHUNK := 120.0
 
 
 static func merge(map: Node3D) -> Dictionary:
-	var groups := {}  # key -> {"mat": Material, "shadow": int, "st": SurfaceTool}
+	# key -> {"mat", "shadow", "verts", "normals", "uvs", "indices"}
+	var groups := {}
 	var merged: Array[MeshInstance3D] = []
 	var to_local := map.global_transform.affine_inverse()
 	var signatures := {}  # Material -> signature string (cached)
+	# A box's vertex arrays depend only on its size: made once per size, then transformed
+	# for each box (in bulk, which is far quicker than appending mesh by mesh).
+	var shapes := {}
 	for inst in _meshes(map):
-		var box := inst.mesh as PrimitiveMesh
-		if not box or not inst.visible or not inst.is_visible_in_tree() or _moves(inst, map):
+		var prim := inst.mesh as PrimitiveMesh
+		if not prim or not inst.visible or not inst.is_visible_in_tree() or _moves(inst, map):
 			continue
-		var mat: Material = inst.material_override if inst.material_override else box.material
+		var mat: Material = inst.material_override if inst.material_override else prim.material
 		if not mat:
 			continue
 		if not signatures.has(mat):
@@ -29,16 +33,51 @@ static func merge(map: Node3D) -> Dictionary:
 		var pos := inst.global_position
 		var key := "%s|%d|%d|%d" % [signatures[mat], floori(pos.x / CHUNK), floori(pos.z / CHUNK), inst.cast_shadow]
 		if not groups.has(key):
-			var st := SurfaceTool.new()
-			st.begin(Mesh.PRIMITIVE_TRIANGLES)
-			groups[key] = {"mat": mat, "shadow": inst.cast_shadow, "st": st}
-		(groups[key]["st"] as SurfaceTool).append_from(box, 0, to_local * inst.global_transform)
+			groups[key] = {"mat": mat, "shadow": inst.cast_shadow, "verts": PackedVector3Array(),
+				"normals": PackedVector3Array(), "uvs": PackedVector2Array(), "indices": PackedInt32Array()}
+		var shape_key: Variant = "box%s" % (prim as BoxMesh).size if prim is BoxMesh else prim.get_instance_id()
+		if not shapes.has(shape_key):
+			shapes[shape_key] = prim.get_mesh_arrays()
+		var arrays: Array = shapes[shape_key]
+		var xf := to_local * inst.global_transform
+		var g: Dictionary = groups[key]
+		# Packed arrays are values: take each out, add to it, put it back.
+		var verts: PackedVector3Array = g["verts"]
+		var normals: PackedVector3Array = g["normals"]
+		var uvs: PackedVector2Array = g["uvs"]
+		var out_idx: PackedInt32Array = g["indices"]
+		var src: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var base := verts.size()
+		verts.append_array(xf * src)
+		normals.append_array(Transform3D(xf.basis.orthonormalized(), Vector3.ZERO) * (arrays[Mesh.ARRAY_NORMAL] as PackedVector3Array))
+		var uv = arrays[Mesh.ARRAY_TEX_UV]
+		if uv is PackedVector2Array and (uv as PackedVector2Array).size() == src.size():
+			uvs.append_array(uv)
+		else:
+			uvs.resize(uvs.size() + src.size())
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		var start := out_idx.size()
+		out_idx.resize(start + idx.size())
+		for i in idx.size():
+			out_idx[start + i] = idx[i] + base
+		g["verts"] = verts
+		g["normals"] = normals
+		g["uvs"] = uvs
+		g["indices"] = out_idx
 		merged.append(inst)
 	for key in groups:
 		var g: Dictionary = groups[key]
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = g["verts"]
+		arrays[Mesh.ARRAY_NORMAL] = g["normals"]
+		arrays[Mesh.ARRAY_TEX_UV] = g["uvs"]
+		arrays[Mesh.ARRAY_INDEX] = g["indices"]
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		var out := MeshInstance3D.new()
 		out.name = "Merged"
-		out.mesh = (g["st"] as SurfaceTool).commit()
+		out.mesh = mesh
 		out.material_override = g["mat"]
 		out.cast_shadow = g["shadow"]
 		map.add_child(out)

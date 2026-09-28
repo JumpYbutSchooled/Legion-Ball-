@@ -42,6 +42,9 @@ const GROUPS := {
 	"momentum": {"name": "MOMENTUM / SPEED", "color": Color(0.2, 0.9, 0.95),
 		"theme": "Speed is damage.",
 		"bonus": "+10% top speed."},
+	"riftworks": {"name": "RIFTWORKS / RIFTS", "color": Color(0.3, 0.9, 0.85),
+		"theme": "Two holes in space, one path through.",
+		"bonus": "One of a kind: no set bonus."},
 }
 
 const WEAPONS := {
@@ -354,6 +357,12 @@ const WEAPONS := {
 		"color": Color(0.7, 0.95, 1.0), "layout": "Two short fins flared out behind the ball.",
 		"summary": "Transfers your velocity to the person you hit.",
 		"combo": "Get fast with SLIPSTREAM, then hand it all over."},
+	"rift_gun": {"built": true, "script": "res://scripts/weapons/rift_gun.gd", "practice_only": true,
+		"usage": ["LEFT CLICK  open the TEAL rift on the surface you aim at", "RIGHT CLICK (or LT)  open the MAGENTA rift", "Roll into one, come out of the other at the same speed", "See straight through them; practice only for now"],
+		"name": "RIFT GUN", "tag": "TWO-WAY RIFTS", "group": "riftworks",
+		"color": Color(0.4, 0.9, 0.9), "layout": "Two Gatling blades: teal on the left, magenta on the right.",
+		"summary": "Two linked rifts: see through them, roll through them, keep your speed.",
+		"combo": "A rift above a rift: fall forever, faster and faster."},
 	"asprint": {"built": true, "script": "res://scripts/weapons/asprint.gd",
 		"usage": ["Lock a foe, LMB  go to top speed and fly at them", "You home in on them: you are the bullet", "Heavy hit and a big throw on impact", "Needs a lock; 9s cooldown"],
 		"name": "ASPRINT", "tag": "HUMAN BULLET", "group": "momentum",
@@ -462,7 +471,7 @@ static func built_pool() -> Array:
 
 
 ## Pool weapons that can't hurt anyone on their own (Gun Game skips them).
-const NO_DAMAGE := ["time_dilator", "hunters_sigil", "jet_crystals", "winglets", "crystal_wall", "mirage"]
+const NO_DAMAGE := ["time_dilator", "hunters_sigil", "jet_crystals", "winglets", "crystal_wall", "mirage", "rift_gun"]
 
 
 ## Built pool weapons that deal damage (what Gun Game hands out).

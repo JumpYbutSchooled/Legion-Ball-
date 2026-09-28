@@ -11,8 +11,11 @@ signal rush_ended(pos: Vector3, hit: Node3D, into_wall: bool)
 ## Looping maps (map_builder.gd wrap) moved the ball by `offset`, speed kept: the camera
 ## and trail jump with it.
 signal wrapped(offset: Vector3)
+## Went through a rift (weapons/rift.gd): turned by `turn`, now at `to`.
+signal rifted(turn: Basis, to: Vector3)
 
 const DashLaser := preload("res://scripts/dash_laser.gd")
+const SteamScript := preload("res://scripts/steam.gd")
 const ShieldScript := preload("res://scripts/shield.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 
@@ -491,6 +494,8 @@ func _show_block(duration: float) -> void:
 ## a huge explosion goes off round the ball and it's thrown high into the air, and a bolt
 ## strikes back at the shooter (the host deals its damage and a 5s stun).
 func on_parried(shooter_pos := Vector3.INF) -> void:
+	if is_multiplayer_authority() and not bot:
+		SteamScript.achieve(get_tree(), "PARRY")
 	_shield.call("hit_flash")
 	_shield.call("stop")
 	_block_timer = 0.0
@@ -579,11 +584,24 @@ func _update_status_glow(delta: float) -> void:
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if not is_multiplayer_authority():
 		return
+	if _rift_to != Vector3.INF:
+		var through := state.transform
+		through.origin = _rift_to
+		state.transform = through
+		state.linear_velocity = _rift_turn * _rift_v
+		state.angular_velocity = _rift_turn * _rift_spin
+		_knockback = _rift_turn * _knockback
+		rifted.emit(_rift_turn, _rift_to)
+		_rift_to = Vector3.INF
+		_last_safe = Vector3.INF
+		reset_physics_interpolation()
 	if _wrap_offset != Vector3.ZERO:
 		var moved := state.transform
 		moved.origin += _wrap_offset
 		state.transform = moved
-		wrapped.emit.call_deferred(_wrap_offset)
+		# Right away (not deferred): the camera, blur and trail must move before this frame
+		# is drawn, or the jump shows.
+		wrapped.emit(_wrap_offset)
 		_wrap_offset = Vector3.ZERO
 		_last_safe = Vector3.INF
 		reset_physics_interpolation()
@@ -686,6 +704,23 @@ var _wrap_offset := Vector3.ZERO
 
 func wrap_by(offset: Vector3) -> void:
 	_wrap_offset += offset
+
+
+## Rifts: at the next physics step, be at `to` with the speed turned by `turn`.
+var _rift_to := Vector3.INF
+var _rift_turn := Basis.IDENTITY
+
+
+var _rift_v := Vector3.ZERO
+var _rift_spin := Vector3.ZERO
+
+
+## `v` / `spin`: the ball's speed and spin as it went in.
+func rift_to(turn: Basis, to: Vector3, v: Vector3, spin: Vector3) -> void:
+	_rift_turn = turn.orthonormalized()
+	_rift_to = to
+	_rift_v = v
+	_rift_spin = spin
 
 
 # --- Rush (Hyper Dash, Asprint) ------------------------------------------------------

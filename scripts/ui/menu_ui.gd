@@ -1,4 +1,4 @@
-extends Control
+﻿extends Control
 ## The menu panels shared by the main menu and the pause menu: a column of actions on
 ## the left and a page on the right: SETTINGS, CONTROLS, or ARMORY (weapon briefings),
 ## plus MODERATION in the pause menu for moderators (scripts/net/moderation.gd).
@@ -177,6 +177,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	# First controller press in a menu with nothing focused: start at the top.
 	if (event is InputEventJoypadButton and event.pressed) or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.5):
 		_focus_first()
+	# B (or Esc) inside a page: back out to that page's button on the left.
+	if event.is_action_pressed("ui_cancel") and _page_holder and is_visible_in_tree():
+		var owner := get_viewport().gui_get_focus_owner()
+		if owner and _page_holder.is_ancestor_of(owner) and _nav_buttons.has(_current_page):
+			(_nav_buttons[_current_page] as Button).grab_focus()
+			get_viewport().set_input_as_handled()
 
 
 ## Buttons sweep in one after another; the page panel unfolds.
@@ -335,6 +341,16 @@ func _swap_in(scroll: ScrollContainer, old: ScrollContainer, keep: int) -> void:
 		scroll.remove_meta("keep")
 	if is_instance_valid(old):
 		old.queue_free()
+	# On a controller, keep focus somewhere after the page it was in has been rebuilt.
+	if not Input.get_connected_joypads().is_empty() and not get_viewport().gui_get_focus_owner() and _nav_buttons.has(_current_page):
+		(_nav_buttons[_current_page] as Button).grab_focus()
+
+
+## The first-time tutorial: practice on the Training map with the step-by-step overlay
+## (ui/tutorial.gd, added by arena.gd when it sees the flag).
+static func start_tutorial(from: Node) -> void:
+	Engine.set_meta("tutorial", true)
+	from.get_tree().change_scene_to_file(NetScript.TRAINING_SCENE)
 
 
 func _header(parent: Control, title: String, sub: String) -> void:
@@ -748,29 +764,30 @@ const MAP_BLURBS := {
 	"res://scenes/arena_tunnels.tscn": "Underground maze of chambers and corridors. Close quarters.",
 	"res://scenes/arena_city.tscn": "Night city: multi-floor garages, skybridges and towers.",
 	"res://scenes/arena_castle.tscn": "Medieval fortress: curtain walls, corner towers, a keep and a moat.",
-	"res://scenes/arena_daytona.tscn": "Banked superspeedway: 31-degree turns, Lake Lloyd and pit road.",
-	"res://scenes/arena_talladega.tscn": "The biggest, steepest oval, with the Big One strewn across the track.",
+	"res://scenes/arena_superspeedway.tscn": "Banked superspeedway: 31-degree turns, an infield lake and pit road.",
+	"res://scenes/arena_big_oval.tscn": "The biggest, steepest oval, with a pile-up strewn across the track.",
 	"res://scenes/arena_atlantis.tscn": "Sunken city of rings: canals, bridges, ruins and Poseidon's temple.",
 	"res://scenes/arena_el_dorado.tscn": "City of Gold: a gold-capped pyramid, temples and jungle.",
 	"res://scenes/arena_military_base.tscn": "Hangars, a runway, radar towers and a container yard.",
 	"res://scenes/arena_house.tscn": "An ordinary house at 10:1. Climb the furniture, crawl the vents.",
-	"res://scenes/arena_trench_run.tscn": "A space-station trench, 700 m long and 32 deep. Stay on target.",
-	"res://scenes/arena_enterprise.tscn": "Fight on a starship's saucer, neck and warp nacelles in deep space.",
-	"res://scenes/arena_gotham.tscn": "Dark gothic city: towers, fire escapes, an elevated train and the signal.",
+	"res://scenes/arena_station_trench.tscn": "A battle station's surface in space: one deep trench, 700 m long, and a reactor vent at the end.",
+	"res://scenes/arena_starship.tscn": "Fight across an arrowhead starship's saucer, wings and engines in deep space.",
+	"res://scenes/arena_darkhaven.tscn": "Dark gothic city: towers, fire escapes, an elevated train and the searchlight.",
 	"res://scenes/arena_chess.tscn": "A giant chess board floating in the void, every piece in place.",
 	"res://scenes/arena_jungle_gym.tscn": "A kids' playground at toy scale: decks, slides, monkey bars, swings and a sandbox.",
 	"res://scenes/arena_parthenon.tscn": "The Acropolis of Athens: the ruined Parthenon, the Erechtheion and a gateway on the rock.",
 	"res://scenes/arena_eden.tscn": "Dante's Earthly Paradise atop Mount Purgatory: seven terraces, two rivers, the Tree of Knowledge.",
-	"res://scenes/arena_infinity_castle.tscn": "An endless fortress of rooms and stairs at every height. It loops forever, even down.",
+	"res://scenes/arena_endless_fortress.tscn": "An endless fortress of rooms and stairs at every height. It loops forever, even down.",
 	"res://scenes/arena_toilet.tscn": "A bathroom at mouse size: skate the toilet bowl, the bathtub half-pipe, the sink.",
-	"res://scenes/arena_rv.tscn": "Breaking Bad's RV in the desert at 8x size, with the lab inside.",
-	"res://scenes/arena_pallet_town.tscn": "Where the Pokemon journey starts: two houses, Oak's lab, the sea and Route 1.",
+	"res://scenes/arena_desert_camper.tscn": "A camper van in the desert at 8x size: climb in and roll round the kitchen.",
+	"res://scenes/arena_seaside_village.tscn": "A little village by the sea: two houses, the village hall, a fountain and the road north.",
 	"res://scenes/arena_backrooms.tscn": "Level 0: endless yellow rooms, damp carpet, humming lights. It never ends (it loops).",
 }
 
 
 func _build_practice(box: VBoxContainer) -> void:
 	_header(box, "PRACTICE", "SOLO  //  PICK A MAP  //  NOTHING CAN HURT YOU HERE")
+	box.add_child(_small_button("TUTORIAL: LEARN THE BASICS", func() -> void: start_tutorial(self)))
 	# AI turrets on the combat maps (also switchable from the pause menu).
 	var net := get_tree().root.get_node_or_null("Net")
 	if net:
@@ -1206,6 +1223,8 @@ func _build_settings(box: VBoxContainer) -> void:
 		return
 	# GRAPHICS: a preset, then each thing it sets.
 	box.add_child(UIStyle.label("GRAPHICS", 14, UIStyle.ACCENT, true))
+	_choice_row(box, s, "WINDOW", "window_mode", ["WINDOWED", "BORDERLESS", "FULLSCREEN"])
+	_choice_row(box, s, "RESOLUTION", "resolution", ["1280x720", "1600x900", "1920x1080", "2560x1440", "3840x2160"])
 	_choice_row(box, s, "QUALITY", "graphics_preset", ["LOW", "MEDIUM", "HIGH", "ULTRA"])
 	_choice_row(box, s, "ANTI-ALIASING", "aa", Graphics.AA_MODES)
 	var gfx := _settings_grid(box)
@@ -1215,6 +1234,7 @@ func _build_settings(box: VBoxContainer) -> void:
 	_toggle(gfx, s, "INDIRECT LIGHT", "ssil")
 	_slider(gfx, s, "RENDER SCALE", "render_scale", 0.5, 1.0, 0.05, "%.2fx")
 	_slider(gfx, s, "FRAME CAP (0 = NONE)", "max_fps", 0.0, 360.0, 30.0, "%d")
+	_slider(gfx, s, "UI SCALE", "ui_scale", 0.75, 1.5, 0.05, "%.2fx")
 	_slider(gfx, s, "FIELD OF VIEW", "fov", 55.0, 100.0, 1.0, "%d")
 	_slider(gfx, s, "MOTION BLUR", "motion_blur", 0.0, 1.5, 0.05, "%.2f")
 	_slider(gfx, s, "SCREEN EFFECTS", "screen_effects", 0.0, 1.5, 0.05, "%.2fx")
@@ -1222,7 +1242,6 @@ func _build_settings(box: VBoxContainer) -> void:
 	_toggle(gfx, s, "SPEED TRAILS", "speed_trails")
 	_toggle(gfx, s, "IMPACT FRAMES", "impact_frames")
 	_toggle(gfx, s, "MAP BUILD-IN", "map_intro")
-	_toggle(gfx, s, "FULLSCREEN", "fullscreen")
 	_toggle(gfx, s, "V-SYNC", "vsync")
 
 	box.add_child(UIStyle.label("AUDIO", 14, UIStyle.ACCENT, true))
@@ -1242,6 +1261,7 @@ func _build_settings(box: VBoxContainer) -> void:
 	_toggle(play, s, "HIT MARKERS", "hit_markers")
 	_toggle(play, s, "DAMAGE DIRECTION", "damage_indicators")
 	_toggle(play, s, "SHOW FPS / PING", "show_fps")
+	_toggle(play, s, "MINIMAP (M)", "show_minimap")
 	_toggle(play, s, "MOTION CONTROLS", "motion_controls")
 	_slider(play, s, "MOTION SENSITIVITY", "motion_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
 	_toggle(play, s, "MOTION INVERT Y", "motion_invert_y")

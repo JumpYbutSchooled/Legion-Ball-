@@ -30,6 +30,7 @@ const HudScript := preload("res://scripts/ui/hud.gd")
 const ShardBurst := preload("res://scripts/shard_burst.gd")
 const MapIntro := preload("res://scripts/map_intro.gd")
 const HillScript := preload("res://scripts/koth_hill.gd")
+const TutorialScript := preload("res://scripts/ui/tutorial.gd")
 const Turrets := preload("res://scripts/turrets.gd")
 const SettingsScript := preload("res://scripts/settings.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
@@ -107,6 +108,9 @@ var _match_start := 0
 ## This arena was loaded for an online match (so losing the connection means we're
 ## leaving: never fall back to spawning a practice player).
 var _started_online := false
+## Host: players whose map has finished loading (they said hello). Only they get the
+## turrets' updates (turrets.gd), which would be lost on anyone still loading.
+var ready_peers := {}
 ## Gun Game (host): players already handed their first weapon this round.
 var _gun_given := {}
 ## King of the Hill: the hill (everyone gets it from the host; radius 0 = no hill), each
@@ -189,6 +193,10 @@ func _merge_map() -> void:
 		return
 	set_meta("merged", true)
 	MapMerge.merge($Map)
+	# Looping maps: now draw copies of the merged map all round it.
+	var layout := get_node_or_null("Map/Layout")
+	if layout and layout.has_method("make_wrap_visuals"):
+		layout.call("make_wrap_visuals", $Map)
 
 
 func _net() -> Node:
@@ -230,7 +238,8 @@ func _sync_players() -> void:
 func loadout_of(id: int) -> Array:
 	match game_mode():
 		"juggernaut":
-			return WeaponInfo.built_pool()
+			# Everything that works online (the rift gun's practice only).
+			return WeaponInfo.built_pool().filter(func(w: String) -> bool: return not WeaponInfo.by_id(w).get("practice_only", false))
 		"gungame":
 			var pool := WeaponInfo.damaging_pool()
 			return [String(_roster().get(id, {}).get("gun", pool[0]))]
@@ -310,7 +319,7 @@ func _spawn(id: int, index: int) -> void:
 	var layout := get_node_or_null("Map/Layout")
 	if layout and layout.has_method("ceiling"):
 		ball.set("max_height", layout.call("ceiling"))
-	# ...and how far down counts as falling off (deep maps like the Trench Run go lower).
+	# ...and how far down counts as falling off (deep maps like the Station Trench go lower).
 	if layout and layout.has_method("fall_height"):
 		ball.set("fall_reset_height", layout.call("fall_height"))
 	# Their own weapons (the roster's loadout), built when the ball is added.
@@ -343,6 +352,12 @@ func _spawn(id: int, index: int) -> void:
 		var view := LocalViewScene.instantiate()
 		view.call("setup", ball)
 		add_child(view)
+		# The tutorial (practice only): the menu flags it just before loading the map.
+		if not is_online() and Engine.has_meta("tutorial"):
+			Engine.remove_meta("tutorial")
+			var tutorial := TutorialScript.new()
+			tutorial.set("ball", ball)
+			view.add_child(tutorial)
 		if is_online():
 			var hud := HudScript.new()
 			hud.arena = self
@@ -995,6 +1010,9 @@ func _zzvote_state(map_votes: Dictionary, mode_votes: Dictionary) -> void:
 @rpc("any_peer", "reliable")
 func _zzhello() -> void:
 	if multiplayer.is_server():
+		ready_peers[_sender()] = true
+		if has_node("Turrets"):
+			get_node("Turrets").call("send_state_to", _sender())
 		_zzclock.rpc_id(_sender(), match_time(), team_scores)
 		if hill_radius > 0.0:
 			_zzzhill.rpc_id(_sender(), hill_pos, hill_radius)

@@ -152,6 +152,12 @@ func _ready() -> void:
 	# Moved in _process, so it must not be physics-interpolated.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_to_group("camera_rig")
+	# A small ball instead of a thin ray: the camera stays a little off walls and ceilings,
+	# so it can't end up in them and show what's behind (the Backrooms' low ceiling).
+	if _spring_arm.shape == null:
+		var probe := SphereShape3D.new()
+		probe.radius = 0.35
+		_spring_arm.shape = probe
 	_apply_settings()
 	var settings := get_tree().root.get_node_or_null("Settings")
 	if settings:
@@ -167,6 +173,15 @@ func _ready() -> void:
 			target.connect("dashed", _on_dashed)
 		if target.has_signal("jumped"):
 			target.connect("jumped", func() -> void: _jump_lag = 1.0)
+		if target.has_signal("rifted"):
+			# Through a rift: jump to the far side and turn the view with the ball.
+			target.connect("rifted", func(turn: Basis, to: Vector3) -> void:
+				var fwd := turn * (-global_basis.z)
+				var flat := Vector2(fwd.x, fwd.z)
+				if flat.length() > 0.2:
+					rotation.y = atan2(-flat.x, -flat.y)
+				global_position = to
+				reset_physics_interpolation())
 		if target.has_signal("wrapped"):
 			# A looping map moved the ball to the far side: jump with it, no sweep across.
 			target.connect("wrapped", func(offset: Vector3) -> void:

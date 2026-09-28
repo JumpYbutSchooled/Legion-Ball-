@@ -15,6 +15,8 @@ const SettingsScript := preload("res://scripts/settings.gd")
 var _mat: ShaderMaterial
 var _prev := Projection.IDENTITY
 var _has_prev := false
+## The ball looped round a looping map (ball.gd wrapped): no smear for that jump.
+var _skip_next := false
 
 
 func _ready() -> void:
@@ -39,11 +41,21 @@ func _ready() -> void:
 			strength = SettingsScript.read(get_tree(), "motion_blur"))
 
 
+func _on_wrapped(_offset: Vector3) -> void:
+	_skip_next = true
+
+
 func _process(_delta: float) -> void:
 	var camera := get_parent() as Camera3D
 	if not camera:
 		return
 	var curr := camera.get_camera_projection() * Projection(camera.global_transform.affine_inverse())
+	if ball and ball.has_signal("wrapped") and not ball.is_connected("wrapped", _on_wrapped):
+		ball.connect("wrapped", _on_wrapped)
+		ball.connect("rifted", func(_turn: Basis, _to: Vector3) -> void: _skip_next = true)
+	if _skip_next:
+		_skip_next = false
+		_has_prev = false
 	if not _has_prev:
 		_prev = curr
 		_has_prev = true

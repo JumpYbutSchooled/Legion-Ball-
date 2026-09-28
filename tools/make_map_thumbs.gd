@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 ## Renders a thumbnail of every combat map for the map select (scripts/ui/map_grid.gd):
 ## loads each one with the wireframe build-in off, hides the HUD, frames it from a good
 ## angle and saves res://textures/maps/<name>.png (480 x 270).
@@ -17,23 +17,23 @@ const VIEWS := {
 	"tunnels": [Vector3(-3, 8, 12), Vector3(0, 2, -10)],
 	"city": [Vector3(190, 150, 190), Vector3(0, 0, 0)],
 	"castle": [Vector3(60, 110, 250), Vector3(0, 10, 0)],
-	"daytona": [Vector3(0, 230, 430), Vector3(0, 0, 0)],
-	"talladega": [Vector3(0, 280, 540), Vector3(0, 0, 0)],
+	"superspeedway": [Vector3(0, 230, 430), Vector3(0, 0, 0)],
+	"big_oval": [Vector3(0, 280, 540), Vector3(0, 0, 0)],
 	"atlantis": [Vector3(0, 160, 240), Vector3(0, 0, 0)],
 	"el_dorado": [Vector3(130, 110, 190), Vector3(0, 15, 0)],
 	"military_base": [Vector3(0, 190, 310), Vector3(0, 0, 0)],
 	"house": [Vector3(-20, 13, -52), Vector3(-62, 10, -8)],
-	"trench_run": [Vector3(0, 22, -420), Vector3(0, -22, -120)],
-	"enterprise": [Vector3(-210, 130, -230), Vector3(0, -20, 150)],
-	"gotham": [Vector3(-20, 95, 175), Vector3(0, 40, 0)],
+	"station_trench": [Vector3(0, 22, -420), Vector3(0, -22, -120)],
+	"starship": [Vector3(-280, 260, -60), Vector3(0, -5, 190)],
+	"darkhaven": [Vector3(-20, 95, 175), Vector3(0, 40, 0)],
 	"chess": [Vector3(0, 125, 230), Vector3(0, 0, 0)],
 	"jungle_gym": [Vector3(55, 38, 85), Vector3(0, 10, -5)],
 	"parthenon": [Vector3(-60, 62, 110), Vector3(16, 50, 0)],
 	"eden": [Vector3(0, 160, 260), Vector3(0, 55, 0)],
-	"infinity_castle": [Vector3(60, 30, 70), Vector3(0, 0, 0)],
+	"endless_fortress": [Vector3(60, 30, 70), Vector3(0, 0, 0)],
 	"toilet": [Vector3(0, 45, 60), Vector3(0, 15, -40)],
-	"rv": [Vector3(70, 30, 80), Vector3(0, 12, 0)],
-	"pallet_town": [Vector3(-20, 75, 140), Vector3(-10, 0, 0)],
+	"desert_camper": [Vector3(70, 30, 80), Vector3(0, 12, 0)],
+	"seaside_village": [Vector3(-20, 75, 140), Vector3(-10, 0, 0)],
 	"backrooms": [Vector3(0, 4, 0), Vector3(20, 3, -40)],
 }
 
@@ -41,6 +41,7 @@ var _queue: Array = []
 var _t := 0.0
 var _current := ""
 var _intro_was := true
+var _minimap_was := true
 
 
 func _initialize() -> void:
@@ -49,6 +50,8 @@ func _initialize() -> void:
 	var settings := root.get_node("Settings")
 	_intro_was = settings.call("get_value", "map_intro")
 	settings.call("set_value", "map_intro", false)
+	_minimap_was = settings.call("get_value", "show_minimap")
+	settings.call("set_value", "show_minimap", false)
 	var only := OS.get_cmdline_user_args()
 	_queue = VIEWS.keys() if only.is_empty() else only
 	_next()
@@ -58,6 +61,7 @@ func _next() -> void:
 	_t = 0.0
 	if _queue.is_empty():
 		root.get_node("Settings").call("set_value", "map_intro", _intro_was)
+		root.get_node("Settings").call("set_value", "show_minimap", _minimap_was)
 		print("THUMBS DONE")
 		quit()
 		return

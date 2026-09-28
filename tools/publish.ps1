@@ -67,7 +67,7 @@ $HookFile = "$PSScriptRoot\discord_webhook.txt"
 if (-not $Hook -and (Test-Path $HookFile)) { $Hook = (Get-Content $HookFile -Raw).Trim() }
 if ($Hook) {
     $Body = @{
-        username = "Leigon Ball"
+        username = "Legion Ball"
         embeds = @(@{
             title = "Update v$Version is out"
             description = $Notes

@@ -37,6 +37,7 @@ const KEYS := {
 	"camera_right": [KEY_E],
 	"block": [KEY_Q],
 	"scoreboard": [KEY_TAB],
+	"toggle_minimap": [KEY_M],
 	"chat": [KEY_SLASH],
 	# Staff: fly (mods and the owner online; anyone in practice), the moderation menu and
 	# the quick moderation actions (then numpad 1-9 pick one).
@@ -59,6 +60,7 @@ const REMOVED := {
 
 const MOUSE := {
 	"fire": [MOUSE_BUTTON_LEFT],
+	"fire_alt": [MOUSE_BUTTON_RIGHT],
 }
 
 ## Controller defaults (Xbox layout names). Buttons, and [axis, direction] for sticks and
@@ -121,6 +123,7 @@ const REBINDABLE := [
 	["reset_ball", "Reset"],
 	"COMBAT",
 	["fire", "Fire"],
+	["fire_alt", "Alt fire (rift gun: magenta)"],
 	["reload", "Reload / vent"],
 	["toggle_weapon", "Holster / draw"],
 	["weapon_1", "Gatling"],
@@ -140,6 +143,7 @@ const REBINDABLE := [
 	["zoom_in", "Zoom in"],
 	["zoom_out", "Zoom out"],
 	["scoreboard", "Scoreboard"],
+	["toggle_minimap", "Minimap on / off"],
 	["chat", "Server chat"],
 	["chat_global", "Global chat"],
 	"STAFF",
@@ -368,7 +372,10 @@ static func event_label(ev: InputEvent) -> String:
 	var key := ev as InputEventKey
 	if key:
 		var code := key.physical_keycode if key.physical_keycode != KEY_NONE else key.keycode
-		var shown := DisplayServer.keyboard_get_keycode_from_physical(code) if key.physical_keycode != KEY_NONE else code
+		# The headless display server (dedicated servers, tests) can't map layouts.
+		var shown := code
+		if key.physical_keycode != KEY_NONE and DisplayServer.get_name() != "headless":
+			shown = DisplayServer.keyboard_get_keycode_from_physical(code)
 		var text := OS.get_keycode_string(shown)
 		if text == "":
 			text = OS.get_keycode_string(code)

@@ -24,13 +24,16 @@ var _request: HTTPRequest
 
 func _ready() -> void:
 	_build_ui()
-	_mount_current_patch()
+	# Steam builds: Steam keeps the game up to date, and a GitHub patch left in the save
+	# folder (shared with the GitHub version) must never be loaded over it.
+	if not OS.has_feature("steam"):
+		_mount_current_patch()
 	_run.call_deferred()
 
 
 func _run() -> void:
 	print("[boot] running v%s (patch: %s)" % [_local_version(), _read_text(CURRENT_FILE).strip_edges()])
-	if REPO != "" and not OS.has_feature("editor"):
+	if REPO != "" and not OS.has_feature("editor") and not OS.has_feature("steam"):
 		await _check_for_update()
 	print("[boot] starting v%s" % _local_version())
 	_status.text = "STARTING  v" + _local_version()
@@ -191,7 +194,7 @@ func _build_ui() -> void:
 	box.position = Vector2(-210, -40)
 	add_child(box)
 	var title := Label.new()
-	title.text = "LEIGON BALL"
+	title.text = "LEGION BALL"
 	title.add_theme_font_size_override("font_size", 40)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)

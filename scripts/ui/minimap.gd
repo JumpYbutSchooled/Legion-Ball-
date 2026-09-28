@@ -10,6 +10,7 @@ extends CanvasLayer
 ## only that picture, the players, the sigil tags and your arrow are drawn.
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
+const SettingsScript := preload("res://scripts/settings.gd")
 
 const SIZE := 220.0
 const MARGIN := 20.0
@@ -71,13 +72,35 @@ func _ready() -> void:
 				_level_view.render_target_update_mode = SubViewport.UPDATE_ONCE)
 
 
+## Shown if the player has it on (Settings show_minimap, M) and the map has one (looping
+## maps like the Backrooms don't: map_builder has_minimap()).
+func _wanted() -> bool:
+	var arena := _arena()
+	var layout := arena.get_node_or_null("Map/Layout") if arena else null
+	if layout and layout.has_method("has_minimap") and not layout.call("has_minimap"):
+		return false
+	return SettingsScript.read(get_tree(), "show_minimap")
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_minimap"):
+		var settings := get_tree().root.get_node_or_null("Settings")
+		if settings:
+			settings.call("set_value", "show_minimap", not settings.call("get_value", "show_minimap"))
+
+
 func _process(delta: float) -> void:
+	visible = _wanted()
+	if not visible:
+		return
 	for id in _seen:
 		_seen[id][1] += delta
 	_panel.queue_redraw()
 
 
 func _physics_process(delta: float) -> void:
+	if not visible:
+		return
 	_check_timer -= delta
 	var arena := _arena()
 	if _check_timer > 0.0 or not ball or not arena:

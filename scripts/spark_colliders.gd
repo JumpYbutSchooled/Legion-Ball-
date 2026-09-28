@@ -12,6 +12,9 @@ func _add_colliders(node: Node) -> void:
 	for child in node.get_children():
 		_add_colliders(child)
 
+	# Looping maps' edge copies (map_builder.gd): collision only, sparks skip them.
+	if node.has_meta("wrap_copy"):
+		return
 	var size := Vector3.ZERO
 	if node is CSGBox3D and (node as CSGBox3D).use_collision:
 		size = (node as CSGBox3D).size

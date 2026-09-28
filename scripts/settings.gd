@@ -27,6 +27,8 @@ const DEFAULTS := {
 	"map_intro": true,
 	## The last version whose "what's new" message was shown (main_menu.gd).
 	"last_seen_version": "",
+	## The first-time tutorial has been finished (or skipped from the welcome panel).
+	"tutorial_done": false,
 	## Weapon ids for keys 1-6 (weapon_info.gd; empty = the default six). Set in the Armory.
 	"loadout": [],
 	"player_name": "PLAYER",
@@ -40,6 +42,13 @@ const DEFAULTS := {
 	## Staff weapons shown in the picker and on keys 7-8 (key 0 toggles).
 	"show_staff_weapons": true,
 	"fullscreen": false,
+	## WINDOWED, BORDERLESS (fills the screen) or FULLSCREEN (exclusive). Replaces the old
+	## fullscreen on/off (still read once, from older settings files).
+	"window_mode": "",
+	## Window size when windowed.
+	"resolution": "1600x900",
+	## Size of menus and the HUD (1 = normal; Steam Deck starts at 1.2).
+	"ui_scale": 0.0,
 	## Graphics (graphics.gd): a preset, and the options it sets (each can be changed after).
 	"graphics_preset": "HIGH",
 	"shadows": true,
@@ -60,6 +69,8 @@ const DEFAULTS := {
 	"damage_indicators": true,
 	"speed_trails": true,
 	"show_fps": false,
+	## The minimap (top left; M toggles it). Some maps never have one (map has_minimap()).
+	"show_minimap": true,
 	"invert_mouse_y": false,
 	## Aim the camera by tilting a controller with a gyro (DualSense, DualShock 4, Switch Pro).
 	"motion_controls": false,
@@ -78,9 +89,18 @@ var _values := {}
 
 func _ready() -> void:
 	var file := ConfigFile.new()
-	if file.load(PATH) == OK:
+	var loaded := file.load(PATH)
+	# A damaged settings file (a crash mid-save): fall back to the last good copy.
+	if loaded != OK and FileAccess.file_exists(PATH + ".bak"):
+		loaded = file.load(PATH + ".bak")
+	if loaded == OK:
 		for key in DEFAULTS:
 			_values[key] = file.get_value("settings", key, DEFAULTS[key])
+	# Older settings: fullscreen on/off becomes the window mode.
+	if String(get_value("window_mode")) == "":
+		_values["window_mode"] = "BORDERLESS" if get_value("fullscreen") else "WINDOWED"
+	if float(get_value("ui_scale")) <= 0.0:
+		_values["ui_scale"] = 1.2 if OS.get_environment("SteamDeck") == "1" else 1.0
 	_apply_window()
 	UIStyle.set_accent(String(get_value("ui_color")))
 	(func() -> void: Graphics.apply(get_tree())).call_deferred()
@@ -98,11 +118,12 @@ func set_value(key: String, value: Variant) -> void:
 		for k in preset:
 			_values[k] = preset[k]
 	_save()
-	if key == "fullscreen" or key == "vsync":
+	if key in ["fullscreen", "vsync", "window_mode", "resolution", "ui_scale"]:
 		_apply_window()
 	if key == "ui_color":
 		UIStyle.set_accent(String(value))
-	Graphics.apply(get_tree())
+	if is_inside_tree():
+		Graphics.apply(get_tree())
 	changed.emit()
 
 
@@ -115,21 +136,46 @@ func reset_defaults() -> void:
 	changed.emit()
 
 
+## Written to a temporary file, then swapped in (the old one kept as .bak), so a crash
+## or power cut halfway through a save can't wipe everyone's settings.
 func _save() -> void:
 	var file := ConfigFile.new()
 	for key in DEFAULTS:
 		file.set_value("settings", key, get_value(key))
-	file.save(PATH)
+	if file.save(PATH + ".tmp") != OK:
+		return
+	var dir := DirAccess.open("user://")
+	if not dir:
+		return
+	if dir.file_exists(PATH.get_file()):
+		dir.copy(PATH, PATH + ".bak")
+	dir.rename(PATH + ".tmp", PATH)
 
 
 func _apply_window() -> void:
 	# Leave the window alone in headless runs (tests, exports without a display).
 	if DisplayServer.get_name() == "headless":
 		return
-	var full: bool = get_value("fullscreen")
-	var mode := DisplayServer.WINDOW_MODE_FULLSCREEN if full else DisplayServer.WINDOW_MODE_WINDOWED
+	var mode := DisplayServer.WINDOW_MODE_WINDOWED
+	match String(get_value("window_mode")):
+		"BORDERLESS":
+			mode = DisplayServer.WINDOW_MODE_FULLSCREEN
+		"FULLSCREEN":
+			mode = DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
 	if DisplayServer.window_get_mode() != mode:
 		DisplayServer.window_set_mode(mode)
+	if mode == DisplayServer.WINDOW_MODE_WINDOWED:
+		var parts := String(get_value("resolution")).split("x")
+		if parts.size() == 2 and parts[0].is_valid_int() and parts[1].is_valid_int():
+			var want := Vector2i(int(parts[0]), int(parts[1]))
+			var screen := DisplayServer.screen_get_usable_rect().size
+			want = Vector2i(mini(want.x, screen.x), mini(want.y, screen.y))
+			if DisplayServer.window_get_size() != want:
+				DisplayServer.window_set_size(want)
+				DisplayServer.window_set_position(DisplayServer.screen_get_usable_rect().position + (screen - want) / 2)
+	var tree := get_tree() if is_inside_tree() else null
+	if tree:
+		tree.root.content_scale_factor = clampf(float(get_value("ui_scale")), 0.6, 2.0)
 	var vsync: bool = get_value("vsync")
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
 

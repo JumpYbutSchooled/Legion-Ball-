@@ -2,7 +2,7 @@
     {
         "version":  "1.5.0",
         "date":  "2026-09-27",
-        "notes":  "BIG UPDATE: 3 new modes (King of the Hill, Gun Game, Juggernaut), 5 new weapons (Plasma Net, Fibonacci Cannon, Hyper Dash, Air Burst, Asprint), 8 new maps (Jungle Gym, Parthenon, Garden of Eden, Infinity Castle, Big Toilet, The RV, Pallet Town, Backrooms). Kill feed shows weapons, rainbow owner tag, CS tag, pylon parry fix, controller menu scrolling, separate controller yaw/pitch sensitivity, speedometer volume, fix for falling through floors, Arbalest rebalance, marked players on the minimap."
+        "notes":  "BIG UPDATE: 3 new modes (King of the Hill, Gun Game, Juggernaut), 5 new weapons (Plasma Net, Fibonacci Cannon, Hyper Dash, Air Burst, Asprint), 8 new maps (Jungle Gym, Parthenon, Garden of Eden, Endless Fortress, Big Toilet, Desert Camper, Seaside Village, Backrooms). Kill feed shows weapons, rainbow owner tag, CS tag, pylon parry fix, controller menu scrolling, separate controller yaw/pitch sensitivity, speedometer volume, fix for falling through floors, Arbalest rebalance, marked players on the minimap."
     },
     {
         "version":  "1.4.6",
@@ -22,7 +22,7 @@
     {
         "version":  "1.4.3",
         "date":  "2026-09-26",
-        "notes":  "Big performance boost with no change to the graphics: the minimap was redrawing the whole map every frame, and maps drew thousands of separate pieces. Frame rates are up to 8x higher (Gotham went from about 50 to over 400 FPS)."
+        "notes":  "Big performance boost with no change to the graphics: the minimap was redrawing the whole map every frame, and maps drew thousands of separate pieces. Frame rates are up to 8x higher (Darkhaven went from about 50 to over 400 FPS)."
     },
     {
         "version":  "1.4.2",
@@ -42,12 +42,12 @@
     {
         "version":  "1.3.4",
         "date":  "2026-09-26",
-        "notes":  "Coliseum, The Box, Thunder Dome, City, Daytona 500, Atlantis, El Dorado, Military Base, The House, Trench Run, Enterprise, Gotham and Chess Board are now twice as big. Ramps out of the Atlantis canals and the Trench Run trench (no more getting stuck)."
+        "notes":  "Coliseum, The Box, Thunder Dome, City, Superspeedway, Atlantis, El Dorado, Military Base, The House, Station Trench, Starship, Darkhaven and Chess Board are now twice as big. Ramps out of the Atlantis canals and the Station Trench trench (no more getting stuck)."
     },
     {
         "version":  "1.3.3",
         "date":  "2026-09-26",
-        "notes":  "Owner: set anyone\u0027s max health and speed (including your own) from the moderation page. Fixed flickering (z-fighting) on Trench Run, City, Castle, The House, Gotham, Military Base and Atlantis. Talladega/Daytona stand roofs no longer float, and Daytona\u0027s lake is back. Arbalest: shoves much harder and pins targets to any wall behind them (up to 14 m)."
+        "notes":  "Owner: set anyone\u0027s max health and speed (including your own) from the moderation page. Fixed flickering (z-fighting) on Station Trench, City, Castle, The House, Darkhaven, Military Base and Atlantis. Big Oval/Superspeedway stand roofs no longer float, and Superspeedway\u0027s lake is back. Arbalest: shoves much harder and pins targets to any wall behind them (up to 14 m)."
     },
     {
         "version":  "1.3.2",
@@ -62,7 +62,7 @@
     {
         "version":  "1.3.0",
         "date":  "2026-09-26",
-        "notes":  "11 NEW MAPS: Castle, Daytona 500, Talladega, Atlantis, El Dorado, Military Base, The House (10:1 scale, with vents), Trench Run, Enterprise, Gotham, Chess Board. TEAM DEATHMATCH mode. Smash-style map and mode vote at the end of every match. AI BOTS fill matches with fewer than 4 players. Match timer on the scoreboard. Servers 3 and 4 are CLASSIC (original six weapons). Armory: press a slot to open a weapon picker with pictures and details. UI colour setting. DualSense motion aiming (R3 recenters). Staff weapons in practice for everyone. Fixed: chat unread counter, PlayStation X now selects. New game icon."
+        "notes":  "11 NEW MAPS: Castle, Superspeedway, Big Oval, Atlantis, El Dorado, Military Base, The House (10:1 scale, with vents), Station Trench, Starship, Darkhaven, Chess Board. TEAM DEATHMATCH mode. Smash-style map and mode vote at the end of every match. AI BOTS fill matches with fewer than 4 players. Match timer on the scoreboard. Servers 3 and 4 are CLASSIC (original six weapons). Armory: press a slot to open a weapon picker with pictures and details. UI colour setting. DualSense motion aiming (R3 recenters). Staff weapons in practice for everyone. Fixed: chat unread counter, PlayStation X now selects. New game icon."
     },
     {
         "version":  "1.2.3",

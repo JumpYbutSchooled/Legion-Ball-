@@ -77,6 +77,24 @@ func _arena() -> Node:
 	return get_parent()
 
 
+## Host: run a result here and send it to every player whose map has finished loading
+## (arena.gd ready_peers). Sent to someone still loading, it would arrive before their
+## turrets exist (and be lost, with errors); they get the whole state when they're in.
+func _send(method: StringName, args: Array) -> void:
+	callv(method, args)
+	var arena := get_parent()
+	var ready: Dictionary = arena.get("ready_peers") if arena and "ready_peers" in arena else {}
+	var peers := multiplayer.get_peers()
+	for peer in ready:
+		if peers.has(peer):
+			callv("rpc_id", [peer, method] + args)
+
+
+## Host: a player just finished loading: send them where every turret's at.
+func send_state_to(_peer: int) -> void:
+	_send_state()
+
+
 func _is_host() -> bool:
 	return multiplayer.is_server()
 
@@ -102,7 +120,7 @@ func _send_state() -> void:
 	for i in _turrets.size():
 		if not _turrets[i].alive:
 			down.append(i)
-	_state.rpc(enabled, down)
+	_send("_state", [enabled, down])
 
 
 func _apply(on: bool, down: Array) -> void:
@@ -136,12 +154,12 @@ func _physics_process(delta: float) -> void:
 		if not t.alive:
 			_rebuild[i] -= delta
 			if _rebuild[i] <= 0.0:
-				_revived.rpc(i)
+				_send("_revived", [i])
 			continue
 		_stun[i] = maxf(_stun[i] - delta, 0.0)
 		var target := _pick_target(t) if _stun[i] == 0.0 else 0
 		if target != _target[i]:
-			_aim.rpc(i, target)
+			_send("_aim", [i, target])
 		_cooldown[i] = maxf(_cooldown[i] - delta, 0.0)
 		if target != 0 and _cooldown[i] == 0.0:
 			_cooldown[i] = FIRE_INTERVAL
@@ -189,7 +207,7 @@ func _shoot(i: int, target: int) -> void:
 	if not hit:
 		# A near miss, off to the side and past them.
 		point += Vector3(_rng.randf_range(-1, 1), _rng.randf_range(-0.3, 1), _rng.randf_range(-1, 1)).normalized() * _rng.randf_range(2.0, 4.0)
-	_fired.rpc(i, point)
+	_send("_fired", [i, point])
 	if not hit:
 		return
 	var from: Vector3 = _turrets[i].call("head_position")
@@ -228,7 +246,7 @@ func _host_hit(i: int, amount: float) -> void:
 		return
 	_hp[i] -= clampf(amount, 0.0, 200.0)
 	if _hp[i] <= 0.0:
-		_destroyed.rpc(i)
+		_send("_destroyed", [i])
 
 
 @rpc("any_peer", "reliable")
@@ -238,7 +256,7 @@ func _host_stun(i: int, duration: float) -> void:
 	duration = minf(duration, PARRY_STUN)
 	if duration > _stun[i]:
 		_stun[i] = duration
-		_stunned.rpc(i, duration)
+		_send("_stunned", [i, duration])
 
 
 # --- Results (every peer) -------------------------------------------------------------

@@ -38,6 +38,13 @@ func _ready() -> void:
 		_last = ball.global_position
 
 
+## A looping map moved the ball to the far side: the trail comes with it.
+func _on_wrapped(offset: Vector3) -> void:
+	for i in _points.size():
+		_points[i] += offset
+	_last += offset
+
+
 func _process(delta: float) -> void:
 	_mesh.clear_surfaces()
 	global_transform = Transform3D.IDENTITY
@@ -45,6 +52,12 @@ func _process(delta: float) -> void:
 		_points.clear()
 		_speeds.clear()
 		return
+	if ball.has_signal("wrapped") and not ball.is_connected("wrapped", _on_wrapped):
+		ball.connect("wrapped", _on_wrapped)
+		ball.connect("rifted", func(_turn: Basis, _to: Vector3) -> void:
+			_points.clear()
+			_speeds.clear()
+			_last = _to)
 	var pos := ball.get_global_transform_interpolated().origin
 	var speed := pos.distance_to(_last) / maxf(delta, 0.0001)
 	_last = pos

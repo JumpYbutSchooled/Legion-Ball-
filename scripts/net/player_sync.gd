@@ -34,6 +34,8 @@ var _locked_peer := 0
 ## OWNER / MOD / TESTER label above the name tag (scripts/net/moderation.gd TITLES).
 var _title: Label3D
 var _title_text := ""
+## Seconds since this ball was added (updates wait a moment, see _physics_process).
+var _since_spawn := 0.0
 
 
 func _ready() -> void:
@@ -79,6 +81,11 @@ func _physics_process(delta: float) -> void:
 	if is_multiplayer_authority():
 		var net := get_tree().root.get_node_or_null("Net")
 		if not net or not net.get("online"):
+			return
+		# A moment for everyone else to spawn this ball first (a new bot, a respawn):
+		# sent any sooner, the update reaches a ball that doesn't exist there yet.
+		_since_spawn += delta
+		if _since_spawn < 0.5:
 			return
 		_send_timer += delta
 		if _send_timer >= 1.0 / SEND_RATE:

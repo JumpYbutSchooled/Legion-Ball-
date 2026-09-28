@@ -12,7 +12,7 @@ extends Node3D
 ## A map can be built bigger than it's written: override map_size() (2 = twice as big in
 ## every direction). Everything the builder makes, the lights, spawns, turrets, outline,
 ## ceiling and fall height all scale with it; sp() scales a point for anything else.
-## A map can loop (Infinity Castle, the Backrooms): set _wrap to its size on the axes it
+## A map can loop (the Endless Fortress, the Backrooms): set _wrap to its size on the axes it
 ## repeats along (0 = doesn't). Cross an edge and you come out of the opposite one at the
 ## same speed; copies of the map all round make it look endless. The map is centred on
 ## the origin along every wrapped axis.
@@ -92,6 +92,11 @@ func _build() -> void:
 	pass
 
 
+## Looping maps have no minimap (it would only show one block of them).
+func has_minimap() -> bool:
+	return _wrap == Vector3.ZERO
+
+
 func spawn_points() -> Array[Vector3]:
 	return _spawns
 
@@ -114,50 +119,99 @@ func fall_height() -> float:
 
 # --- Looping ------------------------------------------------------------------------------
 
-## Copies of the map in every neighbouring cell: looks only, except pieces near an edge,
-## which are solid in the neighbour too (so a floor carries on across the seam).
-func _make_wrap_copies() -> void:
+## Neighbouring blocks, as offsets from this one.
+func _wrap_offsets() -> Array[Vector3]:
 	var offsets: Array[Vector3] = []
 	for ix in ([-1, 0, 1] if _wrap.x > 0.0 else [0]):
 		for iy in ([-1, 0, 1] if _wrap.y > 0.0 else [0]):
 			for iz in ([-1, 0, 1] if _wrap.z > 0.0 else [0]):
 				if ix != 0 or iy != 0 or iz != 0:
 					offsets.append(Vector3(ix * _wrap.x, iy * _wrap.y, iz * _wrap.z))
+	return offsets
+
+
+## While building: pieces near an edge are made solid in the neighbouring block too (so a
+## floor carries on across the seam). Collision only: what they look like comes from
+## make_wrap_visuals, which copies the whole (merged) map once it's been merged.
+func _make_wrap_copies() -> void:
 	var half := _wrap / 2.0
 	for node in get_children():
 		var body := node as StaticBody3D
-		var mesh: MeshInstance3D = node as MeshInstance3D
-		if body:
-			for c in body.get_children():
-				if c is MeshInstance3D:
-					mesh = c
-		if not mesh:
+		if not body:
 			continue
-		var reach := 0.0
-		if body:
-			for c in body.get_children():
-				var shape := c as CollisionShape3D
-				if shape and shape.shape is BoxShape3D:
-					reach = (shape.shape as BoxShape3D).size.length() / 2.0
-		for off in offsets:
-			var at: Vector3 = (body.transform.origin if body else mesh.transform.origin) + off
+		# How far the box reaches from its centre along each world axis.
+		var ext := Vector3.ZERO
+		for c in body.get_children():
+			var shape := c as CollisionShape3D
+			if shape and shape.shape is BoxShape3D:
+				var h := (shape.shape as BoxShape3D).size / 2.0
+				var b := body.transform.basis
+				ext = (b.x * h.x).abs() + (b.y * h.y).abs() + (b.z * h.z).abs()
+		for off in _wrap_offsets():
+			var at: Vector3 = body.transform.origin + off
 			var near := true
 			for axis in 3:
-				if _wrap[axis] > 0.0 and absf(at[axis]) > half[axis] + WRAP_MARGIN + reach:
+				if _wrap[axis] > 0.0 and absf(at[axis]) - ext[axis] > half[axis] + WRAP_MARGIN:
 					near = false
-			if body and near:
-				var solid_copy := body.duplicate() as StaticBody3D
-				solid_copy.transform.origin = at
-				add_child(solid_copy)
-			else:
-				var look := MeshInstance3D.new()
-				look.mesh = mesh.mesh
-				look.material_override = mesh.material_override
-				look.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				look.transform = (body.transform if body else mesh.transform) * (mesh.transform if body else Transform3D.IDENTITY)
-				look.transform.origin = at if not body else look.transform.origin + off
-				add_child(look)
+			if not near:
+				continue
+			var solid_copy := StaticBody3D.new()
+			solid_copy.transform = Transform3D(body.transform.basis, at)
+			solid_copy.physics_material_override = body.physics_material_override
+			for c in body.get_children():
+				if c is CollisionShape3D:
+					var shape_copy := (c as CollisionShape3D).duplicate() as CollisionShape3D
+					# Off the minimap (it only shows one block) and out of the spark colliders' way.
+					shape_copy.set_meta("no_minimap", true)
+					shape_copy.set_meta("wrap_copy", true)
+					solid_copy.add_child(shape_copy)
+			add_child(solid_copy)
 
+
+## Which neighbouring blocks get drawn (all of them, unless a map says otherwise).
+func wrap_visual_offsets() -> Array[Vector3]:
+	return _wrap_offsets()
+
+
+## How far away (m) the copies of the neighbouring blocks stay drawn.
+func wrap_view_range() -> float:
+	return 260.0
+
+
+## After the map's been merged (arena.gd): the whole map drawn again in every
+## neighbouring block, so the loop looks endless. `map` is the Map node (the merged
+## meshes live there). Cheap: a few dozen meshes, each shared with its copies.
+func make_wrap_visuals(map: Node3D) -> void:
+	if _wrap == Vector3.ZERO:
+		return
+	var meshes: Array[MeshInstance3D] = []
+	_collect_meshes(map, meshes)
+	var holder := Node3D.new()
+	holder.name = "WrapCopies"
+	map.add_child(holder)
+	for mesh in meshes:
+		var xf := mesh.global_transform
+		for off in wrap_visual_offsets():
+			var look := MeshInstance3D.new()
+			look.mesh = mesh.mesh
+			look.material_override = mesh.material_override
+			look.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			look.visibility_range_end = wrap_view_range()
+			look.visibility_range_end_margin = 20.0
+			look.transform = Transform3D(xf.basis, xf.origin + off)
+			holder.add_child(look)
+
+
+func _collect_meshes(node: Node, out: Array[MeshInstance3D]) -> void:
+	for child in node.get_children():
+		# WrapCopies, and the pieces the merge just replaced (freed at the end of the frame).
+		if child.name == "WrapCopies" or child.is_queued_for_deletion():
+			continue
+		var mesh := child as MeshInstance3D
+		if mesh and mesh.visible and mesh.mesh:
+			out.append(mesh)
+		elif not child is RigidBody3D:
+			_collect_meshes(child, out)
 
 ## Anyone this computer moves (its own ball, the host's bots) who crossed an edge comes
 ## out of the opposite one.

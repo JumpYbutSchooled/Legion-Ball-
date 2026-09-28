@@ -1,5 +1,5 @@
 extends "res://scripts/maps/map_builder.gd"
-## Shared builder for the superspeedways (Daytona 500, Talladega): a stadium oval with
+## Shared builder for the ovals (Superspeedway, Big Oval): a stadium oval with
 ## two straights along X and two banked turns. The banking eases in from the straights'
 ## gentle tilt to the full angle over the first and last part of each turn, and a tall
 ## retaining wall runs round the outside edge (down to the ground, so there's nothing to

@@ -12,11 +12,16 @@ const SERVICES := {
 	"Mod": "res://scripts/net/moderation.gd",
 	"Chat": "res://scripts/net/chat.gd",
 	"GlobalChat": "res://scripts/net/global_relay.gd",
+	"Steamworks": "res://scripts/steam.gd",
 	"Credits": "res://scripts/credits.gd",
 }
 
 
 static func ensure(tree: SceneTree) -> void:
+	# The project's internal name stays "Leigon Ball" (it names everyone's save folder);
+	# the window says the real name.
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_title("Legion Ball")
 	for service in SERVICES:
 		if tree.root.get_node_or_null(service) == null:
 			var node: Node = load(SERVICES[service]).new()

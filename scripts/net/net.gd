@@ -40,23 +40,23 @@ const MAP_NAMES := {
 	"res://scenes/arena_tunnels.tscn": "TUNNELS",
 	"res://scenes/arena_city.tscn": "CITY",
 	"res://scenes/arena_castle.tscn": "CASTLE",
-	"res://scenes/arena_daytona.tscn": "DAYTONA 500",
-	"res://scenes/arena_talladega.tscn": "TALLADEGA",
+	"res://scenes/arena_superspeedway.tscn": "SUPERSPEEDWAY",
+	"res://scenes/arena_big_oval.tscn": "BIG OVAL",
 	"res://scenes/arena_atlantis.tscn": "ATLANTIS",
 	"res://scenes/arena_el_dorado.tscn": "EL DORADO",
 	"res://scenes/arena_military_base.tscn": "MILITARY BASE",
 	"res://scenes/arena_house.tscn": "THE HOUSE",
-	"res://scenes/arena_trench_run.tscn": "TRENCH RUN",
-	"res://scenes/arena_enterprise.tscn": "ENTERPRISE",
-	"res://scenes/arena_gotham.tscn": "GOTHAM",
+	"res://scenes/arena_station_trench.tscn": "STATION TRENCH",
+	"res://scenes/arena_starship.tscn": "STARSHIP",
+	"res://scenes/arena_darkhaven.tscn": "DARKHAVEN",
 	"res://scenes/arena_chess.tscn": "CHESS BOARD",
 	"res://scenes/arena_jungle_gym.tscn": "JUNGLE GYM",
 	"res://scenes/arena_parthenon.tscn": "THE PARTHENON",
 	"res://scenes/arena_eden.tscn": "GARDEN OF EDEN",
-	"res://scenes/arena_infinity_castle.tscn": "INFINITY CASTLE",
+	"res://scenes/arena_endless_fortress.tscn": "ENDLESS FORTRESS",
 	"res://scenes/arena_toilet.tscn": "BIG TOILET",
-	"res://scenes/arena_rv.tscn": "THE RV",
-	"res://scenes/arena_pallet_town.tscn": "PALLET TOWN",
+	"res://scenes/arena_desert_camper.tscn": "DESERT CAMPER",
+	"res://scenes/arena_seaside_village.tscn": "SEASIDE VILLAGE",
 	"res://scenes/arena_backrooms.tscn": "THE BACKROOMS",
 }
 ## The combat maps: what end-of-match votes, moderators and hosts choose between.
@@ -68,23 +68,23 @@ const COMBAT_MAPS := [
 	"res://scenes/arena_tunnels.tscn",
 	"res://scenes/arena_city.tscn",
 	"res://scenes/arena_castle.tscn",
-	"res://scenes/arena_daytona.tscn",
-	"res://scenes/arena_talladega.tscn",
+	"res://scenes/arena_superspeedway.tscn",
+	"res://scenes/arena_big_oval.tscn",
 	"res://scenes/arena_atlantis.tscn",
 	"res://scenes/arena_el_dorado.tscn",
 	"res://scenes/arena_military_base.tscn",
 	"res://scenes/arena_house.tscn",
-	"res://scenes/arena_trench_run.tscn",
-	"res://scenes/arena_enterprise.tscn",
-	"res://scenes/arena_gotham.tscn",
+	"res://scenes/arena_station_trench.tscn",
+	"res://scenes/arena_starship.tscn",
+	"res://scenes/arena_darkhaven.tscn",
 	"res://scenes/arena_chess.tscn",
 	"res://scenes/arena_jungle_gym.tscn",
 	"res://scenes/arena_parthenon.tscn",
 	"res://scenes/arena_eden.tscn",
-	"res://scenes/arena_infinity_castle.tscn",
+	"res://scenes/arena_endless_fortress.tscn",
 	"res://scenes/arena_toilet.tscn",
-	"res://scenes/arena_rv.tscn",
-	"res://scenes/arena_pallet_town.tscn",
+	"res://scenes/arena_desert_camper.tscn",
+	"res://scenes/arena_seaside_village.tscn",
 	"res://scenes/arena_backrooms.tscn",
 ]
 ## The map each online server runs, in the same order as SERVER_URLS. A server finds its
@@ -573,7 +573,7 @@ func _on_connect_failed() -> void:
 			return
 		_give_up("The online server didn't answer. It may be down; try again in a minute.")
 		return
-	_give_up("Connection timed out. Check the address, then on the HOST PC allow LeigonBall through Windows Firewall (UDP %d). On school Wi-Fi use the ONLINE SERVER instead." % PORT)
+	_give_up("Connection timed out. Check the address, then on the HOST PC allow LegionBall through Windows Firewall (UDP %d). On school Wi-Fi use the ONLINE SERVER instead." % PORT)
 
 
 func _give_up(reason: String) -> void:

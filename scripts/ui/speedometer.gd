@@ -9,6 +9,7 @@ extends CanvasLayer
 ## Also shows the shield (Q) cooldown underneath.
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
+const SteamScript := preload("res://scripts/steam.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 const SettingsScript := preload("res://scripts/settings.gd")
 const InputSetup := preload("res://scripts/input_setup.gd")
@@ -93,6 +94,8 @@ func _change_tier(from: int, to: int, dir: int) -> void:
 	_shard_color = TIER_COLORS[from] if dir > 0 else TIER_COLORS[to]
 	_make_shards()
 	_tier = to
+	if to == 5:
+		SteamScript.achieve(get_tree(), "INFINITY")
 	var volume: float = SettingsScript.read(get_tree(), "speedometer_volume")
 	if volume <= 0.01:
 		return

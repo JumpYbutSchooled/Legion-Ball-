@@ -72,6 +72,11 @@ func _whats_new() -> void:
 	if not settings or version == "?":
 		return
 	var seen: String = settings.call("get_value", "last_seen_version")
+	if seen == "" and not settings.call("get_value", "tutorial_done"):
+		# A brand new player: offer the tutorial instead of the patch notes.
+		settings.call("set_value", "last_seen_version", version)
+		_welcome(settings)
+		return
 	if seen == version:
 		return
 	settings.call("set_value", "last_seen_version", version)
@@ -137,6 +142,42 @@ func _whats_new() -> void:
 	MenuUI.ui_sound(self, "ui_page", -6.0)
 
 
+## First launch: welcome, and the choice of a quick tutorial or straight in.
+func _welcome(settings: Node) -> void:
+	var dim := ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.0, 0.02, 0.04, 0.75)
+	add_child(dim)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(600, 0)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	dim.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	panel.add_child(box)
+	box.add_child(UIStyle.label("// WELCOME TO LEGION BALL", 26, UIStyle.ACCENT, true))
+	var text := UIStyle.label("You're a crystal ball with a loadout of blades. Roll fast, dash, shoot, shield, and knock everyone else off the map.\n\nNew here? The tutorial takes about two minutes.", 15, UIStyle.TEXT)
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(text)
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 14)
+	box.add_child(buttons)
+	var play := Button.new()
+	play.text = "[ PLAY THE TUTORIAL ]"
+	play.pressed.connect(func() -> void: MenuUI.start_tutorial(self))
+	buttons.add_child(play)
+	var skip := Button.new()
+	skip.text = "[ SKIP ]"
+	skip.pressed.connect(func() -> void:
+		settings.call("set_value", "tutorial_done", true)
+		dim.queue_free())
+	buttons.add_child(skip)
+	play.grab_focus.call_deferred()
+	MenuUI.ui_sound(self, "ui_page", -6.0)
+
+
 func _ensure_services() -> void:
 	Services.ensure(get_tree())
 
@@ -147,7 +188,7 @@ func _version() -> String:
 
 
 func _title_label(color: Color) -> Label:
-	var l := UIStyle.label("LEIGON BALL", 72, color, true)
+	var l := UIStyle.label("LEGION BALL", 72, color, true)
 	l.position = Vector2(62, 34)
 	add_child(l)
 	return l

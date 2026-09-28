@@ -4,6 +4,7 @@ extends CanvasLayer
 ## arena's signals and the Net roster. Added by the arena for the local player online.
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
+const SteamScript := preload("res://scripts/steam.gd")
 const Rainbow := preload("res://scripts/ui/rainbow.gd")
 const ModScript := preload("res://scripts/net/moderation.gd")
 const Killstreak := preload("res://scripts/ui/killstreak.gd")
@@ -405,6 +406,9 @@ func _on_killed(victim: int, attacker: int) -> void:
 		_feed_items.remove_at(0)
 	if attacker == multiplayer.get_unique_id() and not solo:
 		_streak.call("add_kill")
+		SteamScript.achieve(get_tree(), "FIRST_BLOOD")
+		if int(_streak.get("streak")) >= 5:
+			SteamScript.achieve(get_tree(), "KILLSTREAK_5")
 	if victim == multiplayer.get_unique_id():
 		_streak.call("reset")
 		_center.text = "ELIMINATED"
@@ -441,6 +445,12 @@ func _on_match_over(winner: int) -> void:
 		me = _net != null and int(_net.call("team_of", multiplayer.get_unique_id())) == team
 		_center.text = "VICTORY" if me else "%s TEAM WINS" % NetScript.TEAM_NAMES[team]
 	_center.add_theme_color_override("font_color", UIStyle.ACCENT if me else Color.WHITE)
+	if me:
+		SteamScript.achieve(get_tree(), "WIN_MATCH")
+		var won_mode: String = arena.call("game_mode") if arena else "ffa"
+		var mode_achievement: String = {"koth": "KING_OF_THE_HILL", "gungame": "GUN_GAME", "juggernaut": "JUGGERNAUT"}.get(won_mode, "")
+		if mode_achievement != "":
+			SteamScript.achieve(get_tree(), mode_achievement)
 	var dedicated_server: bool = _net != null and not _net.call("is_host")
 	_center_sub.text = "VOTE FOR THE NEXT MAP" if dedicated_server else "RETURNING TO LOBBY..."
 	_slam_in(_center)
