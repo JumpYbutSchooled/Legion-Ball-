@@ -60,14 +60,15 @@ git push -q origin HEAD "v$Version" 2>&1 | Out-Null; Check "git push"
 & $Gh release create "v$Version" $pck --title "v$Version" --notes $Notes; Check "gh release create"
 Write-Host "Published v$Version - players get it on their next launch."
 
-# Patch notes to Discord, if a webhook is set up: the LEGION_DISCORD_WEBHOOK environment
-# variable, or the URL alone in tools\discord_webhook.txt (git-ignored: it's a secret).
-$Hook = $env:LEGION_DISCORD_WEBHOOK
+# Patch notes to Discord, if a webhook is set up: the BALLISTIC_DISCORD_WEBHOOK
+# environment variable, or the URL alone in tools\discord_webhook.txt (git-ignored: it's
+# a secret).
+$Hook = $env:BALLISTIC_DISCORD_WEBHOOK
 $HookFile = "$PSScriptRoot\discord_webhook.txt"
 if (-not $Hook -and (Test-Path $HookFile)) { $Hook = (Get-Content $HookFile -Raw).Trim() }
 if ($Hook) {
     $Body = @{
-        username = "Legion Ball"
+        username = "Ballistic"
         embeds = @(@{
             title = "Update v$Version is out"
             description = $Notes

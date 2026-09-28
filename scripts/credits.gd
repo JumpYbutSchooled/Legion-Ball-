@@ -112,6 +112,6 @@ func fetch() -> void:
 		if not sections.is_empty() and to_json(sections) != to_json(current()):
 			store(sections))
 	var url := "https://api.github.com/repos/%s/contents/%s?ref=%s" % [REPO, FILE, BRANCH]
-	if _request.request(url, ["User-Agent: LegionBall", "Accept: application/vnd.github.raw+json"]) != OK:
+	if _request.request(url, ["User-Agent: Ballistic", "Accept: application/vnd.github.raw+json"]) != OK:
 		_request.queue_free()
 		_request = null

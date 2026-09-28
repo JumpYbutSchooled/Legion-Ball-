@@ -689,7 +689,7 @@ func _build_updates(box: VBoxContainer) -> void:
 ## Who made the game (scripts/credits.gd: the newest copy downloaded, else the shipped
 ## one). Owners get an editor below it on the main menu; saving goes through the hub.
 func _build_credits(box: VBoxContainer) -> void:
-	_header(box, "CREDITS", "THE PILOTS BEHIND LEGION BALL")
+	_header(box, "CREDITS", "THE PILOTS BEHIND BALLISTIC")
 	var credits := get_tree().root.get_node_or_null("Credits")
 	if credits:
 		credits.call("fetch")

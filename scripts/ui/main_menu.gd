@@ -157,7 +157,7 @@ func _welcome(settings: Node) -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
-	box.add_child(UIStyle.label("// WELCOME TO LEGION BALL", 26, UIStyle.ACCENT, true))
+	box.add_child(UIStyle.label("// WELCOME TO BALLISTIC", 26, UIStyle.ACCENT, true))
 	var text := UIStyle.label("You're a crystal ball with a loadout of blades. Roll fast, dash, shoot, shield, and knock everyone else off the map.\n\nNew here? The tutorial takes about two minutes.", 15, UIStyle.TEXT)
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(text)
@@ -188,7 +188,7 @@ func _version() -> String:
 
 
 func _title_label(color: Color) -> Label:
-	var l := UIStyle.label("LEGION BALL", 72, color, true)
+	var l := UIStyle.label("BALLISTIC", 72, color, true)
 	l.position = Vector2(62, 34)
 	add_child(l)
 	return l

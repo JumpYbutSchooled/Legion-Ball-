@@ -1,4 +1,4 @@
-# Dedicated online server for Legion Ball (runs on Render; see render.yaml).
+# Dedicated online server for Ballistic (runs on Render; see render.yaml).
 # Builds straight from this repository, so every push (tools\publish.ps1) redeploys
 # the server with the same code players are updated to.
 FROM debian:bookworm-slim

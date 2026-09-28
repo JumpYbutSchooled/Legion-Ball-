@@ -15,7 +15,12 @@ const ASSET_NAME := "game.pck"
 const PATCH_DIR := "user://patch/"
 const CURRENT_FILE := "user://patch/current.txt"
 const MENU_SCENE := "res://scenes/menu.tscn"
-const USER_AGENT := "LeigonBall-Updater"
+const USER_AGENT := "Ballistic-Updater"
+## The game's old name: it named everyone's save folder before the rename to Ballistic.
+## Renamed the project (project.godot config/name), so anyone who re-downloads the base
+## game after this gets a new, empty save folder unless we copy the old one over first.
+const OLD_NAME := "Leigon Ball"
+const MIGRATE_FILES := ["settings.cfg", "settings.cfg.bak", "keybinds.cfg", "staff.cfg", "device_id", "credits_cache.json"]
 
 var _status: Label
 var _bar: ProgressBar
@@ -24,6 +29,7 @@ var _request: HTTPRequest
 
 func _ready() -> void:
 	_build_ui()
+	_migrate_from_old_name()
 	# Steam builds: Steam keeps the game up to date, and a GitHub patch left in the save
 	# folder (shared with the GitHub version) must never be loaded over it.
 	if not OS.has_feature("steam"):
@@ -50,6 +56,25 @@ func _process(_delta: float) -> void:
 
 
 # --- Local patch ----------------------------------------------------------------
+
+## One-time: if this is a fresh save folder (the rename gave it a new one) and the old
+## "Leigon Ball" folder next to it still has settings, copy them over so nobody who
+## reinstalls loses their settings, keybinds, staff code or device ID.
+func _migrate_from_old_name() -> void:
+	if FileAccess.file_exists("user://settings.cfg"):
+		return
+	var old_dir := OS.get_user_data_dir().get_base_dir().path_join(OLD_NAME)
+	if not DirAccess.dir_exists_absolute(old_dir):
+		return
+	var copied := PackedStringArray()
+	for file in MIGRATE_FILES:
+		var src := old_dir.path_join(file)
+		if FileAccess.file_exists(src):
+			DirAccess.copy_absolute(src, "user://".path_join(file))
+			copied.append(file)
+	if not copied.is_empty():
+		print("[boot] migrated from the old %s save folder: %s" % [OLD_NAME, ", ".join(copied)])
+
 
 func _mount_current_patch() -> void:
 	DirAccess.make_dir_recursive_absolute(PATCH_DIR)
@@ -194,7 +219,7 @@ func _build_ui() -> void:
 	box.position = Vector2(-210, -40)
 	add_child(box)
 	var title := Label.new()
-	title.text = "LEGION BALL"
+	title.text = "BALLISTIC"
 	title.add_theme_font_size_override("font_size", 40)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)

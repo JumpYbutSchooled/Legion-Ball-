@@ -426,7 +426,7 @@ func _credits_edit(id: int, msg: Dictionary) -> void:
 func _credits_commit(content: String, token: String) -> String:
 	var url := "https://api.github.com/repos/%s/contents/%s" % [CreditsScript.REPO, CreditsScript.FILE]
 	var headers := PackedStringArray([
-		"User-Agent: LegionBall-Server",
+		"User-Agent: Ballistic-Server",
 		"Authorization: Bearer " + token,
 		"Accept: application/vnd.github+json",
 		"X-GitHub-Api-Version: 2022-11-28",

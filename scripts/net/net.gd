@@ -573,7 +573,7 @@ func _on_connect_failed() -> void:
 			return
 		_give_up("The online server didn't answer. It may be down; try again in a minute.")
 		return
-	_give_up("Connection timed out. Check the address, then on the HOST PC allow LegionBall through Windows Firewall (UDP %d). On school Wi-Fi use the ONLINE SERVER instead." % PORT)
+	_give_up("Connection timed out. Check the address, then on the HOST PC allow Ballistic through Windows Firewall (UDP %d). On school Wi-Fi use the ONLINE SERVER instead." % PORT)
 
 
 func _give_up(reason: String) -> void:

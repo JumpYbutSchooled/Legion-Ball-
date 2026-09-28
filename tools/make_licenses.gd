@@ -11,7 +11,7 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var path: String = args[0] if not args.is_empty() else "THIRD_PARTY_LICENSES.txt"
 	var out := PackedStringArray()
-	out.append("Legion Ball uses the following third-party software.\n")
+	out.append("Ballistic uses the following third-party software.\n")
 	out.append("=".repeat(72))
 	out.append("Godot Engine (godotengine.org)\n")
 	out.append(Engine.get_license_text())

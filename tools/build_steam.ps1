@@ -1,4 +1,4 @@
-# Builds the Steam version into build\steam\ (LegionBall.exe with the game packed inside,
+# Builds the Steam version into build\steam\ (Ballistic.exe with the game packed inside,
 # the Steam libraries next to it). Upload that folder as the Windows depot with SteamPipe.
 # The Steam build has the "steam" feature: no GitHub auto-updater, no GitHub patches.
 #
@@ -18,8 +18,8 @@ $out = Join-Path $Root "build\steam"
 New-Item -ItemType Directory -Force $out | Out-Null
 # Start clean: only this build's files in the depot folder.
 Get-ChildItem $out -File | ForEach-Object { $_.Delete() }
-& $Godot --headless --path $Root --export-release "Windows Steam" "$out\LegionBall.exe"
-if (-not (Test-Path "$out\LegionBall.exe")) { throw "Export failed: no LegionBall.exe" }
+& $Godot --headless --path $Root --export-release "Windows Steam" "$out\Ballistic.exe"
+if (-not (Test-Path "$out\Ballistic.exe")) { throw "Export failed: no Ballistic.exe" }
 if (-not (Test-Path "$out\steam_api64.dll")) {
     Copy-Item "$Root\addons\godotsteam\win64\steam_api64.dll" $out
 }

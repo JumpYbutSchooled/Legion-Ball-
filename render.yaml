@@ -1,4 +1,7 @@
-# Render blueprint for the Legion Ball online server (free tier).
+# Render blueprint for the Ballistic online server (free tier). The service `name` below
+# is left as-is: it's the live Render service's identity, and changing it here won't
+# rename the already-provisioned service or its onrender.com hostname (see net.gd
+# SERVER_URLS, which point at the current hostnames and must stay in sync with them).
 # Render -> New -> Blueprint -> pick this repository. It builds the Dockerfile and
 # redeploys automatically on every push.
 services:
