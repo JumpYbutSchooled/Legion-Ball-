@@ -7,13 +7,13 @@ extends "res://scripts/weapons/simple_weapon.gd"
 const MAX_TIME := 2.5
 ## Speed you're flung at, as a multiple of your top speed.
 const SPEED_MULT := 1.25
-const HIT_DAMAGE := 25.0
+const HIT_DAMAGE := 35.0
 
 var _rushing := false
 
 
 func _build() -> void:
-	cooldown = 9.0
+	cooldown = 7.5
 	lock_on = true
 	lock_radius_px = 24.0
 	lock_range = 250.0
