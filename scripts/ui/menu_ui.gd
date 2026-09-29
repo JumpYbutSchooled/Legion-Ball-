@@ -583,6 +583,17 @@ func _build_practice_admin(box: VBoxContainer, mod: Node) -> void:
 		var b := _small_button(entry[0], entry[1])
 		b.add_theme_color_override("font_color", gold)
 		powers.add_child(b)
+	var name_creator: bool = mod.call("staff_role") == "namecreator"
+	if name_creator:
+		var pink := Color(1.0, 0.45, 0.75)
+		for nc_entry in [
+			["FREECAM: %s" % ("ON" if mod.get("freecam") else "OFF"), func() -> void: mod.call("practice_toggle_freecam")],
+			["PICTURE MODE: %s" % ("ON" if mod.get("picture_mode") else "OFF"), func() -> void: mod.call("practice_toggle_picture_mode")],
+			["CINEMATIC: %s" % ("ON" if mod.get("cinematic") else "OFF"), func() -> void: mod.call("practice_toggle_cinematic")],
+		]:
+			var ncb := _small_button(nc_entry[0], nc_entry[1])
+			ncb.add_theme_color_override("font_color", pink)
+			powers.add_child(ncb)
 	var row := HFlowContainer.new()
 	row.add_theme_constant_override("h_separation", 10)
 	box.add_child(row)
@@ -599,7 +610,10 @@ func _build_practice_admin(box: VBoxContainer, mod: Node) -> void:
 	set_button.add_theme_color_override("font_color", gold)
 	row.add_child(set_button)
 	row.add_child(_small_button("RESET", func() -> void: mod.call("practice_set_speed", 1.0)))
-	box.add_child(_wrapped(UIStyle.label("GOLD SHIELD: the owner's invincible shell. LOW GRAVITY: everything floats. LAUNCH ME: straight up. SPEED: how fast you roll, top speed, acceleration and dash all together. The AI turrets switch is in the menu on the left.", 12, UIStyle.TEXT_DIM)))
+	var help := "GOLD SHIELD: the owner's invincible shell. LOW GRAVITY: everything floats. LAUNCH ME: straight up. SPEED: how fast you roll, top speed, acceleration and dash all together. The AI turrets switch is in the menu on the left."
+	if name_creator:
+		help += " FREECAM: flies the camera freely through the map, WASD/stick to move, jump/dash for up/down. PICTURE MODE: hides the HUD. CINEMATIC: letterbox bars and a vignette. (NAME CREATOR only, for trailer shots.)"
+	box.add_child(_wrapped(UIStyle.label(help, 12, UIStyle.TEXT_DIM)))
 
 
 ## Owner: every player's max health and speed (you too), set with SET, or RESET to normal.

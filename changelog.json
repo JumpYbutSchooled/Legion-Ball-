@@ -1,5 +1,10 @@
 [
     {
+        "version":  "2.2.0",
+        "date":  "2026-09-28",
+        "notes":  "NAME CREATOR trailer tools, in Practice: FREECAM flies the camera freely through the map, detached from the ball (WASD/stick to move, jump/dash for up/down, mouse to look). PICTURE MODE hides every HUD overlay for a clean shot. CINEMATIC adds widescreen letterbox bars and a vignette. All three are NAME CREATOR only and reset automatically when you leave practice."
+    },
+    {
         "version":  "2.1.0",
         "date":  "2026-09-27",
         "notes":  "New staff title: NAME CREATOR (pink), unlocked with the NAMECREATOR_CODE server code. Title only, same as Customer Service - no moderator or owner powers."

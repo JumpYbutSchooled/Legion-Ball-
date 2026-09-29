@@ -16,6 +16,8 @@ const PAD_DEADZONE := 0.18
 const GYRO_DEADZONE := 0.02
 ## Pitch the camera returns to when recentred (R3).
 const RECENTER_PITCH := -0.25
+## NAME CREATOR's freecam (moderation.gd), metres a second.
+const FREECAM_SPEED := 40.0
 
 @export var target: Node3D
 @export var warp_rect: CanvasItem
@@ -92,6 +94,13 @@ var _motion := false
 var _motion_scale := 1.0
 var _motion_invert := false
 var _invert_y := false
+## NAME CREATOR's freecam: on while true, _process() flies the rig itself instead of
+## following target. min/max pitch and the zoom distance are relaxed while it's on, and
+## restored when it turns off.
+var freecam := false
+var _freecam_min_pitch := 0.0
+var _freecam_max_pitch := 0.0
+var _freecam_spring := 0.0
 ## Which controller's motion sensors we've switched on (-1 = none).
 var _gyro_device := -1
 var _trauma := 0.0
@@ -195,8 +204,44 @@ func _on_dashed() -> void:
 	_dash_lag = 1.0
 
 
+## moderation.gd's practice_toggle_freecam() calls this (scripts.camera_rig is in the
+## "camera_rig" group). First-person while it's on: zoomed all the way in, full pitch
+## range, and target is left untouched so following resumes right where it left off.
+func set_freecam(on: bool) -> void:
+	if freecam == on:
+		return
+	freecam = on
+	if on:
+		_freecam_min_pitch = min_pitch_deg
+		_freecam_max_pitch = max_pitch_deg
+		_freecam_spring = _spring_arm.spring_length
+		min_pitch_deg = -89.0
+		max_pitch_deg = 89.0
+		_spring_arm.spring_length = 0.0
+	else:
+		min_pitch_deg = _freecam_min_pitch
+		max_pitch_deg = _freecam_max_pitch
+		_spring_arm.spring_length = _freecam_spring
+
+
+## Moves the rig itself in the direction it's looking (full pitch, not just yaw), WASD /
+## left stick to move, jump / dash for up and down. No collision: flies straight through
+## walls, for lining up shots the ball couldn't reach.
+func _freecam_move(delta: float) -> void:
+	var basis := _pitch.global_transform.basis
+	var move := -basis.z * Input.get_axis("move_back", "move_forward") + basis.x * Input.get_axis("move_left", "move_right")
+	if Input.is_action_pressed("jump"):
+		move += Vector3.UP
+	if Input.is_action_pressed("dash"):
+		move += Vector3.DOWN
+	if move.length() > 0.0:
+		global_position += move.normalized() * FREECAM_SPEED * delta
+
+
 func _process(delta: float) -> void:
-	if target:
+	if freecam:
+		_freecam_move(delta)
+	elif target:
 		var goal := target.get_global_transform_interpolated().origin
 		# Horizontal follow slows right after a dash so the ball pulls away, then catches up.
 		_dash_lag = move_toward(_dash_lag, 0.0, delta / dash_lag_time)

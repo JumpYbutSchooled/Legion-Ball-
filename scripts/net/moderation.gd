@@ -9,7 +9,9 @@ extends Node
 ## Staff weapons also work in offline practice once a server has confirmed the code
 ## (STAFF_FILE), and key 0 hides or shows them (weapon.gd).
 ##   tester - a green TESTER title
-##   namecreator - a pink NAME CREATOR title, no powers (NAMECREATOR_CODE)
+##   namecreator - a pink NAME CREATOR title (NAMECREATOR_CODE), plus trailer tools in
+##                 practice: a freecam, picture mode (hides the HUD) and a cinematic
+##                 letterbox/vignette overlay
 ## The server checks every request, so a modified game can't fake being a mod.
 ## On a player-hosted game the host can moderate without a code.
 ## Bans live in the server's memory: they last until that server restarts or sleeps.
@@ -65,6 +67,16 @@ var locked_ids: Array = []
 var low_gravity := false
 var frozen: Array = []
 var muted: Array = []
+## NAME CREATOR only, practice: the camera flies freely through the map, detached from
+## the ball (scripts/camera_rig.gd), for lining up screenshots.
+var freecam := false
+## NAME CREATOR only, practice: every HUD overlay hidden for a clean shot.
+var picture_mode := false
+## NAME CREATOR only, practice: letterbox bars and a vignette (scripts/ui/cinematic_overlay.gd).
+var cinematic := false
+## Which CanvasLayers picture mode hid, so turning it off restores only those (and not,
+## say, a minimap that was already off for its own reasons).
+var _hidden_layers: Array = []
 
 ## A staff announcement for everyone (HUD banner).
 signal announced(text: String, by: String)
@@ -257,6 +269,83 @@ func practice_launch() -> void:
 		ball.call("apply_knockback", Vector3.UP * 75.0, false)
 
 
+## NAME CREATOR only: flies the camera freely through the map for lining up screenshots.
+## No powers otherwise, and only in practice - staff_role() also covers offline (the role
+## a server confirmed before, as long as the same code is still in Settings).
+func practice_toggle_freecam() -> void:
+	if staff_role() != "namecreator":
+		return
+	freecam = not freecam
+	_apply_freecam()
+	mod_changed.emit()
+
+
+func _apply_freecam() -> void:
+	var rig := get_tree().get_first_node_in_group("camera_rig")
+	if rig:
+		rig.call("set_freecam", freecam)
+
+
+## NAME CREATOR only: hides every HUD overlay (crosshair, health, minimap, chat...) for a
+## clean shot. Leaves the ball(s) visible, unlike the offline map-thumbnail tool.
+func practice_toggle_picture_mode() -> void:
+	if staff_role() != "namecreator":
+		return
+	picture_mode = not picture_mode
+	_apply_picture_mode()
+	mod_changed.emit()
+
+
+func _apply_picture_mode() -> void:
+	var scene := get_tree().current_scene
+	if not scene:
+		return
+	if picture_mode:
+		_hidden_layers.clear()
+		_hide_layers(scene)
+	else:
+		for layer in _hidden_layers:
+			if is_instance_valid(layer):
+				layer.visible = true
+		_hidden_layers.clear()
+
+
+## Never hidden by picture mode: the overlay itself, and the pause menu (it's what you're
+## using to turn picture mode back off, so hiding it would strand you with no way back).
+const PICTURE_MODE_EXEMPT := ["CinematicOverlay", "PauseMenu"]
+
+
+func _hide_layers(node: Node) -> void:
+	for child in node.get_children():
+		if child is CanvasLayer and child.visible and not PICTURE_MODE_EXEMPT.has(child.name):
+			child.visible = false
+			_hidden_layers.append(child)
+		_hide_layers(child)
+
+
+## NAME CREATOR only: letterbox bars and a vignette (scripts/ui/cinematic_overlay.gd),
+## created the first time this is turned on.
+func practice_toggle_cinematic() -> void:
+	if staff_role() != "namecreator":
+		return
+	cinematic = not cinematic
+	_apply_cinematic()
+	mod_changed.emit()
+
+
+func _apply_cinematic() -> void:
+	var scene := get_tree().current_scene
+	if not scene:
+		return
+	var overlay := scene.get_node_or_null("CinematicOverlay")
+	if not overlay and cinematic:
+		overlay = load("res://scripts/ui/cinematic_overlay.gd").new()
+		overlay.name = "CinematicOverlay"
+		scene.add_child(overlay)
+	if overlay:
+		overlay.call("set_enabled", cinematic)
+
+
 ## Leaving practice: everything back to normal.
 func practice_reset() -> void:
 	practice_speed = 1.0
@@ -264,6 +353,15 @@ func practice_reset() -> void:
 	if low_gravity:
 		low_gravity = false
 		_apply_gravity()
+	if freecam:
+		freecam = false
+		_apply_freecam()
+	if picture_mode:
+		picture_mode = false
+		_apply_picture_mode()
+	if cinematic:
+		cinematic = false
+		_apply_cinematic()
 
 
 func _apply_gravity() -> void:

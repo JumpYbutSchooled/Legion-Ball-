@@ -286,14 +286,18 @@ func set_flying(on: bool) -> void:
 	Sfx.play_flat(get_tree(), "dash" if on else "jump", -8.0, 1.4 if on else 0.8)
 
 
-## False while a menu has taken over input (e.g. the pause menu during an online match).
+## False while a menu has taken over input (e.g. the pause menu during an online match)
+## or NAME CREATOR's freecam has taken over the camera (moderation.gd).
 func _controls_enabled() -> bool:
 	if dead or _stagger_timer > 0.0:
 		return false
 	if bot:
 		return true  # The host's menus don't stop its bots.
 	var net := get_tree().root.get_node_or_null("Net")
-	return not (net and net.get("input_blocked"))
+	if net and net.get("input_blocked"):
+		return false
+	var mod := get_tree().root.get_node_or_null("Mod")
+	return not (mod and mod.get("freecam"))
 
 
 # --- PvP ----------------------------------------------------------------------------
