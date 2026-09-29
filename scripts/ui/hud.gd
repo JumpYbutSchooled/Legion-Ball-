@@ -25,6 +25,10 @@ var _board_rows: VBoxContainer
 var _center: Label
 var _center_sub: Label
 var _respawn_left := 0.0
+var _respawn_total := 0.0
+## Who killed us (empty for a fall into the void), for the killcam line.
+var _killed_by := ""
+const CameraRig := preload("res://scripts/camera_rig.gd")
 var _feed_items: Array = []  # [label, time_left]
 var _streak: Control
 var _locked_label: Label
@@ -192,7 +196,12 @@ func _process(delta: float) -> void:
 			_feed_items.remove_at(i)
 	if _respawn_left > 0.0:
 		_respawn_left -= delta
-		_center_sub.text = "RESPAWNING IN %.1f" % maxf(_respawn_left, 0.0)
+		var line := "RESPAWNING IN %.1f" % maxf(_respawn_left, 0.0)
+		if _killed_by != "":
+			# The killcam (camera_rig.gd) moves to the killer after KILLCAM_DELAY.
+			var watching := _respawn_total - _respawn_left >= CameraRig.KILLCAM_DELAY
+			line = "%s %s  //  %s" % ["SPECTATING" if watching else "BY", _killed_by, line]
+		_center_sub.text = line
 	if _vote_box.visible:
 		_vote_left = maxf(_vote_left - delta, 0.0)
 		_refresh_vote()
@@ -414,7 +423,9 @@ func _on_killed(victim: int, attacker: int) -> void:
 		_center.text = "ELIMINATED"
 		_center.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
 		_center_sub.text = "LOST TO THE VOID" if solo else "BY " + _name(attacker)
+		_killed_by = "" if solo else _name(attacker)
 		_respawn_left = arena.call("get_rules")["respawn_time"]
+		_respawn_total = _respawn_left
 		_slam_in(_center)
 
 
@@ -433,6 +444,7 @@ func _on_respawned(id: int) -> void:
 		_center.text = ""
 		_center_sub.text = ""
 		_respawn_left = 0.0
+		_killed_by = ""
 
 
 func _on_match_over(winner: int) -> void:

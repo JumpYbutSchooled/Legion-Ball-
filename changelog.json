@@ -1,5 +1,10 @@
 [
     {
+        "version":  "2.4.0",
+        "date":  "2026-09-29",
+        "notes":  "Killcam: when you\u0027re killed online, the camera holds where you died for a second, then follows whoever killed you until you respawn. The screen shows who you\u0027re spectating."
+    },
+    {
         "version":  "2.3.2",
         "date":  "2026-09-29",
         "notes":  "Damage fixes: Asprint was one-shotting (140 HP plus a splash) - it now does exactly 35 and the impact blast no longer adds damage. Piercer now does 8 a shot (it was 24). Vampire heavily nerfed: 5 HP a tick, about 30 over a full drain (it was well over 100). Weapon tooltips now show the real damage you deal."

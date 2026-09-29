@@ -18,6 +18,9 @@ const GYRO_DEADZONE := 0.02
 const RECENTER_PITCH := -0.25
 ## NAME CREATOR's freecam (moderation.gd), metres a second.
 const FREECAM_SPEED := 40.0
+## Killcam: after we're killed online, the camera holds where we died for this long, then
+## follows whoever killed us until we respawn (arena.gd RESPAWN_TIME is 3s).
+const KILLCAM_DELAY := 1.0
 
 @export var target: Node3D
 @export var warp_rect: CanvasItem
@@ -101,6 +104,12 @@ var freecam := false
 var _freecam_min_pitch := 0.0
 var _freecam_max_pitch := 0.0
 var _freecam_spring := 0.0
+## Killcam: the killer's ball we're following instead of target (null = our own ball), and
+## the killer we'll switch to once _killcam_wait runs out.
+var _spectating: Node3D = null
+var _pending_killer: Node3D = null
+var _killcam_wait := 0.0
+var _arena: Node = null
 ## Which controller's motion sensors we've switched on (-1 = none).
 var _gyro_device := -1
 var _trauma := 0.0
@@ -196,6 +205,69 @@ func _ready() -> void:
 			target.connect("wrapped", func(offset: Vector3) -> void:
 				global_position += offset
 				reset_physics_interpolation())
+	_connect_arena.call_deferred()
+
+
+## Killcam: listen for kills and respawns on the arena we're part of (an ancestor: the
+## arena spawns our local view).
+func _connect_arena() -> void:
+	var node := get_parent()
+	while node and not node.has_signal("player_killed"):
+		node = node.get_parent()
+	_arena = node
+	if _arena:
+		_arena.connect("player_killed", _on_player_killed)
+		_arena.connect("player_respawned", _on_player_respawned)
+
+
+func _on_player_killed(victim: int, attacker: int) -> void:
+	if victim != multiplayer.get_unique_id() or attacker == victim or freecam:
+		return
+	if not _arena.call("is_online"):
+		return  # Practice: nobody to watch.
+	var killer: Node3D = _arena.call("player_ball", attacker)
+	if killer and killer != target:
+		_pending_killer = killer
+		_killcam_wait = KILLCAM_DELAY
+
+
+func _on_player_respawned(id: int) -> void:
+	if id != multiplayer.get_unique_id():
+		return
+	_pending_killer = null
+	if _spectating:
+		_stop_spectating()
+		if target:
+			global_position = target.global_position
+			reset_physics_interpolation()
+
+
+## Switches the camera to the killer's ball, turned to look at them from the side we
+## died on.
+func _start_spectating(killer: Node3D) -> void:
+	_spectating = killer
+	if killer is CollisionObject3D:
+		_spring_arm.add_excluded_object(killer.get_rid())
+	if target:
+		var d := killer.global_position - target.global_position
+		if Vector2(d.x, d.z).length() > 1.0:
+			rotation.y = atan2(-d.x, -d.z)
+	global_position = killer.get_global_transform_interpolated().origin
+	reset_physics_interpolation()
+
+
+func _stop_spectating() -> void:
+	if is_instance_valid(_spectating) and _spectating is CollisionObject3D:
+		_spring_arm.remove_excluded_object(_spectating.get_rid())
+	_spectating = null
+
+
+## What the camera follows: the killer while the killcam is on (unless they've died too),
+## otherwise our own ball.
+func _followed() -> Node3D:
+	if _spectating and is_instance_valid(_spectating) and not _spectating.get("dead"):
+		return _spectating
+	return target
 
 
 func _on_dashed() -> void:
@@ -239,10 +311,18 @@ func _freecam_move(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	if _pending_killer:
+		_killcam_wait -= delta
+		if _killcam_wait <= 0.0:
+			var killer := _pending_killer
+			_pending_killer = null
+			if is_instance_valid(killer) and not killer.get("dead"):
+				_start_spectating(killer)
+	var follow := _followed()
 	if freecam:
 		_freecam_move(delta)
-	elif target:
-		var goal := target.get_global_transform_interpolated().origin
+	elif follow:
+		var goal := follow.get_global_transform_interpolated().origin
 		# Horizontal follow slows right after a dash so the ball pulls away, then catches up.
 		_dash_lag = move_toward(_dash_lag, 0.0, delta / dash_lag_time)
 		var h_speed := lerpf(follow_speed, dash_follow_speed, _dash_lag)
@@ -287,7 +367,8 @@ func _process(delta: float) -> void:
 
 func _update_warp(delta: float) -> void:
 	var speed := 0.0
-	if target is RigidBody3D:
+	# Watching the killer: no speed warp or wind from our own (dead) ball.
+	if target is RigidBody3D and not _spectating:
 		speed = (target as RigidBody3D).linear_velocity.length()
 	_update_shake(delta, speed)
 
