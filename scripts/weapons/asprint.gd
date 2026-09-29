@@ -7,7 +7,8 @@ extends "res://scripts/weapons/simple_weapon.gd"
 const MAX_TIME := 2.5
 ## Speed you're flung at, as a multiple of your top speed.
 const SPEED_MULT := 1.25
-const HIT_DAMAGE := 35.0
+## x4 online (ball.gd PVP_DAMAGE_SCALE) = 35 HP. The impact blast is visual only.
+const HIT_DAMAGE := 8.75
 
 var _rushing := false
 
@@ -46,6 +47,6 @@ func _on_rush_ended(pos: Vector3, hit: Node3D, _into_wall: bool) -> void:
 	if hit and hit.has_method("take_hit"):
 		var dir := ball().linear_velocity.normalized()
 		manager.hit_object(hit, HIT_DAMAGE, pos, dir, 150.0)
-		manager.spawn_explosion({"position": pos, "color": color, "radius": 5.0, "damage": 4.0, "force": 30.0,
+		manager.spawn_explosion({"position": pos, "color": color, "radius": 5.0, "damage": 0.0, "force": 30.0,
 			"spark_count": 260, "chunk_count": 24, "light_energy": 200.0, "warp_strength": 0.4, "sound": "boom"})
 		manager.shake(0.9)

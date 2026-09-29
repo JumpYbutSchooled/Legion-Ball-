@@ -7,7 +7,10 @@ extends "res://scripts/weapons/simple_weapon.gd"
 const RANGE := 30.0
 const DRAIN_TIME := 3.0
 const TICK := 0.5
-const DRAIN_PER_TICK := 6.0
+## x4 online (ball.gd PVP_DAMAGE_SCALE) = 5 HP a tick, about 30 HP over the full drain.
+const DRAIN_PER_TICK := 1.25
+## Healing isn't scaled: raw HP, the same 5 a tick you take from them.
+const HEAL_PER_TICK := 5.0
 const FLING_SPEED := 60.0
 
 var _channeling := false
@@ -35,7 +38,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, delta:
 		if _tick_timer <= 0.0:
 			_tick_timer = TICK
 			manager.hit_object(_target, DRAIN_PER_TICK, _target.call("get_aim_point"), Vector3.ZERO, 0.0)
-			manager.heal(ball(), DRAIN_PER_TICK)
+			manager.heal(ball(), HEAL_PER_TICK)
 			manager.apply_status(_target, "freeze", TICK + 0.1)
 			manager.spawn_beam(tip(), (_target.global_position - tip()).normalized(), tip().distance_to(_target.global_position), 0.12, 0.1, 8.0, color)
 		if _time >= DRAIN_TIME or Input.is_action_just_pressed("dash"):

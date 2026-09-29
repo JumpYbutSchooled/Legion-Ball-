@@ -3,7 +3,8 @@ extends "res://scripts/weapons/simple_weapon.gd"
 ## forward. Press for a three-round burst; every round punches straight through every
 ## player and target in a line (walls still stop it).
 
-@export var damage := 6.0
+## x4 online (ball.gd PVP_DAMAGE_SCALE) = 8 HP a shot.
+@export var damage := 2.0
 
 var _burst := 0
 var _burst_timer := 0.0
