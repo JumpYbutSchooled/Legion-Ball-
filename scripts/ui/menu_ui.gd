@@ -1118,7 +1118,9 @@ func _build_moderation(box: VBoxContainer) -> void:
 		row.add_child(buttons)
 		buttons.add_child(_small_button("GOTO", func() -> void: mod.call("goto", id)))
 		if level >= 2:
-			buttons.add_child(_small_button("BRING", func() -> void: mod.call("bring", id)))
+			# The owner can't be moderated: no BRING on their row for anyone else.
+			if players[id].get("role", "") != "owner" or mod.call("is_owner"):
+				buttons.add_child(_small_button("BRING", func() -> void: mod.call("bring", id)))
 			if mod.call("can_act_on", players[id]):
 				var is_frozen: bool = mod.call("is_frozen", id)
 				var is_muted: bool = mod.call("is_muted", id)

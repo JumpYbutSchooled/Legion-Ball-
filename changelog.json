@@ -1,5 +1,10 @@
 [
     {
+        "version":  "2.4.1",
+        "date":  "2026-09-29",
+        "notes":  "The owner can no longer be moderated: moderators can\u0027t bring the owner (Bring All skips them too), on top of the existing kick, ban, slay, freeze and mute protection."
+    },
+    {
         "version":  "2.4.0",
         "date":  "2026-09-29",
         "notes":  "Killcam: when you\u0027re killed online, the camera holds where you died for a second, then follows whoever killed you until you respawn. The screen shows who you\u0027re spectating."

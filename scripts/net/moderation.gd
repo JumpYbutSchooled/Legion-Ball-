@@ -676,6 +676,11 @@ func _zbring(target: int) -> void:
 		return
 	var ids: Array = [target] if target != 0 else _net.get("players").keys()
 	ids.erase(peer)
+	# The owner can't be moderated: nobody else can bring them (BRING ALL skips them too).
+	if not _is_owner(peer):
+		ids = ids.filter(func(id: int) -> bool: return not _is_owner(id))
+	if ids.is_empty():
+		return
 	for i in ids.size():
 		# In a ring round you, so they don't land on top of each other.
 		var spot := Vector2.from_angle(TAU * i / maxf(ids.size(), 1.0)) * 4.0
@@ -745,6 +750,8 @@ func _zfreeze(target: int, on: bool) -> void:
 		ids.erase(peer)
 	elif _may_act_on(target):
 		ids = [target]
+	if ids.is_empty():
+		return  # Not allowed (e.g. the owner): nothing to freeze, nothing to log.
 	for id in ids:
 		if on and not frozen.has(id):
 			frozen.append(id)
@@ -875,6 +882,8 @@ func _refresh_god_shields() -> void:
 
 ## Sender is a moderator, and allowed to act on the target: anyone can be kicked or
 ## banned except the owner; moderators only by the owner (testers by any moderator).
+## The owner can't be moderated at all: kick, ban, slay, freeze, mute (all through
+## here) and bring (_zbring) all refuse them.
 func _may_act_on(target: int) -> bool:
 	var sender := _sender()
 	if not multiplayer.is_server() or not _is_moderator(sender):
