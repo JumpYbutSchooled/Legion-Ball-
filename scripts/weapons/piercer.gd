@@ -3,7 +3,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 ## forward. Press for a three-round burst; every round punches straight through every
 ## player and target in a line (walls still stop it).
 
-@export var damage := 3.0
+@export var damage := 6.0
 
 var _burst := 0
 var _burst_timer := 0.0

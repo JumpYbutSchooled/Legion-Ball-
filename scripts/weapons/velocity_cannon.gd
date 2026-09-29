@@ -1,11 +1,15 @@
 extends "res://scripts/weapons/simple_weapon.gd"
-## VELOCITY CANNON (Momentum / Speed): one wide blade under the ball like a ram. Its shot
-## hits as hard as you're moving: a tickle standing still, over half a health bar at
-## top speed (the meter shows your speed).
+## VELOCITY CANNON (Momentum / Speed): one wide blade under the ball like a ram. Fires an
+## actual bolt that travels at 1.5x your speed (a floor at MIN_SPEED so it's never
+## motionless), and hits as hard as you're moving: a tickle standing still, over a
+## quarter health bar at top speed (half its old damage, since it can now be dodged in
+## flight instead of landing instantly).
 
-@export var base_damage := 1.0
+@export var base_damage := 0.5
 ## Extra damage at top speed (100 m/s = 500 on the speedometer).
-@export var speed_damage := 14.0
+@export var speed_damage := 7.0
+## The bolt's speed is 1.5x the ball's, but never slower than this (m/s).
+@export var min_speed := 20.0
 
 
 func _build() -> void:
@@ -30,14 +34,15 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 		return
 	start_cooldown()
 	kick(0)
-	var k := clampf(ball().linear_velocity.length() / 100.0, 0.0, 1.0)
+	var speed := ball().linear_velocity.length()
+	var k := clampf(speed / 100.0, 0.0, 1.0)
 	var from := tip()
 	var dir: Vector3 = (target_point() - from).normalized()
-	var shot := hitscan(from, dir, 900.0, base_damage + speed_damage * k, lerpf(5.0, 50.0, k))
-	tracer(from, shot["end"], lerpf(0.1, 0.6, k), lerpf(5.0, 24.0, k))
+	spawn("res://scripts/weapons/crystal_shot.gd", {
+		"position": from, "velocity": dir * maxf(speed, min_speed) * 1.5,
+		"damage": base_damage + speed_damage * k, "impulse": lerpf(5.0, 50.0, k),
+		"size": lerpf(0.2, 0.45, k), "color": color, "lifetime": 3.0,
+	})
 	flash_at(from, dir, 0.6 + k)
-	for hit in shot["hits"]:
-		manager.spawn_explosion({"position": hit["position"], "color": color, "radius": lerpf(1.0, 4.0, k),
-			"damage": 0.0, "force": 0.0, "spark_count": int(lerpf(20, 160, k)), "light_energy": lerpf(20, 160, k)})
 	manager.play_sound("rail" if k > 0.6 else "zap", from, lerpf(-8.0, 2.0, k))
 	manager.shake(0.2 + k * 0.6)

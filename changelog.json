@@ -1,5 +1,10 @@
 [
     {
+        "version":  "2.3.0",
+        "date":  "2026-09-29",
+        "notes":  "6 new weapons: Vampire, Healing Beam, Antidote, Miasma, Borrowed Life and Jammer (MEDICAL/SUPPORT). Weapon balance: Piercer, Velocity Cannon (now a travelling bolt, not instant), Asprint, Air Burst, Sonic Boom, Thorn Burst (now a true sphere burst), Arbalest and Blink Edge all changed. Bots now cycle between 6 weapons instead of 3. New AI difficulty slider in Settings. Weapon tooltips show average damage, reload and magazine size. Crystal Wall is now a thin glowing hex-grid panel. Big Toilet, Desert Camper, Garden of Eden and Seaside Village doubled in size; Tunnels is now 7x7 with more room variety."
+    },
+    {
         "version":  "2.2.0",
         "date":  "2026-09-28",
         "notes":  "NAME CREATOR trailer tools, in Practice: FREECAM flies the camera freely through the map, detached from the ball (WASD/stick to move, jump/dash for up/down, mouse to look). PICTURE MODE hides every HUD overlay for a clean shot. CINEMATIC adds widescreen letterbox bars and a vignette. All three are NAME CREATOR only and reset automatically when you leave practice."

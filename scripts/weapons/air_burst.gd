@@ -5,8 +5,8 @@ extends "res://scripts/weapons/simple_weapon.gd"
 
 ## Speed you gain when firing (m/s, along where you look).
 const BOOST := 8.0
-## Metres the shot can travel.
-const RANGE := 40.0
+## Metres the shot can travel, and how far its lock-on reaches.
+const RANGE := 50.0
 
 
 func _build() -> void:

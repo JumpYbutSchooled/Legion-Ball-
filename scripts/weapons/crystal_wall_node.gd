@@ -1,7 +1,10 @@
 extends StaticBody3D
 ## CRYSTAL WALL: a slab of crystal that rises out of the ground, solid for everyone
 ## (every computer builds the same one), blocking shots and players for `lifetime`
-## seconds, then crumbles. `facing` is the direction it faces (flat).
+## seconds, then crumbles. `facing` is the direction it faces (flat). A thin panel with
+## a glowing hexagonal grid (shaders/hex_grid.gdshader), not a plain solid slab.
+
+const HEX_SHADER := "res://shaders/hex_grid.gdshader"
 
 var manager: Node
 var visual_only := false
@@ -10,6 +13,8 @@ var facing := Vector3.FORWARD
 var color := Color(0.6, 0.45, 0.35)
 var width := 30.0
 var height := 14.0
+## Panel thickness (was 0.8; the editing doc asked for it thin).
+var thickness := 0.22
 
 var _t := 0.0
 var _mesh: MeshInstance3D
@@ -22,14 +27,11 @@ func _ready() -> void:
 		flat = Vector3.FORWARD
 	global_basis = Basis.looking_at(flat.normalized(), Vector3.UP)
 	var box := BoxMesh.new()
-	box.size = Vector3(width, height, 0.8)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(color, 0.85)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.emission_enabled = true
-	mat.emission = color
-	mat.emission_energy_multiplier = 0.8
-	mat.roughness = 0.2
+	box.size = Vector3(width, height, thickness)
+	var mat := ShaderMaterial.new()
+	mat.shader = load(HEX_SHADER)
+	mat.set_shader_parameter("base_color", Color(color, 0.45))
+	mat.set_shader_parameter("edge_color", color.lightened(0.5))
 	_mesh = MeshInstance3D.new()
 	_mesh.mesh = box
 	_mesh.material_override = mat

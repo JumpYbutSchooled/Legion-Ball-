@@ -29,6 +29,11 @@ var _blanket := solid(Color(0.3, 0.45, 0.7), 0.9)
 var _seat := solid(Color(0.4, 0.3, 0.22), 0.8)
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_ceiling = 120.0
 	_outline = rect_outline(Rect2(-200, -200, 400, 400))

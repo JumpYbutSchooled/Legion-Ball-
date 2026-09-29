@@ -210,6 +210,15 @@ class WeaponTooltip:
 			for p in partners:
 				names.append(WeaponInfo.by_id(p)["name"])
 			column.add_child(_line("WORKS WITH  " + ", ".join(PackedStringArray(names)), 11, UIStyle.TEXT_DIM))
+		if info.has("avg_dmg") or info.has("reload") or info.has("mag"):
+			var stats := PackedStringArray()
+			if info.has("avg_dmg"):
+				stats.append("AVG. DMG %s" % str(info["avg_dmg"]))
+			if info.has("reload"):
+				stats.append("RELOAD %ss" % str(info["reload"]))
+			if info.has("mag"):
+				stats.append("MAG %s" % str(info["mag"]))
+			column.add_child(_line("  ".join(stats), 11, UIStyle.TEXT_DIM))
 		column.add_child(_line("PRESS TO EQUIP", 11, Color(1.0, 0.85, 0.3), true))
 		return panel
 

@@ -2,21 +2,34 @@ extends Node
 ## An AI pilot, added to a bot's ball on the host only (arena.gd _spawn). It picks the
 ## nearest enemy it can see, rolls to a comfortable range for its style and circles
 ## there, jumps and dashes when stuck or out-ranged, raises its shield when it's taking
-## fire, and shoots with one of three styles, drawn with the real weapon's blades:
-##   GUNNER   (Gatling)  short bursts of quick, light shots
-##   SNIPER   (Railgun)  a charged heavy shot from long range
-##   BRAWLER  (Scatter)  pellet blasts up close
-## Its hits go to the host directly (arena.bot_hit), credited to the bot. It avoids
-## driving off edges and turns away from walls.
+## fire, and shoots with one of six styles, drawn with the real weapon's blades:
+##   GUNNER   (Gatling)   short bursts of quick, light shots
+##   SNIPER   (Railgun)   a charged heavy shot from long range
+##   BRAWLER  (Scatter)   pellet blasts up close
+##   BURST    (Piercer)   a three-round burst at medium-long range
+##   HEAVY    (Arbalest)  one slow, heavy bolt
+##   ECHO     (Echo Rifle) a steady semi-auto shot at medium range
+## Every so often (SWITCH_TIME) a bot picks a new random style, switching to that
+## weapon like a player would - the editing doc's "switch between 6 different random
+## weapons". Its hits go to the host directly (arena.bot_hit), credited to the bot. It
+## avoids driving off edges and turns away from walls.
 
-enum Style { GUNNER, SNIPER, BRAWLER }
+enum Style { GUNNER, SNIPER, BRAWLER, BURST, HEAVY, ECHO }
+const ALL_STYLES := [Style.GUNNER, Style.SNIPER, Style.BRAWLER, Style.BURST, Style.HEAVY, Style.ECHO]
 
+const SettingsScript := preload("res://scripts/settings.gd")
 const THINK := 0.2
+## How often (seconds, +/- a third) a bot rolls a new random style.
+const SWITCH_MIN := 12.0
+const SWITCH_MAX := 25.0
 ## [weapon id, preferred range, shot interval, damage per hit (HP), reach]
 const STYLES := {
 	Style.GUNNER: ["gatling", 30.0, 0.13, 3.0, 140.0],
 	Style.SNIPER: ["railgun", 75.0, 2.6, 40.0, 400.0],
 	Style.BRAWLER: ["scatter", 9.0, 0.85, 4.0, 28.0],
+	Style.BURST: ["piercer", 50.0, 0.9, 6.0, 250.0],
+	Style.HEAVY: ["arbalest", 55.0, 2.0, 20.0, 250.0],
+	Style.ECHO: ["echo_rifle", 45.0, 0.6, 6.0, 200.0],
 }
 
 var arena: Node
@@ -45,13 +58,16 @@ var _blade := 0
 var _armed := true
 ## The style this bot was given; it goes back to it whenever its weapon is allowed again.
 var _preferred: int = Style.GUNNER
+## Seconds left until this bot rolls a new random style.
+var _switch_time := 0.0
 
 
 func _ready() -> void:
 	_ball = get_parent() as RigidBody3D
 	_weapon = _ball.get_node_or_null("Weapon")
-	_preferred = [Style.GUNNER, Style.SNIPER, Style.BRAWLER][bot_id % 3]
+	_preferred = ALL_STYLES[bot_id % ALL_STYLES.size()]
 	_style = _preferred
+	_switch_time = randf_range(SWITCH_MIN, SWITCH_MAX)
 	_last_pos = _ball.global_position
 	_arm()
 
@@ -64,7 +80,7 @@ func _arm() -> void:
 		return
 	var ids: Array = _weapon.get("slot_ids")
 	var order: Array = [_preferred]
-	for st in [Style.GUNNER, Style.SNIPER, Style.BRAWLER]:
+	for st in ALL_STYLES:
 		if not order.has(st):
 			order.append(st)
 	for st in order:
@@ -90,6 +106,11 @@ func _physics_process(delta: float) -> void:
 	_think -= delta
 	if _think <= 0.0:
 		_think = THINK
+		_switch_time -= THINK
+		if _switch_time <= 0.0:
+			_switch_time = randf_range(SWITCH_MIN, SWITCH_MAX)
+			var others := ALL_STYLES.filter(func(s): return s != _preferred)
+			_preferred = others[randi() % others.size()]
 		# The owner may lock or unlock weapons mid-match: follow along.
 		var held: String = _weapon.call("slot_id", _weapon.get("current")) if _weapon else ""
 		var own: int = (_weapon.get("slot_ids") as Array).find(STYLES[_preferred][0]) if _weapon else -1
@@ -248,16 +269,21 @@ func _aim_and_fire(delta: float) -> void:
 		_charge = 0.0
 		_set_charge(0.0)
 		return
+	# AI DIFFICULTY setting (0..1, 0.5 = normal): scales accuracy and firing rate.
+	var diff := float(SettingsScript.read(get_tree(), "ai_difficulty"))
+	var acc_mult := clampf(0.5 + diff, 0.1, 1.5)
+	var time_mult := clampf(1.5 - diff, 0.5, 1.5)
 	match _style:
-		Style.GUNNER:
+		Style.GUNNER, Style.BURST, Style.ECHO:
 			# Bursts: 1.4 s of fire, then a breather.
 			_burst += delta
 			if _burst > 2.4:
 				_burst = 0.0
 			if _burst < 1.4 and _cooldown <= 0.0:
-				_cooldown = STYLES[_style][2]
-				_shoot(aim, dist, STYLES[_style][3], clampf(1.0 - dist / 140.0, 0.25, 0.8), 0.07, 6.0, "zap")
-		Style.SNIPER:
+				_cooldown = STYLES[_style][2] * time_mult
+				var chance := clampf(1.0 - dist / 140.0, 0.25, 0.8) * acc_mult
+				_shoot(aim, dist, STYLES[_style][3], clampf(chance, 0.0, 1.0), 0.07, 6.0, "zap")
+		Style.SNIPER, Style.HEAVY:
 			if _cooldown > 0.0:
 				return
 			_charge += delta / 1.3
@@ -265,14 +291,15 @@ func _aim_and_fire(delta: float) -> void:
 			if _charge >= 1.0:
 				_charge = 0.0
 				_set_charge(0.0)
-				_cooldown = STYLES[_style][2]
-				_shoot(aim, dist, STYLES[_style][3], clampf(0.9 - dist / 500.0, 0.45, 0.85), 0.35, 16.0, "rail")
+				_cooldown = STYLES[_style][2] * time_mult
+				var chance := clampf(0.9 - dist / 500.0, 0.45, 0.85) * acc_mult
+				_shoot(aim, dist, STYLES[_style][3], clampf(chance, 0.0, 1.0), 0.35, 16.0, "rail")
 		Style.BRAWLER:
 			if _cooldown <= 0.0:
-				_cooldown = STYLES[_style][2]
-				var chance := clampf(1.0 - dist / 28.0, 0.1, 0.85)
+				_cooldown = STYLES[_style][2] * time_mult
+				var chance := clampf(1.0 - dist / 28.0, 0.1, 0.85) * acc_mult
 				for i in 8:
-					_shoot(aim, dist, STYLES[_style][3], chance, 0.06, 4.0, "shotgun" if i == 0 else "")
+					_shoot(aim, dist, STYLES[_style][3], clampf(chance, 0.0, 1.0), 0.06, 4.0, "shotgun" if i == 0 else "")
 
 
 ## One shot: a tracer from the weapon (to the target, or past it on a miss) and, if it

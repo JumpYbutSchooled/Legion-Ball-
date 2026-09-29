@@ -33,8 +33,10 @@ var _floor := checker(Color(0.85, 0.75, 0.55), Color(0.8, 0.7, 0.5), 2.0)
 var _hall_floor := checker(Color(0.9, 0.9, 0.88), Color(0.8, 0.82, 0.82), 2.0)
 
 
+## Already built at twice written size; the editing doc's "double the size" doubles it
+## again, on top of that.
 func map_size() -> float:
-	return 2.0
+	return 4.0
 
 
 ## Centre of tile (tx, tz) in the map (x east, z south).

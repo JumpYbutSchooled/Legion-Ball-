@@ -1279,6 +1279,7 @@ func _build_settings(box: VBoxContainer) -> void:
 	_toggle(play, s, "MOTION CONTROLS", "motion_controls")
 	_slider(play, s, "MOTION SENSITIVITY", "motion_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
 	_toggle(play, s, "MOTION INVERT Y", "motion_invert_y")
+	_slider(play, s, "AI DIFFICULTY", "ai_difficulty", 0.0, 1.0, 0.05, "%.2f")
 
 	box.add_child(UIStyle.label("INTERFACE", 14, UIStyle.ACCENT, true))	# Accent colour for the menus and HUD: one swatch per choice.
 	var color_row := HBoxContainer.new()

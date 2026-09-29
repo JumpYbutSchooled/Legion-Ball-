@@ -87,6 +87,8 @@ var dead := false
 var _stagger_timer := 0.0
 var _status_timer := 0.0
 var _status_color := Color.WHITE
+## Jammer: weapons won't fire, but movement is untouched (weapon.gd checks this).
+var _jam_timer := 0.0
 ## Seconds of shield left (0 = down), and seconds until Q works again.
 var _block_timer := 0.0
 var _block_cd := 0.0
@@ -368,6 +370,8 @@ func apply_status(kind: String, duration: float, data: Vector3) -> void:
 		"pull":
 			_pull_timer = maxf(_pull_timer, duration)
 			_pull_point = data
+		"jam":
+			_jam_timer = maxf(_jam_timer, duration)
 		"dilate":
 			# Time Dilator: slowed down, weapons included.
 			_dilate_timer = maxf(_dilate_timer, duration)
@@ -442,6 +446,16 @@ func stagger_controls(duration: float) -> void:
 
 func is_staggered() -> bool:
 	return _stagger_timer > 0.0
+
+
+## Antidote: relieves a stun right away.
+func clear_stagger() -> void:
+	_stagger_timer = 0.0
+
+
+## Jammer: weapons won't fire while this is true (weapon.gd).
+func is_jammed() -> bool:
+	return _jam_timer > 0.0
 
 
 # --- Block (Q) --------------------------------------------------------------------------
@@ -572,6 +586,7 @@ func _arena() -> Node:
 func _update_status_glow(delta: float) -> void:
 	_status_timer = maxf(_status_timer - delta, 0.0)
 	_stagger_timer = maxf(_stagger_timer - delta, 0.0)
+	_jam_timer = maxf(_jam_timer - delta, 0.0)
 	_block_timer = maxf(_block_timer - delta, 0.0)
 	var mesh := $Mesh as MeshInstance3D
 	if not mesh.mesh:

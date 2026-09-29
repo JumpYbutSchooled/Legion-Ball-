@@ -27,6 +27,11 @@ var _white := solid(Color(0.97, 0.96, 0.92), 0.4)
 var _sea := solid(Color(0.08, 0.22, 0.42), 0.15, 0.2)
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_ceiling = 180.0
 	_fall = -15.0

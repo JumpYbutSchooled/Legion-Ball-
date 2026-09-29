@@ -1,12 +1,13 @@
 extends "res://scripts/maps/map_builder.gd"
-## "Tunnels": an underground maze. A 5 x 5 grid of lit chambers joined by roofed
-## corridors: a random (fixed-seed) maze so every chamber is reachable, plus some extra
-## links so there are loops to flank round. Corridors glow with strip lights in each
-## row's colour; some chambers have raised mezzanines with a ramp, some a pillar.
-## Everything is roofed, so it's close-quarters: the ceiling is low.
+## "Tunnels": an underground maze. A 7 x 7 grid of lit chambers (twice as many as the
+## original 5 x 5) joined by roofed corridors: a random (fixed-seed) maze so every
+## chamber is reachable, plus some extra links so there are loops to flank round.
+## Corridors glow with strip lights in each row's colour; chambers vary between a raised
+## mezzanine with a ramp, a pillar, loose crates, a half-height cover wall or a railed
+## platform. Everything is roofed, so it's close-quarters: the ceiling is low.
 
 const SEED := 3301
-const GRID := 5
+const GRID := 7
 const SPACING := 84.0
 ## Chamber half-size and height; corridor half-width and height.
 const ROOM := 21.0
@@ -48,13 +49,15 @@ func _build() -> void:
 			_build_room(Vector2i(x, y))
 	for link in _links:
 		_build_hall(link[0], link[1])
-	# Spawns in the corner and edge-middle chambers; turrets in four inner ones.
-	for cell: Vector2i in [Vector2i(0, 0), Vector2i(4, 0), Vector2i(0, 4), Vector2i(4, 4),
-			Vector2i(2, 0), Vector2i(0, 2), Vector2i(4, 2), Vector2i(2, 4)]:
+	# Spawns in the corner and edge-middle chambers; turrets one cell in from each corner.
+	var last := GRID - 1
+	var mid := GRID / 2
+	for cell: Vector2i in [Vector2i(0, 0), Vector2i(last, 0), Vector2i(0, last), Vector2i(last, last),
+			Vector2i(mid, 0), Vector2i(0, mid), Vector2i(last, mid), Vector2i(mid, last)]:
 		# In a corner, clear of whatever stands in the middle of the room.
 		var c := _center(cell) - Vector2(ROOM - 4.0, ROOM - 4.0)
 		_spawns.append(Vector3(c.x, 1.0, c.y))
-	for cell: Vector2i in [Vector2i(1, 1), Vector2i(3, 1), Vector2i(1, 3), Vector2i(3, 3)]:
+	for cell: Vector2i in [Vector2i(1, 1), Vector2i(last - 1, 1), Vector2i(1, last - 1), Vector2i(last - 1, last - 1)]:
 		var c := _center(cell) + Vector2(ROOM - 6.0, ROOM - 6.0)
 		_turrets.append(Vector3(c.x, 0.0, c.y))
 
@@ -73,8 +76,9 @@ func _linked(a: Vector2i, b: Vector2i) -> bool:
 
 ## Depth-first maze over the grid, then a few extra links for loops.
 func _make_maze() -> void:
-	var seen := {Vector2i(2, 2): true}
-	var stack: Array[Vector2i] = [Vector2i(2, 2)]
+	var start := Vector2i(GRID / 2, GRID / 2)
+	var seen := {start: true}
+	var stack: Array[Vector2i] = [start]
 	var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 	while not stack.is_empty():
 		var cell: Vector2i = stack.back()
@@ -126,21 +130,35 @@ func _build_room(cell: Vector2i) -> void:
 	light.light_energy = 12.0
 	light.omni_range = 52.0
 	add_child(light)
-	# Something in the room: a mezzanine with a ramp, a pillar, or crates.
+	# Something in the room: a mezzanine with a ramp, a pillar, crates, cover walls or a
+	# railed platform (five looks, for more variety than the original three).
 	var roll := _rng.randf()
-	if roll < 0.3:
+	if roll < 0.2:
 		var yaw := TAU * (_rng.randi() % 4) / 4.0
 		var out := Vector3(sin(yaw), 0.0, cos(yaw))
 		var deck := Vector3(c.x, 0.0, c.y) - out * (ROOM - 7.0)
 		box(deck + Vector3.UP * 3.5, Vector3(14, 1, 14), _metal, yaw)
 		ramp(deck + out * 26.0, deck + out * 7.0 + Vector3.UP * 4.0, 8.0, _metal)
-	elif roll < 0.6:
+	elif roll < 0.4:
 		box(Vector3(c.x, ROOM_HEIGHT / 2.0, c.y), Vector3(6, ROOM_HEIGHT, 6), _rock)
-	else:
+	elif roll < 0.6:
 		for i in 3:
 			var p := c + Vector2(_rng.randf_range(-12, 12), _rng.randf_range(-12, 12))
 			var s := _rng.randf_range(3.0, 5.0)
 			box(Vector3(p.x, s / 2.0, p.y), Vector3(s, s, s), _metal, _rng.randf() * TAU)
+	elif roll < 0.8:
+		# Two waist-high cover walls, crossed, to duck behind.
+		for yaw in [0.0, PI / 2.0]:
+			box(Vector3(c.x, 1.75, c.y), Vector3(16, 3.5, 1.5), _rock, yaw)
+	else:
+		# A small railed platform in one corner, a step up for a sightline.
+		var yaw := TAU * (_rng.randi() % 4) / 4.0
+		var out := Vector3(sin(yaw), 0.0, cos(yaw))
+		var side := Vector3(out.z, 0.0, -out.x)
+		var deck := Vector3(c.x, 0.0, c.y) - out * (ROOM - 6.0) - side * (ROOM - 6.0)
+		box(deck + Vector3.UP * 2.5, Vector3(10, 1, 10), _metal, yaw)
+		for edge in [out, -out, side, -side]:
+			box(deck + Vector3.UP * 3.8 + edge * 5.0, Vector3(0.3, 1.6, 10) if absf(edge.x) > 0.5 else Vector3(10, 1.6, 0.3), _metal, yaw, 0.0, false)
 
 
 func _build_hall(a: Vector2i, b: Vector2i) -> void:

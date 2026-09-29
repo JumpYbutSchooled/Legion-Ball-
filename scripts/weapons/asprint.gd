@@ -5,6 +5,9 @@ extends "res://scripts/weapons/simple_weapon.gd"
 ## off while you fly.)
 
 const MAX_TIME := 2.5
+## Speed you're flung at, as a multiple of your top speed.
+const SPEED_MULT := 1.25
+const HIT_DAMAGE := 25.0
 
 var _rushing := false
 
@@ -29,7 +32,7 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 	_rushing = true
 	if not b.is_connected("rush_ended", _on_rush_ended):
 		b.connect("rush_ended", _on_rush_ended)
-	b.call("start_rush", aim_dir(), float(b.get("top_speed")), MAX_TIME, lock_target)
+	b.call("start_rush", aim_dir(), float(b.get("top_speed")) * SPEED_MULT, MAX_TIME, lock_target)
 	kick(0)
 	manager.spawn_warp(b.global_position, 0.4, 6.0)
 	manager.play_sound("rail", b.global_position, 0.0)
@@ -42,7 +45,7 @@ func _on_rush_ended(pos: Vector3, hit: Node3D, _into_wall: bool) -> void:
 	_rushing = false
 	if hit and hit.has_method("take_hit"):
 		var dir := ball().linear_velocity.normalized()
-		manager.hit_object(hit, 12.0, pos, dir, 150.0)
+		manager.hit_object(hit, HIT_DAMAGE, pos, dir, 150.0)
 		manager.spawn_explosion({"position": pos, "color": color, "radius": 5.0, "damage": 4.0, "force": 30.0,
 			"spark_count": 260, "chunk_count": 24, "light_energy": 200.0, "warp_strength": 0.4, "sound": "boom"})
 		manager.shake(0.9)

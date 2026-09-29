@@ -18,6 +18,8 @@ const DEFAULTS := {
 	"screen_effects": 1.0,
 	## Multiplier on camera shake.
 	"camera_shake": 1.0,
+	## AI difficulty, 0..1 (bot_brain.gd: accuracy and time between shots). 0.5 = normal.
+	"ai_difficulty": 0.5,
 	"impact_frames": true,
 	## Background music volume, 0..1 (scripts/music.gd).
 	"music_volume": 0.6,

@@ -1,9 +1,12 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## BLINK EDGE (Skyborne / Mobility): two thin blades swept back along the sides. Press
-## to teleport up to 15m where you're looking (stopping short of walls), keeping your
-## speed, and leave a slash along the way that cuts everyone on the line.
+## to teleport up to 3x a dash's distance where you're looking (stopping short of
+## walls), keeping your speed, and leave a slash along the way that cuts everyone on
+## the line.
 
-@export var distance := 35.0
+## 3x a normal dash (ball.gd dash_speed, read as metres): the editing doc's "3 times
+## further than a dash".
+@export var distance := 120.0
 @export var damage := 5.0
 
 

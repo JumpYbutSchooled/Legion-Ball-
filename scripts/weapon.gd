@@ -207,6 +207,8 @@ func _physics_process(delta: float) -> void:
 	if not ball or not camera or not is_multiplayer_authority():
 		return
 	var controls := _controls_enabled()
+	# Antidote: the only weapon usable, and switchable to, while stunned.
+	var stunned_but_antidote: bool = ball.call("is_staggered") and not ball.get("dead") and not ball.call("is_blocking")
 	if not _slot_allowed(current):
 		# The owner locked this weapon: switch to one that's allowed, or put it away.
 		var other := _first_allowed(unlocked_count())
@@ -228,16 +230,16 @@ func _physics_process(delta: float) -> void:
 		var fallback := _first_allowed(unlocked)
 		if fallback >= 0:
 			select(fallback)
-	if controls:
+	if controls or stunned_but_antidote:
 		for key in SLOT_ACTIONS.size():
 			if Input.is_action_just_pressed(SLOT_ACTIONS[key]):
 				var slot := _key_slot(key)
-				if slot >= 0 and slot < unlocked:
+				if slot >= 0 and slot < unlocked and (controls or slot_id(slot) == "antidote"):
 					select(slot)
 				break
-		if Input.is_action_just_pressed("toggle_weapon"):
+		if controls and Input.is_action_just_pressed("toggle_weapon"):
 			toggle()
-		if Input.is_action_just_pressed("reload"):
+		if controls and Input.is_action_just_pressed("reload"):
 			current_weapon().manual_reload()
 
 	var hit := _raycast_crosshair()
@@ -245,7 +247,7 @@ func _physics_process(delta: float) -> void:
 	# Skip the click that captures the mouse, so capturing doesn't also fire. A controller
 	# doesn't need the mouse at all.
 	var aiming := (captured and _was_captured) or InputSetup.using_pad
-	var pressed := controls and aiming and Input.is_action_pressed("fire")
+	var pressed: bool = (controls or (stunned_but_antidote and slot_id(current) == "antidote")) and aiming and Input.is_action_pressed("fire")
 	# Inside an enemy Time Dilator our weapons charge, cool down and fire slower.
 	# Mid-rush (Hyper Dash, Asprint) nothing else fires.
 	if ball.call("is_rushing") and not current_weapon().get("fires_while_rushing"):
@@ -276,9 +278,9 @@ func apply_net_state(aim: Vector3, slot: int, drawn: bool, charge := 0.0, reload
 	w.apply_net_reload(reload)
 
 
-## No shooting while dead, stunned or behind the shield.
+## No shooting while dead, stunned, jammed or behind the shield.
 func _controls_enabled() -> bool:
-	if ball.get("dead") or ball.call("is_blocking") or ball.call("is_staggered"):
+	if ball.get("dead") or ball.call("is_blocking") or ball.call("is_staggered") or ball.call("is_jammed"):
 		return false
 	var net := get_tree().root.get_node_or_null("Net")
 	return not (net and net.get("input_blocked"))
@@ -374,6 +376,47 @@ func targets_on_screen(radius_px: float, max_distance := INF, need_sight := fals
 	return found
 
 
+## True if target is us, or (in a team game) on our team. Medical/Support weapons
+## (Vampire, Healing Beam, Antidote, Miasma, Borrowed Life) use this instead of the usual
+## enemy-only lock, since they help rather than hurt.
+func is_ally(target: Object) -> bool:
+	if target == ball:
+		return true
+	var scene := get_tree().current_scene
+	if scene == null or not scene.has_method("is_team_game") or not scene.call("is_team_game"):
+		return false
+	if not target.has_method("player_id"):
+		return false
+	return scene.call("_same_team", ball.call("player_id"), target.call("player_id"))
+
+
+## Like targets_on_screen, but allies (or ourself) instead of enemies.
+func ally_targets_on_screen(radius_px: float, max_distance := INF) -> Array:
+	var found := []
+	if not camera:
+		return found
+	var center := camera.get_viewport().get_visible_rect().size / 2.0
+	var ball_pos := ball.global_position
+	var candidates := get_tree().get_nodes_in_group("lock_targets")
+	if not candidates.has(ball):
+		candidates.append(ball)
+	for target in candidates:
+		if not target.call("is_alive") or not is_ally(target):
+			continue
+		var p: Vector3 = target.call("get_aim_point")
+		if target != ball and camera.is_position_behind(p):
+			continue
+		if p.distance_to(ball_pos) > max_distance:
+			continue
+		var screen := camera.unproject_position(p)
+		var off := screen.distance_to(center)
+		if off > radius_px:
+			continue
+		found.append({"target": target, "point": p, "screen": screen, "distance": p.distance_to(ball_pos), "off_center": off})
+	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["off_center"] < b["off_center"])
+	return found
+
+
 ## MIRAGE: while a player has decoys out, any lock on them lands on one of their decoys
 ## instead (the one nearest the crosshair), so the lock reticle jumps off them.
 func _redirect_to_decoys(found: Array, center: Vector2) -> void:
@@ -444,6 +487,21 @@ func hit_object(collider: Object, damage: float, pos: Vector3, dir: Vector3, imp
 		# Resting bodies fall asleep and can ignore impulses until woken.
 		body.sleeping = false
 		body.apply_impulse(dir * impulse, pos - body.global_position)
+
+
+## Medical/Support weapons: heals `target` (self or an ally) by `amount`, capped at their
+## max health. Online only (offline practice has no real damage/healing to speak of).
+func heal(target: Object, amount: float) -> void:
+	var scene := get_tree().current_scene
+	if scene and scene.has_method("request_heal") and target.has_method("player_id"):
+		scene.call("request_heal", target.call("player_id"), amount)
+
+
+## Antidote: clears a stun on `target` (self or a stunned ally).
+func cure(target: Object) -> void:
+	var scene := get_tree().current_scene
+	if scene and scene.has_method("request_cure") and target.has_method("player_id"):
+		scene.call("request_cure", target.call("player_id"))
 
 
 ## Local player only: show a floating number for damage we just dealt to `target`, with

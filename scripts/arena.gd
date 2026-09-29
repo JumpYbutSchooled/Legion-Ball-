@@ -467,6 +467,18 @@ func request_block(duration: float) -> void:
 	_to_host("_host_block", [duration])
 
 
+## Medical/Support weapons (Vampire, Healing Beam, Miasma, Borrowed Life): adds HP to
+## `target` (capped at their max health), self or ally - unlike request_hit, this isn't
+## blocked between teammates.
+func request_heal(target: int, amount: float) -> void:
+	_to_host("_host_heal", [target, amount])
+
+
+## Antidote: clears a stun on `target` (self or a stunned ally).
+func request_cure(target: int) -> void:
+	_to_host("_host_cure", [target])
+
+
 ## Like request_hit, from a Tears of an Angel missile: parrying it kills the shooter.
 func request_tears_hit(victim: int, amount: float) -> void:
 	_to_host("_zztears_hit", [victim, amount])
@@ -515,6 +527,23 @@ func _host_hit(victim: int, amount: float) -> void:
 func bot_hit(bot: int, victim: int, amount: float) -> void:
 	if multiplayer.is_server():
 		_resolve_hit(bot, victim, amount)
+
+
+@rpc("any_peer", "reliable")
+func _host_heal(target: int, amount: float) -> void:
+	if not multiplayer.is_server() or match_done or not alive.get(target, false):
+		return
+	var cap := max_health_of(target)
+	# Never lethal (amount can be negative: Healing Beam's self-cost) - a floor of 1, so
+	# using a support weapon can weaken you but never kill you outright.
+	var hp: float = clampf(health.get(target, cap) + amount, 1.0, cap)
+	_set_health.rpc(target, hp)
+
+
+@rpc("any_peer", "reliable")
+func _host_cure(target: int) -> void:
+	if multiplayer.is_server() and not match_done and alive.get(target, false):
+		_to_peer(target, "_apply_cure", [])
 
 
 ## Host: ttacker's hit on ictim: a shield parries it, otherwise it's damage.
@@ -1174,6 +1203,14 @@ func _apply_stagger(duration: float) -> void:
 	var ball: Node3D = _players.get(multiplayer.get_unique_id())
 	if ball:
 		ball.call("stagger_controls", duration)
+
+
+## Antidote cured us: clear the stun so we can move and shoot again.
+@rpc("authority", "reliable")
+func _apply_cure() -> void:
+	var ball: Node3D = _players.get(multiplayer.get_unique_id())
+	if ball:
+		ball.call("clear_stagger")
 
 
 # --- Game modes (Net.MODES) --------------------------------------------------------

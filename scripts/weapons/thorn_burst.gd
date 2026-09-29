@@ -1,7 +1,7 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## THORN BURST (Brawler / Close Quarters): many tiny spikes all over the ball, pointing
-## out. Hold to charge (0.8s), release: 120 shards burst out all round you (45m),
-## hitting harder the longer you charged.
+## out. Hold to charge (0.8s), release: 120 shards burst out in every direction around
+## you (45m) - a full sphere, not just a flat ring - hitting harder the longer you charged.
 
 @export var charge_time := 0.8
 
@@ -35,13 +35,15 @@ func _burst() -> void:
 	var center := ball().global_position
 	for i in _blades.size():
 		kick(i)
-	var n := 40
+	# An even spread over the whole sphere (golden-angle spiral), not just a flat ring.
+	var n := 120
 	for i in n:
-		var a := TAU * i / n
-		for tilt in [-0.3, 0.0, 0.3]:
-			var dir := Vector3(cos(a + tilt * 0.2), tilt, sin(a + tilt * 0.2)).normalized()
-			var shot := hitscan(center + dir * 0.8, dir, 45.0, lerpf(1.0, 3.0, k), 6.0)
-			manager.spawn_beam(center + dir * 0.8, dir, (center + dir * 0.8).distance_to(shot["end"]), 0.06, 0.1, 6.0, color)
+		var y := 1.0 - 2.0 * (i + 0.5) / n
+		var r := sqrt(maxf(0.0, 1.0 - y * y))
+		var theta := PI * (3.0 - sqrt(5.0)) * i
+		var dir := Vector3(cos(theta) * r, y, sin(theta) * r)
+		var shot := hitscan(center + dir * 0.8, dir, 45.0, lerpf(1.0, 3.0, k), 6.0)
+		manager.spawn_beam(center + dir * 0.8, dir, (center + dir * 0.8).distance_to(shot["end"]), 0.06, 0.1, 6.0, color)
 	manager.spawn_light(center, 60.0, 12.0, 0.15, color)
 	manager.spawn_warp(center, 0.2, 6.0)
 	manager.play_sound("shotgun", center, 0.0)

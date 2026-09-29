@@ -5,7 +5,7 @@ extends "res://scripts/weapons/simple_weapon.gd"
 
 
 func _build() -> void:
-	cooldown = 0.9
+	cooldown = 2.0
 	lock_on = true
 	lock_radius_px = 16.0
 	crosshair_shape = "cross"

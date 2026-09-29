@@ -23,6 +23,11 @@ var _cardboard := solid(Color(0.6, 0.45, 0.3), 0.9)
 var _grey := solid(Color(0.45, 0.47, 0.5), 0.6)
 
 
+## Built at twice its written size in every direction.
+func map_size() -> float:
+	return 2.0
+
+
 func _build() -> void:
 	_ceiling = WALL_H + 10.0
 	var half := ROOM / 2.0
