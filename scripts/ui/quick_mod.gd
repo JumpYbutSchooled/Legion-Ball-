@@ -108,9 +108,11 @@ func _build() -> void:
 			entries.append([6, "UNFREEZE ALL", func() -> void: mod.call("set_frozen", 0, false)])
 			var low: bool = mod.get("low_gravity")
 			entries.append([7, "LOW GRAVITY %s" % ("OFF" if low else "ON"), func() -> void: mod.call("toggle_low_gravity")])
-		if level >= 1:
+		# While the owner's on the server, only they change the match.
+		var runs_match: bool = owner or not mod.call("owner_present")
+		if level >= 1 and runs_match:
 			entries.append([8, "NEXT MAP", func() -> void: mod.call("switch_map", _next_map(net))])
-		if level >= 2:
+		if level >= 2 and runs_match:
 			entries.append([9, "END MATCH", func() -> void: mod.call("end_match")])
 	for e in entries:
 		_actions[e[0]] = e[2]

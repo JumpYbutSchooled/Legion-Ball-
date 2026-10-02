@@ -22,6 +22,10 @@ signal vote_state(map_votes: Dictionary, mode_votes: Dictionary)
 signal hurt_from(pos: Vector3)
 ## Team game: the two teams' kill totals changed.
 signal team_scores_changed(scores: Array)
+## Juggernaut: player `id` is the juggernaut now (0 = nobody).
+signal juggernaut_changed(id: int)
+## A fresh online server's first round: everyone votes on the map and mode before playing.
+signal first_vote_opened
 
 const Services := preload("res://scripts/services.gd")
 const PlayerScene := preload("res://scenes/player.tscn")
@@ -56,8 +60,13 @@ const PARRY_STUN := 5.0
 ## Health the killer gets back for each kill (capped at MAX_HEALTH).
 const KILL_HEAL := 30.0
 const KILLS_TO_WIN := 15
-## Juggernaut: everyone's full health (and no healing at all).
+## Juggernaut: one player at a time is the juggernaut - this much health, JUGGERNAUT_SIZE
+## times bigger, JUGGERNAUT_SPEED times as fast, and no healing. Whoever kills them takes
+## over; after JUGGERNAUT_ROUNDS juggernauts the match ends and the most kills wins.
 const JUGGERNAUT_HEALTH := 1000.0
+const JUGGERNAUT_SIZE := 2.0
+const JUGGERNAUT_SPEED := 0.5
+const JUGGERNAUT_ROUNDS := 5
 ## King of the Hill: seconds a round lasts; most seconds on the hill wins.
 const KOTH_TIME := 300.0
 ## Team game: the first team to this many kills wins.
@@ -120,6 +129,12 @@ var hill_radius := 0.0
 var _hill_time := {}
 var _hill_push := 0.0
 var _hill_node: Node3D
+## Team King of the Hill (host): each team's seconds holding the hill (red, blue).
+var _team_hill := [0.0, 0.0]
+## Juggernaut: who it is (everyone gets it from the host; 0 = nobody yet) and how many
+## juggernauts have fallen this match.
+var juggernaut_id := 0
+var juggernaut_rounds := 0
 
 
 func _ready() -> void:
@@ -154,7 +169,7 @@ func _start(net: Node) -> void:
 				get_node(practice).queue_free()
 		net.connect("roster_changed", _sync_players)
 	_sync_players()
-	if net.get("online") and multiplayer.is_server() and game_mode() == "koth":
+	if net.get("online") and multiplayer.is_server() and base_mode() == "koth":
 		_place_hill.call_deferred()
 	# AI turrets wherever the map wants them (Map/Layout.turret_points()).
 	var layout := get_node_or_null("Map/Layout")
@@ -236,7 +251,7 @@ func _sync_players() -> void:
 
 ## A player's loadout (weapon ids for keys 1-6) from the roster.
 func loadout_of(id: int) -> Array:
-	match game_mode():
+	match base_mode():
 		"juggernaut":
 			# Everything that works online (the rift gun's practice only).
 			return WeaponInfo.built_pool().filter(func(w: String) -> bool: return not WeaponInfo.by_id(w).get("practice_only", false))
@@ -274,6 +289,10 @@ func _apply_set_perks(id: int) -> void:
 	# The owner can speed anyone up or slow them down (moderation.gd set_stats): rolling
 	# speed, top speed, acceleration and dash all scale together.
 	var speed := float(_roster().get(id, {}).get("speed", 1.0))
+	# The juggernaut: twice the size (on every computer, so everyone sees it) at half speed.
+	ball.call("set_size", JUGGERNAUT_SIZE if is_juggernaut(id) else 1.0)
+	if is_juggernaut(id):
+		speed *= JUGGERNAUT_SPEED
 	ball.set("air_control", float(ball.get_meta("base_air_control")) * (1.2 if perks.has("skyborne") else 1.0))
 	ball.set("top_speed", float(ball.get_meta("base_top_speed")) * (1.1 if perks.has("momentum") else 1.0) * speed)
 	for stat in ["max_speed", "push_force", "roll_torque", "dash_speed"]:
@@ -298,7 +317,12 @@ func max_health_of(id: int) -> float:
 	var custom := float(_roster().get(id, {}).get("max_hp", 0.0))
 	if custom > 0.0:
 		return custom
-	return JUGGERNAUT_HEALTH if game_mode() == "juggernaut" else MAX_HEALTH
+	return JUGGERNAUT_HEALTH if is_juggernaut(id) else MAX_HEALTH
+
+
+## True if player `id` is the juggernaut (Juggernaut mode only).
+func is_juggernaut(id: int) -> bool:
+	return id != 0 and id == juggernaut_id and base_mode() == "juggernaut"
 
 
 func _is_god(id: int) -> bool:
@@ -399,10 +423,9 @@ func is_online() -> bool:
 
 
 func get_rules() -> Dictionary:
-	var teams := is_team_game()
 	return {"respawn_time": RESPAWN_TIME, "kills_to_win": _win_target(),
-		"max_health": MAX_HEALTH, "end_delay": END_DELAY, "mode": "teams" if teams else game_mode(),
-		"koth_time": KOTH_TIME}
+		"max_health": MAX_HEALTH, "end_delay": END_DELAY, "mode": game_mode(),
+		"koth_time": KOTH_TIME, "juggernaut_rounds": JUGGERNAUT_ROUNDS}
 
 
 ## Kills to win: KILLS_TO_WIN (TEAM_KILLS_TO_WIN in a team game), or a server's
@@ -411,12 +434,13 @@ func _win_target() -> int:
 	var env := OS.get_environment("SCORE_LIMIT")
 	if env.is_valid_int() and int(env) > 0:
 		return int(env)
-	return TEAM_KILLS_TO_WIN if is_team_game() else KILLS_TO_WIN
+	# Team Deathmatch counts the team's kills; Team Gun Game is still one player's run.
+	return TEAM_KILLS_TO_WIN if game_mode() == "teams" else KILLS_TO_WIN
 
 
 func is_team_game() -> bool:
 	var net := _net()
-	return net != null and net.get("online") and net.get("game_mode") == "teams"
+	return net != null and net.get("online") and NetScript.TEAM_MODES.has(net.get("game_mode"))
 
 
 ## Seconds since this round started.
@@ -720,28 +744,98 @@ func _kill(victim: int, attacker: int) -> void:
 	_marks.erase(victim)
 	_last_hit.erase(victim)
 	_respawn_timers[victim] = RESPAWN_TIME
-	if attacker != victim and alive.get(attacker, false) and game_mode() != "juggernaut":
+	# The juggernaut never heals; everyone else gets health back for a kill.
+	if attacker != victim and alive.get(attacker, false) and not is_juggernaut(attacker):
 		_set_health.rpc(attacker, minf(health.get(attacker, max_health_of(attacker)) + KILL_HEAL, max_health_of(attacker)))
 	_on_killed.rpc(victim, attacker, _held_weapon(attacker) if attacker != victim else "")
-	if credited and game_mode() == "gungame":
+	var base := base_mode()
+	if credited and base == "gungame":
 		_give_gun(attacker)
-	if is_team_game():
-		# Team game: the killer's team scores; first to TEAM_KILLS_TO_WIN wins (winner is
-		# sent as -1 for red, -2 for blue).
+	if base == "koth":
+		pass  # The hill decides (_koth_tick), in teams or not.
+	elif base == "juggernaut":
+		_juggernaut_killed(victim, attacker if credited else 0)
+	else:
+		# Team modes: the killer's team gets the kill on the team score.
 		var team: int = net.call("team_of", attacker) if credited else -1
 		if team >= 0:
 			team_scores[team] += 1
 			_zzteam_scores.rpc(team_scores)
-			if team_scores[team] >= _win_target():
-				_on_match_over.rpc(-1 - team)
-				_end_timer = END_DELAY
-				_open_vote()
-	elif game_mode() == "koth":
-		pass  # The hill decides (_koth_tick).
-	elif credited and int(roster[attacker]["kills"]) >= _win_target():
-		_on_match_over.rpc(attacker)
-		_end_timer = END_DELAY
-		_open_vote()
+		if game_mode() == "teams":
+			# Team Deathmatch: first team to TEAM_KILLS_TO_WIN (winner -1 red, -2 blue).
+			if team >= 0 and team_scores[team] >= _win_target():
+				_match_won(-1 - team)
+		elif credited and int(roster[attacker]["kills"]) >= _win_target():
+			# Free for all and Gun Game; in Team Gun Game it wins for the killer's team.
+			_match_won(-1 - team if team >= 0 else attacker)
+
+
+## Host: the round is over, won by `winner` (a player, or -1 red / -2 blue): the banner,
+## then the vote for the next round.
+func _match_won(winner: int) -> void:
+	_on_match_over.rpc(winner)
+	_end_timer = END_DELAY
+	_open_vote()
+
+
+## Juggernaut (host): someone died. If it was the juggernaut, their round is over: the
+## killer takes over (a fall or a staff kill hands it to someone at random), and after
+## JUGGERNAUT_ROUNDS juggernauts the most kills wins.
+func _juggernaut_killed(victim: int, killer: int) -> void:
+	if victim != juggernaut_id:
+		return
+	juggernaut_rounds += 1
+	if juggernaut_rounds >= JUGGERNAUT_ROUNDS:
+		var winner := -1
+		var best := -1
+		var roster := _roster()
+		for id in roster:
+			if int(roster[id].get("kills", 0)) > best:
+				best = int(roster[id].get("kills", 0))
+				winner = id
+		_zzzzjugg.rpc(0, juggernaut_rounds)
+		_match_won(winner)
+		return
+	if killer == 0 or not alive.get(killer, false):
+		killer = _random_alive(victim)
+	_set_juggernaut(killer)
+
+
+## Host: a random living player other than `skip` (0 if there's nobody).
+func _random_alive(skip: int) -> int:
+	var ids := _players.keys().filter(func(id: int) -> bool: return id != skip and alive.get(id, false))
+	return ids[randi() % ids.size()] if not ids.is_empty() else 0
+
+
+## Host: make `id` the juggernaut (everyone's told), at full juggernaut health.
+func _set_juggernaut(id: int) -> void:
+	_zzzzjugg.rpc(id, juggernaut_rounds)
+	if id != 0 and alive.get(id, false):
+		_set_health.rpc(id, max_health_of(id))
+	print("[server] %s is the juggernaut (round %d/%d)" % [_net().call("player_name", id) if id != 0 else "nobody", juggernaut_rounds + 1, JUGGERNAUT_ROUNDS])
+
+
+## Host, every physics step in Juggernaut: there's always a juggernaut while anyone's
+## alive (the first round, or after the juggernaut left the server).
+func _juggernaut_tick() -> void:
+	if juggernaut_id != 0 and _players.has(juggernaut_id):
+		return
+	var id := _random_alive(0)
+	if id != 0:
+		_set_juggernaut(id)
+
+
+## Everyone: player `id` is the juggernaut now, `rounds` juggernauts in. Their size and
+## speed change on every computer. (Named to sort last: Godot numbers RPCs alphabetically.)
+@rpc("authority", "call_local", "reliable")
+func _zzzzjugg(id: int, rounds: int) -> void:
+	var old := juggernaut_id
+	juggernaut_id = id
+	juggernaut_rounds = rounds
+	for p in [old, id]:
+		if _players.has(p):
+			_apply_set_perks(p)
+	juggernaut_changed.emit(id)
 
 
 func _physics_process(delta: float) -> void:
@@ -764,12 +858,21 @@ func _physics_process(delta: float) -> void:
 				_respawned_msec[id] = Time.get_ticks_msec()
 				_set_health.rpc(id, max_health_of(id))
 				_on_respawn.rpc(id, _safest_spawn())
+	var net := _net()
+	# A fresh online server: before its first round gets going, everyone votes on the map
+	# and mode (once someone has finished loading in, so the vote reaches them).
+	if net.get("dedicated") and not net.get("first_vote_done") and not match_done and not ready_peers.is_empty():
+		net.set("first_vote_done", true)
+		_zzzzvote_first.rpc()
+		_open_vote()
+		_end_timer = END_DELAY
 	if not match_done:
-		if game_mode() != "juggernaut":
-			_heal_holstered(delta)
-		if game_mode() == "koth":
+		_heal_holstered(delta)
+		if base_mode() == "koth":
 			_koth_tick(delta)
-		elif game_mode() == "gungame":
+		elif base_mode() == "juggernaut":
+			_juggernaut_tick()
+		elif base_mode() == "gungame":
 			# Anyone still unarmed (joined while their roster entry was on its way).
 			_hill_push -= delta
 			if _hill_push <= 0.0:
@@ -855,6 +958,8 @@ func cast_mode_vote(index: int) -> void:
 ## Host: players with their weapon put away heal the faster they go (see HEAL_*).
 func _heal_holstered(delta: float) -> void:
 	for id in _players:
+		if is_juggernaut(id):
+			continue  # The juggernaut never heals.
 		var ball: Node = _players[id]
 		var weapon := ball.get_node_or_null("Weapon")
 		var sync := ball.get_node_or_null("Sync")
@@ -1023,7 +1128,8 @@ func _zvote_cast(index: int) -> void:
 
 @rpc("any_peer", "reliable")
 func _zzvote_mode(index: int) -> void:
-	if not multiplayer.is_server() or vote_options.is_empty() or index < 0 or index >= NetScript.MODES.size():
+	if not multiplayer.is_server() or vote_options.is_empty() or index < 0 or index >= NetScript.MODES.size() \
+			or not (_net().call("mode_pool") as Array).has(NetScript.MODES[index]):
 		return
 	_mode_votes[_sender()] = index
 	_zzvote_state.rpc(_votes, _mode_votes)
@@ -1045,6 +1151,8 @@ func _zzhello() -> void:
 		_zzclock.rpc_id(_sender(), match_time(), team_scores)
 		if hill_radius > 0.0:
 			_zzzhill.rpc_id(_sender(), hill_pos, hill_radius)
+		if juggernaut_id != 0:
+			_zzzzjugg.rpc_id(_sender(), juggernaut_id, juggernaut_rounds)
 
 
 @rpc("authority", "reliable")
@@ -1104,6 +1212,9 @@ func staff_kill(victim: int, by: int) -> void:
 	_last_hit.erase(victim)
 	_respawn_timers[victim] = RESPAWN_TIME
 	_on_killed.rpc(victim, by, "")
+	# A staff kill on the juggernaut still ends their round (nobody's credited).
+	if base_mode() == "juggernaut":
+		_juggernaut_killed(victim, 0)
 
 
 ## Host: the owner healed `id` to full.
@@ -1221,6 +1332,20 @@ func game_mode() -> String:
 	return String(net.get("game_mode")) if net and net.get("online") else "ffa"
 
 
+## The rules this round follows: Team King of the Hill plays like King of the Hill (and
+## Team Gun Game like Gun Game), with teams on top.
+func base_mode() -> String:
+	return NetScript.base_mode(game_mode())
+
+
+## Everyone: a fresh server's first round opens with the map and mode vote, before
+## anyone plays (play stops while it's open). (Named to sort last.)
+@rpc("authority", "call_local", "reliable")
+func _zzzzvote_first() -> void:
+	match_done = true
+	first_vote_opened.emit()
+
+
 ## Gun Game (host): hand player `id` a new random weapon (never the one they hold). Bots
 ## only get the guns they know how to use.
 func _give_gun(id: int) -> void:
@@ -1312,10 +1437,19 @@ func koth_time_left() -> float:
 
 ## Host, every physics step in King of the Hill: everyone on the hill scores time; scores
 ## go out once a second as the roster's "score"; at KOTH_TIME the most time wins.
+## Team King of the Hill: a team scores while any of its players hold the hill (nobody
+## does while both teams are on it), and at KOTH_TIME the team with more time wins.
 func _koth_tick(delta: float) -> void:
+	var teams_on := {}
 	for id in _players:
 		if on_hill(id):
 			_hill_time[id] = float(_hill_time.get(id, 0.0)) + delta
+			var team: int = _net().call("team_of", id)
+			if team >= 0:
+				teams_on[team] = true
+	if is_team_game() and teams_on.size() == 1:
+		var holder: int = teams_on.keys()[0]
+		_team_hill[holder] += delta
 	_hill_push -= delta
 	var over := match_time() >= KOTH_TIME
 	if _hill_push <= 0.0 or over:
@@ -1324,7 +1458,13 @@ func _koth_tick(delta: float) -> void:
 		for id in roster:
 			roster[id]["score"] = int(_hill_time.get(id, 0.0))
 		_net().call("push_roster")
+		if is_team_game():
+			team_scores = [int(_team_hill[0]), int(_team_hill[1])]
+			_zzteam_scores.rpc(team_scores)
 	if over:
+		if is_team_game():
+			_match_won(-1 if _team_hill[0] >= _team_hill[1] else -2)
+			return
 		var winner := -1
 		var best := -1.0
 		for id in _roster():
@@ -1332,6 +1472,4 @@ func _koth_tick(delta: float) -> void:
 			if t > best:
 				best = t
 				winner = id
-		_on_match_over.rpc(winner)
-		_end_timer = END_DELAY
-		_open_vote()
+		_match_won(winner)

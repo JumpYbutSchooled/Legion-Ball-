@@ -41,7 +41,11 @@ func _build() -> void:
 	for i in TERRACES.size():
 		var top := i * STEP
 		var r: float = TERRACES[i]
-		disc(Vector3(0, top, 0), r, STEP + 2.0, _stone if i % 2 == 0 else _stone2, 5)
+		# Only each terrace's outer band: the terrace above (and the summit) covers the
+		# rest, so a full disc here was hundreds of blocks nobody could see or touch. The
+		# bands overlap 2 m sideways and down, so the mountain stays sealed.
+		var inner: float = (TERRACES[i + 1] if i + 1 < TERRACES.size() else TOP_R) - 2.0
+		annulus(Vector3(0, top, 0), inner, r, STEP + 2.0, _stone if i % 2 == 0 else _stone2)
 		# A low parapet round the outer edge, with a gap where the stairs from below arrive.
 		var gaps := []
 		if i > 0:
@@ -58,7 +62,8 @@ func _build() -> void:
 	var s := (TERRACES.size() - 1) * STEP
 	stairs(Vector3(cos(0.4) * (TOP_R + 6.0), s, sin(0.4) * (TOP_R + 6.0)), -Vector2.from_angle(0.4), 10, (SUMMIT - s) / 10.0, 1.2, 10.0, _stone)
 	disc(Vector3(0, SUMMIT, 0), TOP_R, SUMMIT - s + 2.0, _stone, 5)
-	disc(Vector3(0, SUMMIT + 0.3, 0), TOP_R - 1.0, 0.3, _meadow, 5)
+	# The meadow is just the grass on the stone: decoration, a hair above it (no blocks).
+	disc(Vector3(0, SUMMIT + 0.05, 0), TOP_R - 1.0, 0.3, _meadow, 5, false, false)
 	_rivers()
 	_forest()
 	_tree_of_knowledge(Vector3(0, SUMMIT, -40.0))

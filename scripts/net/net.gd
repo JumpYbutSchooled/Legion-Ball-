@@ -102,11 +102,22 @@ const SERVER_RETRY_DELAY := 3.0
 
 ## Game modes (rules in arena.gd): every man for himself; two teams (no friendly fire,
 ## team kills win); King of the Hill (most time on the hill in 5 minutes); Gun Game (a new
-## random weapon every kill, first to 15); Juggernaut (1000 health, no healing, every
-## weapon, first to 15).
-const MODES := ["ffa", "teams", "koth", "gungame", "juggernaut"]
+## random weapon every kill, first to 15); Juggernaut (one giant juggernaut against
+## everyone; whoever kills them takes over; 5 rounds); and team versions of King of the
+## Hill (your team scores while it holds the hill) and Gun Game (first to the kill target
+## wins it for their team). New modes go on the end: votes are sent as an index into this.
+const MODES := ["ffa", "teams", "koth", "gungame", "juggernaut", "team_koth", "team_gungame"]
 const MODE_NAMES := {"ffa": "FREE FOR ALL", "teams": "TEAM DEATHMATCH", "koth": "KING OF THE HILL",
-	"gungame": "GUN GAME", "juggernaut": "JUGGERNAUT"}
+	"gungame": "GUN GAME", "juggernaut": "JUGGERNAUT", "team_koth": "TEAM KING OF THE HILL",
+	"team_gungame": "TEAM GUN GAME"}
+## Modes played in two teams (no friendly fire, team colours, a team wins).
+const TEAM_MODES := ["teams", "team_koth", "team_gungame"]
+## Which modes each online server plays (by SERVER_URLS index): Server 1 the free-for-all
+## ones, Server 2 the team ones. The others (and LAN games) play every mode.
+const SERVER_MODES := {
+	0: ["ffa", "gungame", "koth", "juggernaut"],
+	1: ["teams", "team_koth", "team_gungame", "juggernaut"],
+}
 const TEAM_NAMES := ["RED", "BLUE"]
 const TEAM_COLORS := [Color(1.0, 0.32, 0.26), Color(0.28, 0.58, 1.0)]
 
@@ -138,6 +149,9 @@ var dedicated := false
 var map_scene := ARENA_SCENE
 ## The mode matches are played in (MODES). Set by the server with the map.
 var game_mode := "ffa"
+## Dedicated server: false until the first round's map and mode vote has opened (arena.gd).
+## Lives here, not in the arena, because the arena reloads when the vote's done.
+var first_vote_done := true
 ## AI turrets on (scripts/turrets.gd). Off by default. The host's copy is the real one
 ## (staff switch it with Mod.toggle_turrets); offline it's the practice setting.
 var turrets_on := false
@@ -200,7 +214,7 @@ func update_bots() -> bool:
 	var want := 0
 	if bots_enabled and humans > 0 and humans < BOT_FILL:
 		want = mini(BOT_FILL - humans, MAX_BOTS)
-		if game_mode == "teams" and (humans + want) % 2 == 1 and want < MAX_BOTS:
+		if TEAM_MODES.has(game_mode) and (humans + want) % 2 == 1 and want < MAX_BOTS:
 			want += 1
 	want = mini(want, MAX_PLAYERS - humans)
 	var bots: Array = players.keys().filter(func(id: int) -> bool: return is_bot(id))
@@ -216,7 +230,7 @@ func update_bots() -> bool:
 		var id := BOT_ID_BASE - n
 		players[id] = _new_player("BOT " + String(BOT_NAMES[(n - 1) % BOT_NAMES.size()]), _free_color())
 		players[id]["bot"] = true
-		if game_mode == "teams":
+		if TEAM_MODES.has(game_mode):
 			players[id]["team"] = _smaller_team()
 		bots.append(id)
 		changed = true
@@ -249,9 +263,22 @@ func player_color(id: int) -> Color:
 
 ## A player's team (0 red, 1 blue), or -1 when it isn't a team game.
 func team_of(id: int) -> int:
-	if game_mode != "teams":
+	if not TEAM_MODES.has(game_mode):
 		return -1
 	return int(players.get(id, {}).get("team", -1))
+
+
+## The modes this game can be played in: this online server's own list (SERVER_MODES),
+## on the server itself or a player connected to it; every mode otherwise.
+func mode_pool() -> Array:
+	var index := server_index() if dedicated else (SERVER_URLS.find(_server_url) if online and _server_url != "" else -1)
+	return SERVER_MODES.get(index, MODES)
+
+
+## The rules a mode is built on: Team King of the Hill is King of the Hill (and Team Gun
+## Game is Gun Game) played in teams.
+static func base_mode(mode: String) -> String:
+	return {"team_koth": "koth", "team_gungame": "gungame"}.get(mode, mode)
 
 
 ## Host: split everyone into two even teams for a new round (or clear teams in FFA).
@@ -259,7 +286,7 @@ func assign_teams() -> void:
 	var ids := players.keys()
 	ids.shuffle()
 	for i in ids.size():
-		if game_mode == "teams":
+		if TEAM_MODES.has(game_mode):
 			players[ids[i]]["team"] = i % 2
 		else:
 			players[ids[i]].erase("team")
@@ -376,6 +403,7 @@ func host_dedicated(port := SERVER_PORT) -> Error:
 	online = true
 	dedicated = true
 	in_match = true
+	first_vote_done = false
 	players = {}
 	map_scene = _dedicated_map()
 	classic = CLASSIC_SERVERS.has(server_index()) or OS.get_environment("CLASSIC") == "1"
@@ -383,6 +411,9 @@ func host_dedicated(port := SERVER_PORT) -> Error:
 	var mode_env := OS.get_environment("GAME_MODE").strip_edges().to_lower()
 	if MODES.has(mode_env):
 		game_mode = mode_env
+	# A mode this server doesn't play (Server 2 starts in a team mode, not FFA).
+	if not mode_pool().has(game_mode):
+		game_mode = mode_pool()[0]
 	print("[server] listening on port %d, map %s" % [port, MAP_NAMES.get(map_scene, map_scene)])
 	# Server 1 relays global chat between the servers (scripts/net/global_relay.gd).
 	var relay := get_tree().root.get_node_or_null("GlobalChat")
@@ -491,6 +522,15 @@ func change_map(path: String) -> void:
 	_zzuse_mode.rpc(game_mode)
 	_use_map.rpc(map_scene)
 	_load_arena.rpc()
+
+
+## Host only: everyone plays mode `mode` now, on the same map, scores reset (a staff
+## member's switch). Only modes this game plays (mode_pool).
+func change_mode(mode: String) -> void:
+	if not is_host() or not mode_pool().has(mode):
+		return
+	game_mode = mode
+	change_map(map_scene)
 
 
 ## Host only: send the current roster (scores included) to everyone.
@@ -642,7 +682,7 @@ func _register(player_name_in: String) -> void:
 		return
 	players[id] = _new_player(player_name_in.strip_edges().substr(0, 16), _free_color())
 	players[id]["loadout"] = _allowed_loadout(_peer_loadouts.get(id, []))
-	if game_mode == "teams":
+	if TEAM_MODES.has(game_mode):
 		players[id]["team"] = _smaller_team()
 	_zzclassic.rpc_id(id, classic)
 	_zzbots_state.rpc_id(id, bots_enabled)

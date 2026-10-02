@@ -1,6 +1,11 @@
 # Publishes an update that players get automatically the next time they start the game.
 #
-#   powershell -File tools\publish.ps1 0.5.1 "What changed"
+#   powershell -File tools\publish.ps1 0.5.1 "What changed" ["Short Discord message"]
+#
+# The notes go in the in-game changelog and the GitHub release. The optional third
+# argument is what Discord gets instead: written for players - specific about gameplay
+# (damage, cooldowns, what's new) but no technical internals like server settings or
+# file names (it falls back to the notes if left out).
 #
 # 1. Writes the version into version.txt.
 # 2. Exports the game data only (build/game.pck) - no .exe, players keep theirs.
@@ -12,7 +17,8 @@
 
 param(
     [Parameter(Mandatory = $true)][string]$Version,
-    [string]$Notes = "Update $Version"
+    [string]$Notes = "Update $Version",
+    [string]$Discord = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -67,16 +73,20 @@ $Hook = $env:BALLISTIC_DISCORD_WEBHOOK
 $HookFile = "$PSScriptRoot\discord_webhook.txt"
 if (-not $Hook -and (Test-Path $HookFile)) { $Hook = (Get-Content $HookFile -Raw).Trim() }
 if ($Hook) {
+    # Players only: what changed for them and how to get it. No GitHub link (the release
+    # page is just the game data file).
+    $Message = if ($Discord) { $Discord } else { $Notes }
     $Body = @{
         username = "Ballistic"
         embeds = @(@{
-            title = "Update v$Version is out"
-            description = $Notes
-            url = "https://github.com/JumpYbutSchooled/Legion-Ball-/releases/tag/v$Version"
+            title = "Update v$Version"
+            description = $Message
             color = 5892863
             footer = @{ text = "Restart the game to update." }
         })
     } | ConvertTo-Json -Depth 5
+    # Windows PowerShell 5.1 can default to an old TLS version Discord refuses.
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     try {
         Invoke-RestMethod -Uri $Hook -Method Post -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($Body)) | Out-Null
         Write-Host "Posted the patch notes to Discord."

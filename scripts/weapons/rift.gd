@@ -1,4 +1,4 @@
-﻿extends Node3D
+extends Node3D
 ## One rift of the RIFT GUN's pair (practice only for now). Its +Z points out of the
 ## surface it's on. It shows the view through its partner (a camera behind the partner,
 ## where yours would be if the two rifts were one hole, rendering into a texture drawn

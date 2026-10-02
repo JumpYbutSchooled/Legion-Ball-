@@ -76,6 +76,9 @@ var _start_position: Vector3
 var _reset_requested := false
 var _dash_requested := false
 var _radius := 0.5
+## Juggernaut (arena.gd set_size): how many times its normal size this ball is.
+var size_scale := 1.0
+var _base_radius := 0.5
 var _jump_timer := 0.0
 var _dash_timer := 0.0
 var _skid_dir := Vector3.ZERO
@@ -150,6 +153,7 @@ func _ready() -> void:
 	var shape := $CollisionShape3D.shape as SphereShape3D
 	if shape:
 		_radius = shape.radius
+	_base_radius = _radius
 	_sparks.emitting = false
 	_shield = ShieldScript.new()
 	_shield.set("ball", self)
@@ -446,6 +450,28 @@ func stagger_controls(duration: float) -> void:
 
 func is_staggered() -> bool:
 	return _stagger_timer > 0.0
+
+
+## Juggernaut: this ball becomes `k` times its normal size - its sphere, its mesh, its
+## weapon and its shields - on every computer. The sphere is made this ball's own copy
+## first: the scene shares one shape between every ball.
+func set_size(k: float) -> void:
+	if is_equal_approx(k, size_scale):
+		return
+	size_scale = k
+	var node := $CollisionShape3D as CollisionShape3D
+	if not has_meta("own_shape"):
+		node.shape = node.shape.duplicate()
+		set_meta("own_shape", true)
+	_radius = _base_radius * k
+	(node.shape as SphereShape3D).radius = _radius
+	$Mesh.scale = Vector3.ONE * k
+	for shield in [_shield, _god_shield]:
+		if shield:
+			shield.scale = Vector3.ONE * k
+	var weapon := get_node_or_null("Weapon")
+	if weapon:
+		weapon.set("size_scale", k)
 
 
 ## Antidote: relieves a stun right away.

@@ -5,11 +5,14 @@ extends RefCounted
 ## untouched (they stay on the StaticBody3Ds); only the visible boxes are merged.
 ## Materials that are separate objects but identical (the builders make many) share a
 ## mesh. The map shaders work in world space, so merged pieces look exactly the same.
+## Plain coloured materials are swapped for the surface shader (the same colour with soft
+## world-space detail on top, see shaders/detail.gdshaderinc) as they're merged.
 ## Anything that moves (rigid bodies, practice targets) is left alone.
 
 ## Chunk size in metres: small enough that looking one way skips most of the map, big
 ## enough to keep the number of meshes low.
 const CHUNK := 120.0
+const SurfaceShader := preload("res://shaders/surface.gdshader")
 
 
 static func merge(map: Node3D) -> Dictionary:
@@ -18,6 +21,7 @@ static func merge(map: Node3D) -> Dictionary:
 	var merged: Array[MeshInstance3D] = []
 	var to_local := map.global_transform.affine_inverse()
 	var signatures := {}  # Material -> signature string (cached)
+	var surfaces := {}  # signature -> its surface-shader version
 	# A box's vertex arrays depend only on its size: made once per size, then transformed
 	# for each box (in bulk, which is far quicker than appending mesh by mesh).
 	var shapes := {}
@@ -33,7 +37,7 @@ static func merge(map: Node3D) -> Dictionary:
 		var pos := inst.global_position
 		var key := "%s|%d|%d|%d" % [signatures[mat], floori(pos.x / CHUNK), floori(pos.z / CHUNK), inst.cast_shadow]
 		if not groups.has(key):
-			groups[key] = {"mat": mat, "shadow": inst.cast_shadow, "verts": PackedVector3Array(),
+			groups[key] = {"mat": _surface(mat, signatures[mat], surfaces), "shadow": inst.cast_shadow, "verts": PackedVector3Array(),
 				"normals": PackedVector3Array(), "uvs": PackedVector2Array(), "indices": PackedInt32Array()}
 		var shape_key: Variant = "box%s" % (prim as BoxMesh).size if prim is BoxMesh else prim.get_instance_id()
 		if not shapes.has(shape_key):
@@ -103,6 +107,23 @@ static func _moves(node: Node, map: Node) -> bool:
 			return true
 		n = n.get_parent()
 	return false
+
+
+## A plain, opaque, untextured StandardMaterial3D as the surface shader (one per look).
+static func _surface(mat: Material, signature: String, cache: Dictionary) -> Material:
+	var m := mat as StandardMaterial3D
+	if not m or m.albedo_texture or m.emission_enabled or m.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED \
+			or m.shading_mode != BaseMaterial3D.SHADING_MODE_PER_PIXEL or m.cull_mode != BaseMaterial3D.CULL_BACK \
+			or m.vertex_color_use_as_albedo or m.albedo_color.a < 1.0:
+		return mat
+	if not cache.has(signature):
+		var out := ShaderMaterial.new()
+		out.shader = SurfaceShader
+		out.set_shader_parameter("albedo", m.albedo_color)
+		out.set_shader_parameter("roughness", m.roughness)
+		out.set_shader_parameter("metallic", m.metallic)
+		cache[signature] = out
+	return cache[signature]
 
 
 ## Two materials with the same signature render identically, so they can share a mesh.

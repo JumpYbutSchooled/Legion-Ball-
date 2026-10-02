@@ -1,4 +1,4 @@
-﻿extends "res://scripts/maps/map_builder.gd"
+extends "res://scripts/maps/map_builder.gd"
 ## "Starship": fight on the outside of an arrowhead-shaped starship in deep space. The
 ## round saucer at the front is the main arena: a huge deck stepping up in rings (low
 ## enough to jump) to the bridge on top. Behind it a flat spine runs back to the raised

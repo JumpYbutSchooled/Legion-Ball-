@@ -443,6 +443,9 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Right stick orbits the camera (any connected controller), with a curve so small tilts
 ## aim finely.
 func _pad_look(delta: float) -> void:
+	# The controller weapon wheel has the right stick (ui/weapon_selector.gd).
+	if InputSetup.wheel_open:
+		return
 	var stick := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
 	if stick.length() < PAD_DEADZONE:
 		return

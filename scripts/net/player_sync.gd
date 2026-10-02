@@ -91,8 +91,18 @@ func _physics_process(delta: float) -> void:
 		if _send_timer >= 1.0 / SEND_RATE:
 			_send_timer = 0.0
 			var w: Array = _weapon.call("get_net_state")
-			_state.rpc(_ball.global_position, _ball.global_basis.get_rotation_quaternion(),
-				_ball.linear_velocity, w[0], w[1], w[2], w[3], w[4], w[5])
+			var args := [_ball.global_position, _ball.global_basis.get_rotation_quaternion(),
+				_ball.linear_velocity, w[0], w[1], w[2], w[3], w[4], w[5]]
+			var ws := multiplayer.multiplayer_peer as WebSocketMultiplayerPeer
+			if multiplayer.is_server() and ws:
+				# The online server: skip anyone whose connection is already closing (they
+				# just left). Sending to them only fills the log with ready_state errors.
+				for peer in multiplayer.get_peers():
+					var socket := ws.get_peer(peer)
+					if socket and socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+						callv("rpc_id", [peer, "_state"] + args)
+			else:
+				callv("rpc", ["_state"] + args)
 	elif _has_state:
 		_age += delta
 		var predicted := _pos + _vel * minf(_age, MAX_PREDICT)

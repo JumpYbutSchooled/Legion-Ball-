@@ -16,10 +16,10 @@ const AISLE_EVERY := 5
 const OUTER_R := 162.0
 const OUTER_HEIGHT := 72.0
 
-var _sand := checker(Color(0.78, 0.67, 0.48), Color(0.74, 0.63, 0.45), 4.0)
-var _stone := solid(Color(0.74, 0.68, 0.58))
-var _stone_dark := solid(Color(0.62, 0.56, 0.48))
-var _marble := solid(Color(0.9, 0.88, 0.84), 0.5)
+var _sand := checker(Color(0.76, 0.6, 0.4), Color(0.7, 0.55, 0.37), 4.0)
+var _stone := solid(Color(0.7, 0.6, 0.47))
+var _stone_dark := solid(Color(0.52, 0.44, 0.35))
+var _marble := solid(Color(0.86, 0.83, 0.78), 0.4)
 var _bronze := solid(Color(0.72, 0.5, 0.26), 0.4, 0.6)
 
 

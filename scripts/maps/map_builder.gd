@@ -319,18 +319,36 @@ func ground(rect: Rect2, mat: Material) -> void:
 
 
 ## A flat round slab (top at `top`): rings of blocks, like the Coliseum's tiers.
-func disc(center: Vector3, radius: float, thick: float, mat: Material, rings := 4, minimap := true) -> void:
+## `solid` false makes it decoration only (no collision, no physics bodies: a surface
+## layer over something solid, like Eden's meadow on its stone).
+func disc(center: Vector3, radius: float, thick: float, mat: Material, rings := 4, minimap := true, solid := true) -> void:
 	var inner := radius / rings
-	box(Vector3(center.x, center.y - thick / 2.0, center.z), Vector3(inner * 1.42, thick, inner * 1.42), mat, 0.0, 0.0, minimap)
+	_disc_piece(Vector3(center.x, center.y - thick / 2.0, center.z), Vector3(inner * 1.42, thick, inner * 1.42), mat, 0.0, minimap, solid)
 	for i in range(1, rings):
-		var r0 := radius * i / rings
-		var r1 := radius * (i + 1) / rings
-		var sides := maxi(12, int(TAU * r1 / 14.0))
-		var step := TAU / sides
-		for s in sides:
-			var mid := step * (s + 0.5)
-			var c := Vector2.from_angle(mid) * (r0 + r1) / 2.0
-			box(Vector3(center.x + c.x, center.y - thick / 2.0, center.z + c.y), Vector3(r1 - r0 + 0.6, thick, 2.0 * r1 * sin(step / 2.0) + 0.4), mat, -mid, 0.0, minimap)
+		_ring_blocks(center, radius * i / rings, radius * (i + 1) / rings, thick, mat, minimap, solid)
+
+
+## Just the outer band of a slab: one ring of blocks between radius r0 and r1 (top at
+## center.y). Where something covers the middle anyway (Eden's stacked terraces), this is
+## the same to look at and roll on for a fraction of the blocks.
+func annulus(center: Vector3, r0: float, r1: float, thick: float, mat: Material, minimap := true) -> void:
+	_ring_blocks(center, r0, r1, thick, mat, minimap, true)
+
+
+func _ring_blocks(center: Vector3, r0: float, r1: float, thick: float, mat: Material, minimap: bool, solid: bool) -> void:
+	var sides := maxi(12, int(TAU * r1 / 14.0))
+	var step := TAU / sides
+	for s in sides:
+		var mid := step * (s + 0.5)
+		var c := Vector2.from_angle(mid) * (r0 + r1) / 2.0
+		_disc_piece(Vector3(center.x + c.x, center.y - thick / 2.0, center.z + c.y), Vector3(r1 - r0 + 0.6, thick, 2.0 * r1 * sin(step / 2.0) + 0.4), mat, -mid, minimap, solid)
+
+
+func _disc_piece(center: Vector3, size: Vector3, mat: Material, yaw: float, minimap: bool, solid: bool) -> void:
+	if solid:
+		box(center, size, mat, yaw, 0.0, minimap)
+	else:
+		deco(center, size, mat, yaw)
 
 
 ## A square column from the ground (y0) up `height`.

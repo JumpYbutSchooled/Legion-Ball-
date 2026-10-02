@@ -4,8 +4,14 @@ extends CanvasLayer
 ## bracketed names): a ring of weapon slots (the one you've scrolled to lit in its colour,
 ## a dot on the equipped one) round a spinning hologram of that weapon, with its name
 ## below. Right-click equips it; it hides after a few idle seconds. Ctrl + wheel is left
-## alone (camera zoom). Controller: LB / RB step to the previous / next weapon and equip
-## it straight away. Staff weapons only appear if unlocked (and not hidden with 0).
+## alone (camera zoom). Controller: the wheel sits in the middle of the screen. Y
+## (PlayStation Triangle) opens it and holds it open: point the right stick at a weapon,
+## pull RT to equip it (Y again closes it). LB / RB still step to the previous / next
+## weapon and equip it straight away. Staff weapons only appear if unlocked (and not
+## hidden with 0).
+
+## Right stick past this (0..1) picks the slot it points at.
+const STICK_PICK := 0.5
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
@@ -27,6 +33,10 @@ const OUTER := 86.0
 const INNER := 56.0
 
 var _open := false
+## Opened with Y on a controller: stays open (no idle hide), right stick picks, RT equips.
+var _pad_wheel := false
+## After RT equips, the trigger's still held: no firing until it's let go.
+var _await_release := false
 var _candidate := 0
 var _idle := 0.0
 var _slide := 0.0  # 0 hidden .. 1 shown
@@ -69,6 +79,20 @@ func _on_staff_weapons_toggled(shown: bool) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not weapon or get_tree().paused:
 		return
+	# Y / Triangle: open the controller wheel, or close it without changing anything.
+	if event.is_action_pressed("weapon_wheel") and not _input_blocked():
+		if _pad_wheel:
+			_close_pad_wheel()
+		else:
+			_pad_wheel = true
+			InputSetup.wheel_open = true
+			_open = true
+			_candidate = weapon.get("current")
+			_idle = 0.0
+			_refresh()
+			Sfx.play_flat(get_tree(), "ui_hover", -16.0)
+		get_viewport().set_input_as_handled()
+		return
 	# Controller shoulders: step and equip in one press.
 	for dir in [["weapon_prev", -1], ["weapon_next", 1]]:
 		if event.is_action_pressed(dir[0]) and not _input_blocked():
@@ -100,6 +124,32 @@ func _confirm() -> void:
 	Sfx.play_flat(get_tree(), "ui_click", -12.0)
 
 
+## The controller wheel lets go of the stick and trigger. Firing waits for the trigger to
+## be released, so the pull that equipped doesn't also shoot.
+func _close_pad_wheel() -> void:
+	_pad_wheel = false
+	_await_release = Input.is_action_pressed("fire")
+	InputSetup.wheel_open = _await_release
+	_idle = idle_hide_time - 0.5
+
+
+## Controller wheel, every frame while it's open: the right stick picks the slot it
+## points at (slot 1 at the top, going clockwise, as drawn); RT equips and closes.
+func _pad_wheel_input() -> void:
+	var stick := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
+	if stick.length() >= STICK_PICK:
+		var n := _count()
+		var step := TAU / n
+		var slot := posmod(roundi((stick.angle() + PI / 2.0) / step), n)
+		if slot != _candidate:
+			_candidate = slot
+			_refresh()
+			Sfx.play_flat(get_tree(), "ui_hover", -16.0)
+	if Input.is_action_just_pressed("fire"):
+		_confirm()
+		_close_pad_wheel()
+
+
 func _input_blocked() -> bool:
 	var net := get_tree().root.get_node_or_null("Net")
 	return net != null and net.get("input_blocked")
@@ -117,18 +167,31 @@ func _browse(step: int) -> void:
 
 
 func _process(delta: float) -> void:
-	if get_tree().paused:
-		_open = false
-	if _open:
+	if get_tree().paused or _input_blocked() or (weapon and weapon.get("ball") and weapon.get("ball").get("dead")):
+		if _pad_wheel:
+			_close_pad_wheel()
+		if get_tree().paused:
+			_open = false
+	if _await_release and not Input.is_action_pressed("fire"):
+		_await_release = false
+		InputSetup.wheel_open = false
+	if _pad_wheel:
+		_idle = 0.0
+		_pad_wheel_input()
+	elif _open:
 		_idle += delta
 		if _idle >= idle_hide_time:
 			_open = false
 	_slide = move_toward(_slide, 1.0 if _open else 0.0, delta * 6.0)
 	var eased := ease(_slide, 0.4)
 	var view := _panel.get_viewport_rect().size
-	# Slides in from off the left edge, vertically centered.
-	var x := lerpf(-_panel.size.x - 20.0, margin, eased)
-	_panel.position = Vector2(x, (view.y - _panel.size.y) / 2.0)
+	if InputSetup.using_pad:
+		# On a controller: in the middle of the screen, fading in.
+		_panel.position = (view - _panel.size) / 2.0
+	else:
+		# Slides in from off the left edge, vertically centered.
+		var x := lerpf(-_panel.size.x - 20.0, margin, eased)
+		_panel.position = Vector2(x, (view.y - _panel.size.y) / 2.0)
 	_panel.modulate.a = eased * opacity
 	_panel.visible = _slide > 0.001
 	_confirm_flash = move_toward(_confirm_flash, 0.0, delta * 3.0)
@@ -152,7 +215,10 @@ func _refresh() -> void:
 		_hint.text = "// EQUIPPED"
 		_hint.add_theme_color_override("font_color", UIStyle.ACCENT)
 	else:
-		_hint.text = "LB/RB  //  EQUIP" if InputSetup.using_pad else "RMB  //  EQUIP"
+		if _pad_wheel:
+			_hint.text = "RIGHT STICK  //  RT EQUIP"
+		else:
+			_hint.text = "LB/RB  //  EQUIP" if InputSetup.using_pad else "RMB  //  EQUIP"
 		_hint.add_theme_color_override("font_color", UIStyle.TEXT_DIM)
 	_holo_mat.set_shader_parameter("color", color)
 	_pad_mat.set_shader_parameter("color", color)

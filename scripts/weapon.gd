@@ -40,6 +40,8 @@ const TURN_RATE := 30.0
 @export var camera: Camera3D
 ## Gets add_shake() calls.
 @export var camera_rig: Node
+## How many times its normal size our ball is (a Juggernaut is 2): the weapon scales too.
+var size_scale := 1.0
 ## Long enough to reach across the whole online map.
 @export var max_range := 2000.0
 
@@ -247,7 +249,9 @@ func _physics_process(delta: float) -> void:
 	# Skip the click that captures the mouse, so capturing doesn't also fire. A controller
 	# doesn't need the mouse at all.
 	var aiming := (captured and _was_captured) or InputSetup.using_pad
-	var pressed: bool = (controls or (stunned_but_antidote and slot_id(current) == "antidote")) and aiming and Input.is_action_pressed("fire")
+	# The controller weapon wheel has the trigger while it's open (ui/weapon_selector.gd).
+	var pressed: bool = (controls or (stunned_but_antidote and slot_id(current) == "antidote")) and aiming \
+		and Input.is_action_pressed("fire") and not InputSetup.wheel_open
 	# Inside an enemy Time Dilator our weapons charge, cool down and fire slower.
 	# Mid-rush (Hyper Dash, Asprint) nothing else fires.
 	if ball.call("is_rushing") and not current_weapon().get("fires_while_rushing"):
@@ -311,7 +315,8 @@ func _process(delta: float) -> void:
 		_has_aim_basis = true
 	else:
 		_aim_basis = _aim_basis.slerp(goal, 1.0 - exp(-TURN_RATE * delta)).orthonormalized()
-	global_transform = Transform3D(_aim_basis, center)
+	# Scaled with a Juggernaut's ball (ball.gd set_size), so the blades stay round it.
+	global_transform = Transform3D(_aim_basis.scaled(Vector3.ONE * size_scale), center)
 
 
 ## Up reference for other players' weapons (no camera): world up, or the heading when

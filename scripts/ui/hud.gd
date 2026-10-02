@@ -28,6 +28,8 @@ var _respawn_left := 0.0
 var _respawn_total := 0.0
 ## Who killed us (empty for a fall into the void), for the killcam line.
 var _killed_by := ""
+## The vote that's open is a fresh server's first-round vote, not the end-of-match one.
+var _first_vote := false
 const CameraRig := preload("res://scripts/camera_rig.gd")
 var _feed_items: Array = []  # [label, time_left]
 var _streak: Control
@@ -175,6 +177,7 @@ func _ready() -> void:
 		arena.connect("vote_opened", _on_vote_opened)
 		arena.connect("vote_state", _on_vote_state)
 		arena.connect("team_scores_changed", _on_team_scores)
+		arena.connect("first_vote_opened", _on_first_vote)
 		if arena.call("is_team_game"):
 			_team_label.visible = true
 			_streak.position.y = 50.0
@@ -215,7 +218,15 @@ func _update_mode_line() -> void:
 	var roster: Dictionary = _net.get("players") if _net else {}
 	var mine: Dictionary = roster.get(me, {})
 	var goal := int(arena.call("get_rules")["kills_to_win"])
-	match mode:
+	if mode == "team_koth":
+		var left_t := int(arena.call("koth_time_left"))
+		var scores: Array = arena.get("team_scores")
+		var text_t := "TEAM KING OF THE HILL  //  %d:%02d LEFT  //  RED %ds  -  BLUE %ds" % [left_t / 60, left_t % 60, int(scores[0]), int(scores[1])]
+		if arena.call("on_hill", me):
+			text_t += "  //  ON THE HILL"
+		_mode_label.text = text_t
+		return
+	match NetScript.base_mode(mode):
 		"koth":
 			var left := int(arena.call("koth_time_left"))
 			var leader := -1
@@ -230,9 +241,12 @@ func _update_mode_line() -> void:
 			_mode_label.text = text
 		"gungame":
 			var gun := WeaponInfo.by_id(String(mine.get("gun", "")))
-			_mode_label.text = "GUN GAME  //  %s  //  KILLS %d / %d" % [String(gun.get("name", "?")), int(mine.get("kills", 0)), goal]
+			_mode_label.text = "%s  //  %s  //  KILLS %d / %d" % [NetScript.MODE_NAMES.get(mode, "GUN GAME"), String(gun.get("name", "?")), int(mine.get("kills", 0)), goal]
 		"juggernaut":
-			_mode_label.text = "JUGGERNAUT  //  NO HEALING  //  KILLS %d / %d" % [int(mine.get("kills", 0)), goal]
+			var jugg: int = arena.get("juggernaut_id")
+			var round_n := mini(int(arena.get("juggernaut_rounds")) + 1, int(arena.call("get_rules")["juggernaut_rounds"]))
+			var who := "YOU ARE THE JUGGERNAUT" if jugg == me else ("JUGGERNAUT: " + _name(jugg) if jugg != 0 else "PICKING A JUGGERNAUT")
+			_mode_label.text = "JUGGERNAUT  //  ROUND %d / %d  //  %s  //  KILLS %d" % [round_n, int(arena.call("get_rules")["juggernaut_rounds"]), who, int(mine.get("kills", 0))]
 		_:
 			_mode_label.text = ""
 
@@ -284,10 +298,14 @@ func _on_vote_opened(options: Array) -> void:
 	_vote_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(_vote_title)
 	_mode_buttons.clear()
+	# Only the modes this server plays (Server 1 the free-for-all ones, Server 2 the team
+	# ones). Each button still votes with its index in Net.MODES.
+	var pool: Array = _net.call("mode_pool") if _net else NetScript.MODES
 	for i in NetScript.MODES.size():
 		var b := Button.new()
 		b.text = "[ %s ]" % NetScript.MODE_NAMES[NetScript.MODES[i]]
 		b.pressed.connect(_vote_mode.bind(i))
+		b.visible = pool.has(NetScript.MODES[i])
 		head.add_child(b)
 		_mode_buttons.append(b)
 	var grid := MapGrid.new()
@@ -320,7 +338,9 @@ func _on_vote_state(map_votes: Dictionary, mode_votes: Dictionary) -> void:
 				tokens[path] = []
 			tokens[path].append(_net.call("player_color", peer) if _net else Color.WHITE)
 	_vote_grid.call("set_tokens", tokens)
-	var counts := [0, 0]
+	var counts: Array = []
+	counts.resize(NetScript.MODES.size())
+	counts.fill(0)
 	for peer in mode_votes:
 		var m: int = mode_votes[peer]
 		if m >= 0 and m < counts.size():
@@ -357,7 +377,7 @@ func _click() -> void:
 
 func _refresh_vote() -> void:
 	if _vote_title:
-		_vote_title.text = "// NEXT ROUND: PICK A MAP AND A MODE   %ds" % ceili(_vote_left)
+		_vote_title.text = "// %s: PICK A MAP AND A MODE   %ds" % ["FIRST ROUND" if _first_vote else "NEXT ROUND", ceili(_vote_left)]
 
 
 ## Team game: "RED 12 — 9 BLUE" across the top.
@@ -429,6 +449,14 @@ func _on_killed(victim: int, attacker: int) -> void:
 		_slam_in(_center)
 
 
+## A fresh server's first round: the vote for its map and mode comes before any play.
+func _on_first_vote() -> void:
+	_first_vote = true
+	_center.text = "CHOOSE THE FIRST MATCH"
+	_center.add_theme_color_override("font_color", UIStyle.ACCENT)
+	_slam_in(_center)
+
+
 ## Big text slams in: starts huge and see-through, snaps to size.
 func _slam_in(label: Label) -> void:
 	label.pivot_offset = label.size / 2.0
@@ -459,7 +487,7 @@ func _on_match_over(winner: int) -> void:
 	_center.add_theme_color_override("font_color", UIStyle.ACCENT if me else Color.WHITE)
 	if me:
 		SteamScript.achieve(get_tree(), "WIN_MATCH")
-		var won_mode: String = arena.call("game_mode") if arena else "ffa"
+		var won_mode: String = arena.call("base_mode") if arena else "ffa"
 		var mode_achievement: String = {"koth": "KING_OF_THE_HILL", "gungame": "GUN_GAME", "juggernaut": "JUGGERNAUT"}.get(won_mode, "")
 		if mode_achievement != "":
 			SteamScript.achieve(get_tree(), mode_achievement)
@@ -475,10 +503,12 @@ func _rebuild_board() -> void:
 		child.queue_free()
 	var rules: Dictionary = arena.call("get_rules")
 	var mode: String = rules.get("mode", "ffa")
-	var teams := mode == "teams"
-	var koth := mode == "koth"
+	var teams := NetScript.TEAM_MODES.has(mode)
+	var koth := NetScript.base_mode(mode) == "koth"
 	var time := int(arena.call("match_time"))
 	var goal := "MOST HILL TIME IN %d:00" % int(rules.get("koth_time", 300.0) / 60.0) if koth else "FIRST TO %d" % int(rules["kills_to_win"])
+	if mode == "juggernaut":
+		goal = "%d JUGGERNAUTS, MOST KILLS WINS" % int(rules.get("juggernaut_rounds", 5))
 	_board_rows.add_child(UIStyle.label("// SCOREBOARD  //  %s  //  %s" % [NetScript.MODE_NAMES.get(mode, "FREE FOR ALL"), goal], 16, UIStyle.ACCENT, true))
 	_board_rows.add_child(UIStyle.label("MATCH TIME  %02d:%02d" % [time / 60, time % 60], 14, UIStyle.TEXT))
 	if not _net:
@@ -516,7 +546,7 @@ func _board_row(id: int, roster: Dictionary) -> void:
 	Rainbow.set_on(title_label, not title.is_empty() and ModScript.is_rainbow_title(title[0]))
 	row.add_child(title_label)
 	var stats := "%3d K   %3d D" % [int(roster[id]["kills"]), int(roster[id]["deaths"])]
-	if arena and arena.call("game_mode") == "koth":
+	if arena and arena.call("base_mode") == "koth":
 		stats += "   %3ds HILL" % int(roster[id].get("score", 0))
 	row.add_child(UIStyle.label(stats, 16, UIStyle.TEXT))
 	_board_rows.add_child(row)

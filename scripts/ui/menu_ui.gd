@@ -1,4 +1,4 @@
-﻿extends Control
+extends Control
 ## The menu panels shared by the main menu and the pause menu: a column of actions on
 ## the left and a page on the right: SETTINGS, CONTROLS, or ARMORY (weapon briefings),
 ## plus MODERATION in the pause menu for moderators (scripts/net/moderation.gd).
@@ -1138,9 +1138,12 @@ func _build_moderation(box: VBoxContainer) -> void:
 		box.add_child(UIStyle.label("No other players on this server.", 15, UIStyle.TEXT_DIM))
 
 	var help := "GOTO jumps you to a player.\n"
+	# While the owner's on the server, only they end the match or switch map / mode.
+	var runs_match: bool = mod.call("is_owner") or not mod.call("owner_present")
 	if level >= 2:
 		var actions := _flow(box)
-		actions.add_child(_small_button("END MATCH", func() -> void: mod.call("end_match")))
+		if runs_match:
+			actions.add_child(_small_button("END MATCH", func() -> void: mod.call("end_match")))
 		actions.add_child(_small_button("BRING ALL", func() -> void: mod.call("bring", 0)))
 		# Announcement: a banner on everyone's screen.
 		var say := HBoxContainer.new()
@@ -1198,13 +1201,19 @@ func _build_moderation(box: VBoxContainer) -> void:
 			health; RESET puts them back to normal).\n"
 		help += "LAUNCH flings a player skyward. KILL ALL / HEAL ALL / FREEZE ALL affect everyone else.\n" \
 			+ "Locked weapons holster and can't be picked; lock all to disarm everyone.\n"
-	# Testers can switch maps too.
-	if level >= 1:
+	# Testers can switch maps and modes too - unless the owner's here and it isn't them.
+	if level >= 1 and not runs_match:
+		box.add_child(UIStyle.label("\nThe owner is on this server: only they can end the match or switch the map or mode.", 13, UIStyle.TEXT_DIM))
+	elif level >= 1:
 		box.add_child(UIStyle.label("\nSWITCH MAP  (now: %s)" % NetScript.MAP_NAMES.get(net.get("map_scene"), "?"), 13, UIStyle.TEXT_DIM))
 		var maps := _flow(box)
 		for path in NetScript.MAP_NAMES:
 			maps.add_child(_small_button(NetScript.MAP_NAMES[path], func() -> void: mod.call("switch_map", path)))
-		help += "SWITCH MAP moves everyone to that map now (scores reset).\n" \
+		box.add_child(UIStyle.label("\nSWITCH MODE  (now: %s)" % NetScript.MODE_NAMES.get(net.get("game_mode"), "?"), 13, UIStyle.TEXT_DIM))
+		var modes := _flow(box)
+		for m in net.call("mode_pool"):
+			modes.add_child(_small_button(NetScript.MODE_NAMES[m], func() -> void: mod.call("switch_mode", m)))
+		help += "SWITCH MAP / SWITCH MODE move everyone to that map or mode now (scores reset).\n" \
 			+ "Bans, mutes and freezes last until this server restarts or goes to sleep.\n"
 	box.add_child(UIStyle.label(help, 12, UIStyle.TEXT_DIM))
 

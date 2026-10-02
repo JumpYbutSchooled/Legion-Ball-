@@ -4,6 +4,8 @@ shader_type spatial;
 // `windows` > 0 turns the cells into lit office windows (city towers): some on, some off,
 // flickering very slowly.
 
+#include "res://shaders/detail.gdshaderinc"
+
 uniform vec3 base_color : source_color = vec3(0.3, 0.32, 0.36);
 uniform vec3 line_color : source_color = vec3(0.45, 0.5, 0.56);
 uniform float cell = 4.0;
@@ -34,7 +36,8 @@ void fragment() {
 	vec2 f = abs(fract(g) - 0.5);
 	vec2 w = fwidth(g) + line_width;
 	float seam = max(smoothstep(0.5 - w.x, 0.5, f.x), smoothstep(0.5 - w.y, 0.5, f.y));
-	vec3 col = mix(base_color, line_color, seam);
+	vec2 v = surface_variation(world_pos, length(VERTEX));
+	vec3 col = mix(base_color * v.x, line_color, seam);
 	vec3 glow = line_color * seam * line_glow;
 	if (windows > 0.0 && n.y < 0.7) {
 		vec2 cell_id = floor(g);
@@ -46,6 +49,6 @@ void fragment() {
 	}
 	ALBEDO = col;
 	EMISSION = glow;
-	ROUGHNESS = roughness;
+	ROUGHNESS = clamp(roughness + v.y, 0.0, 1.0);
 	METALLIC = metallic;
 }

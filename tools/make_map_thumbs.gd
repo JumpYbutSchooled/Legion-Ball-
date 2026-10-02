@@ -1,4 +1,4 @@
-﻿extends SceneTree
+extends SceneTree
 ## Renders a thumbnail of every combat map for the map select (scripts/ui/map_grid.gd):
 ## loads each one with the wireframe build-in off, hides the HUD, frames it from a good
 ## angle and saves res://textures/maps/<name>.png (480 x 270).

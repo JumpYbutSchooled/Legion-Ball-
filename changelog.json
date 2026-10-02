@@ -1,5 +1,10 @@
 [
     {
+        "version":  "2.5.0",
+        "date":  "2026-10-02",
+        "notes":  "New look: reworked lighting and colour on every map - warmer sunlight with cooler shadows, longer shadows, a filmic colour curve, subtle surface detail, soft edge lines where surfaces meet, cleaner glow and distance haze. LOW graphics keeps the old light cost.\nJuggernaut reworked: one Juggernaut at a time - twice the size, 1000 HP (10x normal), half speed, no healing. Whoever kills the Juggernaut becomes the next one (a fall gives it to a random player). After 5 Juggernauts the match ends and the most kills wins.\nNew modes: Team King of the Hill (your team scores only while it alone holds the hill) and Team Gun Game (kills move you up the gun list; the first player to the end wins it for their team).\nServer 1 plays Free For All, Gun Game, King of the Hill and Juggernaut. Server 2 plays Teams, Team King of the Hill, Team Gun Game and Juggernaut.\nA fresh server now opens with a vote for the first map and mode. Staff can switch the mode; while the owner is online only they can end the match or change the map or mode.\nController weapon wheel: Triangle / Y opens it in the middle of the screen, the right stick picks, RT equips. Holster moved to D-pad left.\nEden runs smoother. The next-round vote now shows every mode the server plays."
+    },
+    {
         "version":  "2.4.1",
         "date":  "2026-09-29",
         "notes":  "The owner can no longer be moderated: moderators can\u0027t bring the owner (Bring All skips them too), on top of the existing kick, ban, slay, freeze and mute protection."

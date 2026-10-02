@@ -70,7 +70,10 @@ const JOY_BUTTONS := {
 	"jump": [JOY_BUTTON_A],
 	"dash": [JOY_BUTTON_X],
 	"block": [JOY_BUTTON_B],
-	"toggle_weapon": [JOY_BUTTON_Y],
+	# Y (PlayStation Triangle) opens the weapon wheel (ui/weapon_selector.gd); holstering
+	# moved to D-pad left.
+	"weapon_wheel": [JOY_BUTTON_Y],
+	"toggle_weapon": [JOY_BUTTON_DPAD_LEFT],
 	"weapon_prev": [JOY_BUTTON_LEFT_SHOULDER],
 	"weapon_next": [JOY_BUTTON_RIGHT_SHOULDER],
 	"zoom_in": [JOY_BUTTON_DPAD_UP],
@@ -92,18 +95,22 @@ const JOY_AXES := {
 	"reload": [[JOY_AXIS_TRIGGER_LEFT, 1.0]],
 }
 ## Controller-only actions (not on the Controls page; keyboard uses the mouse wheel).
-const PAD_ONLY := ["weapon_prev", "weapon_next", "recenter_camera"]
+const PAD_ONLY := ["weapon_prev", "weapon_next", "recenter_camera", "weapon_wheel"]
 
 ## True while the last input came from a controller (set by camera_rig.gd): firing then
 ## doesn't need a captured mouse.
 static var using_pad := false
+## True while the controller weapon wheel has the right stick and trigger (weapon_selector.gd):
+## the camera doesn't turn and the weapon doesn't fire.
+static var wheel_open := false
 
 
 ## Shown on the Controls page under the key bindings.
 const PAD_HELP := [
 	["LEFT STICK", "Roll"], ["RIGHT STICK", "Camera"], ["A", "Jump"], ["X", "Dash"],
-	["B", "Shield"], ["Y", "Holster / draw"], ["RT", "Fire"], ["LT", "Reload / vent"],
-	["LB / RB", "Previous / next weapon"], ["D-PAD UP / DOWN", "Zoom"],
+	["B", "Shield"], ["Y / TRIANGLE", "Weapon wheel (right stick picks, RT equips)"],
+	["RT", "Fire"], ["LT", "Reload / vent"],
+	["LB / RB", "Previous / next weapon"], ["D-PAD UP / DOWN", "Zoom"], ["D-PAD LEFT", "Holster / draw"],
 	["BACK", "Scoreboard"], ["START", "Pause menu"],
 	["A / X (menus)", "Select"], ["B / CIRCLE (menus)", "Back"],
 	["TILT (DUALSENSE, MOTION CONTROLS ON)", "Aim the camera"], ["R3 (RIGHT STICK CLICK)", "Recenter camera"],

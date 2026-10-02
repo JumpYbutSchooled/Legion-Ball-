@@ -469,6 +469,27 @@ func switch_map(path: String) -> void:
 		_switch_map.rpc_id(1, path)
 
 
+## Staff (testers up): everyone plays mode `mode` now, same map (scores reset). Only the
+## modes this server plays (Net.mode_pool).
+func switch_mode(mode: String) -> void:
+	if multiplayer.is_server():
+		_zzzswitch_mode(mode)
+	else:
+		_zzzswitch_mode.rpc_id(1, mode)
+
+
+## (Named to sort after the other RPCs.)
+@rpc("any_peer", "reliable")
+func _zzzswitch_mode(mode: String) -> void:
+	var peer := _sender()
+	if not multiplayer.is_server() or not (_is_moderator(peer) or _level(peer) >= 1) or not _may_run_match(peer):
+		return
+	if not (_net.call("mode_pool") as Array).has(mode):
+		return
+	print("[server] %s switched the mode to %s" % [_player_name(peer), _net.MODE_NAMES.get(mode, mode)])
+	_net.call("change_mode", mode)
+
+
 # --- Client ---------------------------------------------------------------------------
 
 ## Once we're on a server's roster: say hello (device id for bans), then try the code.
@@ -617,9 +638,23 @@ func _ban(target: int) -> void:
 	_remove(target, "Banned by a moderator.")
 
 
+## True if the owner is on this server. While they are, only they can end the match or
+## switch the map or mode (moderators still can when the owner isn't around).
+func owner_present() -> bool:
+	for id in _net.get("players"):
+		if _net.get("players")[id].get("role", "") == "owner":
+			return true
+	return false
+
+
+## Server: may `peer` change the match for everyone (end it, switch map or mode)?
+func _may_run_match(peer: int) -> bool:
+	return _is_owner(peer) or not owner_present()
+
+
 @rpc("any_peer", "reliable")
 func _end_match() -> void:
-	if multiplayer.is_server() and _is_moderator(_sender()):
+	if multiplayer.is_server() and _is_moderator(_sender()) and _may_run_match(_sender()):
 		print("[server] %s ended the match" % _player_name(_sender()))
 		_net.call("end_match")
 
@@ -643,7 +678,7 @@ func _set_god(on: bool) -> void:
 @rpc("any_peer", "reliable")
 func _switch_map(path: String) -> void:
 	# Testers can switch maps too (moderators, the owner and a LAN host as well).
-	if multiplayer.is_server() and (_is_moderator(_sender()) or _level(_sender()) >= 1) and _net.MAP_NAMES.has(path):
+	if multiplayer.is_server() and (_is_moderator(_sender()) or _level(_sender()) >= 1) and _may_run_match(_sender()) and _net.MAP_NAMES.has(path):
 		print("[server] %s switched the map to %s" % [_player_name(_sender()), _net.MAP_NAMES[path]])
 		_net.call("change_map", path)
 
