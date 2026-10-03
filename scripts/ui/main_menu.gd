@@ -7,6 +7,9 @@ const MenuUI := preload("res://scripts/ui/menu_ui.gd")
 const GridShader := preload("res://shaders/sim_grid.gdshader")
 const Services := preload("res://scripts/services.gd")
 const Changelog := preload("res://scripts/ui/changelog.gd")
+const WeaponInfo := preload("res://scripts/weapon_info.gd")
+const TitleScreen := preload("res://scripts/ui/title_screen.gd")
+const SceneLoader := preload("res://scripts/ui/scene_loader.gd")
 const GAME_SCENE := "res://scenes/arena.tscn"
 
 var _title: Label
@@ -17,12 +20,16 @@ var _ui: Control
 var _bg_mat: ShaderMaterial
 ## Backdrop tear strength (sim_grid.gdshader glitch), kicked by the title's bursts.
 var _tear := 0.0
+## The start screen shows once per launch (not when coming back from a match).
+static var _title_shown := false
 
 
 func _ready() -> void:
 	# Normally the boot scene has already created these; this covers running the
 	# menu straight from the editor. Deferred: the root is busy while this scene loads.
 	_ensure_services.call_deferred()
+	# Back at the menu: the next training starts with the staff weapons hidden again.
+	WeaponInfo.practice_staff_shown = false
 	theme = UIStyle.make_theme()
 	# The game's icon on the window and taskbar (tools/make_icon.gd). Set here so it comes
 	# with updates; the .exe's own icon only changes with a new base build.
@@ -58,10 +65,22 @@ func _ready() -> void:
 	var ui := MenuUI.new()
 	ui.pause_mode = false
 	add_child(ui)
-	ui.play_pressed.connect(func(scene: String) -> void: get_tree().change_scene_to_file(scene))
+	ui.play_pressed.connect(func(scene: String) -> void: SceneLoader.go(get_tree(), scene))
 	ui.quit_pressed.connect(func() -> void: get_tree().quit())
 	_ui = ui
-	_whats_new.call_deferred()
+	if not _title_shown and DisplayServer.get_name() != "headless":
+		_title_shown = true
+		var start := TitleScreen.new()
+		add_child(start)
+		start.done.connect(func(choice: String) -> void:
+			if choice == "tutorial":
+				MenuUI.start_tutorial(self)
+				return
+			# Into the menu: its buttons sweep in now, then any update news.
+			_ui.call("_intro")
+			_whats_new())
+	else:
+		_whats_new.call_deferred()
 
 
 ## First time on a new version: a message with everything that's changed since the last
@@ -91,6 +110,7 @@ func _whats_new() -> void:
 	add_child(dim)
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(640, 0)
+	UIStyle.glass(panel)
 	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -150,6 +170,7 @@ func _welcome(settings: Node) -> void:
 	add_child(dim)
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(600, 0)
+	UIStyle.glass(panel)
 	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)

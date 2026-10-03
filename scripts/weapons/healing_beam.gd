@@ -1,14 +1,14 @@
 extends "res://scripts/weapons/simple_weapon.gd"
 ## HEALING BEAM (Medical / Support): fire at an ally (or yourself) to heal 5 HP/s,
 ## spreading to other allies nearby - while draining 5 HP/s from you (never lethal). 3s
-## of charge per magazine, then a 10s reload.
+## of charge per magazine, then a 10s reload. Infinite range: any ally you can see.
 
 const HEAL_PER_SEC := 5.0
 const SELF_DRAIN_PER_SEC := 5.0
 const SPREAD_RADIUS := 15.0
 const MAG_TIME := 3.0
 const RELOAD_TIME := 10.0
-const RANGE := 60.0
+const RANGE := 100000.0
 const TICK := 0.5
 
 var ammo := MAG_TIME

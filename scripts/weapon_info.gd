@@ -377,11 +377,11 @@ const WEAPONS := {
 		"summary": "Two linked rifts: see through them, roll through them, keep your speed.",
 		"combo": "A rift above a rift: fall forever, faster and faster."},
 	"asprint": {"built": true, "script": "res://scripts/weapons/asprint.gd",
-		"usage": ["Lock a foe, LMB  go to top speed and fly at them", "You home in on them: you are the bullet", "Heavy hit and a big throw on impact", "Needs a lock; 7.5s cooldown"],
+		"usage": ["Lock a foe, LMB  go to top speed and fly at them", "You home in on them: you are the bullet", "25 damage and a big throw on impact", "Needs a lock; 7.5s cooldown"],
 		"name": "ASPRINT", "tag": "HUMAN BULLET", "group": "momentum",
 		"color": Color(1.0, 0.3, 0.5), "layout": "One long spike straight ahead, like a lance.",
 		"summary": "Instant top speed, locked onto a foe: you fly at them as the bullet.",
-		"avg_dmg": 35.0, "reload": 7.5, "mag": 1,
+		"avg_dmg": 25.0, "reload": 7.5, "mag": 1,
 		"combo": "Follow up with VELOCITY CANNON while you're still fast."},
 	# --- Medical / Support ---------------------------------------------------------------
 	"vampire": {"built": true, "script": "res://scripts/weapons/vampire.gd",
@@ -392,7 +392,7 @@ const WEAPONS := {
 		"avg_dmg": 5.0, "reload": 5.0, "mag": 1,
 		"combo": "Latch on, then let a MIASMA cloud finish healing you."},
 	"healing_beam": {"built": true, "script": "res://scripts/weapons/healing_beam.gd",
-		"usage": ["HOLD LMB on an ally  heal them 5 HP/s", "Spreads to other allies nearby, at half rate", "Costs you 5 HP/s while firing (never lethal)", "3s of charge, then a 10s reload"],
+		"usage": ["HOLD LMB on an ally  heal them 5 HP/s, at any range", "Spreads to other allies nearby, at half rate", "Costs you 5 HP/s while firing (never lethal)", "3s of charge, then a 10s reload"],
 		"name": "HEALING BEAM", "tag": "ALLY SUPPORT", "group": "medical",
 		"color": Color(0.4, 1.0, 0.65), "layout": "One slim blade, angled up and out.",
 		"summary": "Fire a beam to heal your allies, at a cost to your own health.",
@@ -527,12 +527,15 @@ static func built_pool() -> Array:
 	return pool().filter(func(id: String) -> bool: return is_built(id))
 
 
-## Pool weapons that can't hurt anyone on their own (Gun Game skips them).
+## Pool weapons Gun Game never hands out: the ones that can't hurt anyone on their own,
+## plus traps, area and movement tools that make poor main guns (the editing doc's list).
 const NO_DAMAGE := ["time_dilator", "hunters_sigil", "jet_crystals", "winglets", "crystal_wall", "mirage", "rift_gun",
-	"healing_beam", "antidote", "miasma", "borrowed_life", "jammer"]
+	"healing_beam", "antidote", "miasma", "borrowed_life", "jammer",
+	"prism_cage", "plasma_net", "spike_carpet", "arc_pylon", "skylance", "gravity_well", "stasis_mine", "nova",
+	"meteor_drop", "hyper_dash"]
 
 
-## Built pool weapons that deal damage (what Gun Game hands out).
+## Built pool weapons Gun Game hands out.
 static func damaging_pool() -> Array:
 	return built_pool().filter(func(id: String) -> bool: return not NO_DAMAGE.has(id))
 
@@ -572,14 +575,28 @@ static func slot_ids(loadout: Array, size := LOADOUT_SIZE) -> Array:
 ## staff weapons their role unlocks (none while hidden with key 0).
 static func unlocked_count(tree: SceneTree, size := LOADOUT_SIZE) -> int:
 	var role := weapon_role(tree)
-	var settings := tree.root.get_node_or_null("Settings") if tree else null
-	var shown: bool = settings.call("get_value", "show_staff_weapons") if settings else true
+	var shown := staff_shown(tree)
 	var n := size
 	for id in STAFF:
 		if not shown or not ACCESS[by_id(id)["access"]].has(role):
 			break
 		n += 1
 	return n
+
+
+## Offline training: the staff weapons start hidden every time you go in (key 0 shows
+## them). Reset by the arena when a practice starts.
+static var practice_staff_shown := false
+
+
+## Whether the staff weapons are toggled on (key 0): in training this session's choice,
+## online the saved setting.
+static func staff_shown(tree: SceneTree) -> bool:
+	var net := tree.root.get_node_or_null("Net") if tree else null
+	if net and not net.get("online"):
+		return practice_staff_shown
+	var settings := tree.root.get_node_or_null("Settings") if tree else null
+	return settings.call("get_value", "show_staff_weapons") if settings else true
 
 
 ## True if this player has any staff weapons (whether or not they're toggled on).

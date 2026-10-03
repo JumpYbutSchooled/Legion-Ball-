@@ -29,7 +29,6 @@ const SUN_WARMTH := 0.35
 const SUN_MAX_ELEVATION := 0.84  # radians, about 48 degrees
 const SATURATION := 1.1
 const VignetteShader := preload("res://shaders/vignette.gdshader")
-const EdgeShader := preload("res://shaders/edge_shade.gdshader")
 
 
 ## Everything, from the current settings.
@@ -80,9 +79,6 @@ static func apply_scene(tree: SceneTree) -> void:
 			env.ssr_fade_out = 2.0
 		var fancy: bool = s.call("get_value", "graphics_preset") != "LOW"
 		_vignette(scene, fancy)
-		# The edge pass reads the normal buffer, which only the Forward+ renderer has (old
-		# GPUs fall back to Compatibility).
-		_edge_shade(scene, fancy and RenderingServer.get_current_rendering_method() == "forward_plus")
 	if sun:
 		var on: bool = s.call("get_value", "shadows") and not indoor
 		sun.shadow_enabled = on
@@ -142,25 +138,6 @@ static func _grade(env: Environment, sun: DirectionalLight3D, indoor: bool) -> v
 	env.adjustment_enabled = true
 	env.adjustment_contrast = CONTRAST
 	env.adjustment_saturation = saturation * SATURATION
-
-
-## The full-screen edge shading (shaders/edge_shade.gdshader; off on LOW): a quad that
-## covers whatever camera is looking, never culled.
-static func _edge_shade(scene: Node, on: bool) -> void:
-	var quad := scene.get_node_or_null("EdgeShade") as MeshInstance3D
-	if not quad and on:
-		quad = MeshInstance3D.new()
-		quad.name = "EdgeShade"
-		quad.mesh = QuadMesh.new()
-		quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		quad.custom_aabb = AABB(Vector3.ONE * -100000.0, Vector3.ONE * 200000.0)
-		var mat := ShaderMaterial.new()
-		mat.shader = EdgeShader
-		mat.render_priority = Material.RENDER_PRIORITY_MIN  # before any transparent effect
-		quad.material_override = mat
-		scene.add_child(quad)
-	if quad:
-		quad.visible = on
 
 
 ## A soft darkening at the screen's edges, under the HUD (off on LOW).

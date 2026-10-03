@@ -18,7 +18,9 @@ $out = Join-Path $Root "build\steam"
 New-Item -ItemType Directory -Force $out | Out-Null
 # Start clean: only this build's files in the depot folder.
 Get-ChildItem $out -File | ForEach-Object { $_.Delete() }
-& $Godot --headless --path $Root --export-release "Windows Steam" "$out\Ballistic.exe"
+# Not headless: the Shader Baker needs the GPU to pre-build the shaders (no freezes
+# the first time players see each effect).
+& $Godot --path $Root --export-release "Windows Steam" "$out\Ballistic.exe"
 if (-not (Test-Path "$out\Ballistic.exe")) { throw "Export failed: no Ballistic.exe" }
 if (-not (Test-Path "$out\steam_api64.dll")) {
     Copy-Item "$Root\addons\godotsteam\win64\steam_api64.dll" $out

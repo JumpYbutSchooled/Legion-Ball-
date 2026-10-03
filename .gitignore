@@ -5,3 +5,5 @@
 /.claude/
 /.mcp.json
 tools/discord_webhook.txt
+# Godot's temporary copies of GDExtension libraries while the game runs.
+~*.dll

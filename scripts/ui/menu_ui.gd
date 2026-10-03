@@ -28,6 +28,7 @@ const LoadoutCard := preload("res://scripts/ui/loadout_card.gd")
 const WeaponPicker := preload("res://scripts/ui/weapon_picker.gd")
 const WeaponIcons := preload("res://scripts/ui/weapon_icons.gd")
 const MapGrid := preload("res://scripts/ui/map_grid.gd")
+const SceneLoader := preload("res://scripts/ui/scene_loader.gd")
 const Graphics := preload("res://scripts/graphics.gd")
 const GLOBAL_COLOR := Color(1.0, 0.72, 0.3)
 const CreditsScript := preload("res://scripts/credits.gd")
@@ -138,6 +139,7 @@ func _ready() -> void:
 
 	_page_holder = PanelContainer.new()
 	_page_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UIStyle.glass(_page_holder)
 	row.add_child(_page_holder)
 	_frame = TechFrame.new()
 	_page_holder.add_child(_frame)
@@ -221,6 +223,7 @@ func _nav(parent: Control, id: String, text: String, action: Callable) -> void:
 ## Hover (or controller focus): the button leans out with a tick sound and a quick
 ## brightness flicker; press: a squash, a white flash and a click.
 static func _animate_button(b: Button) -> void:
+	b.set_meta("ui_motion", true)  # its own motion, not ui_motion.gd's
 	var hover := func() -> void:
 		b.pivot_offset = Vector2(0.0, b.size.y / 2.0)
 		var tw := b.create_tween().set_parallel().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -252,6 +255,19 @@ static func ui_sound(node: Node, sound: String, volume_db := 0.0) -> void:
 	var tree := node.get_tree()
 	if SettingsScript.read(tree, "ui_sounds"):
 		Sfx.play_flat(tree, sound, volume_db, randf_range(0.97, 1.03))
+
+
+## A new page swells softly into place (from 96%, fading in) once it has a size.
+static func _pop_in(node: Control) -> void:
+	node.modulate.a = 0.0
+	node.scale = Vector2.ONE * 0.96
+	var go := func() -> void:
+		node.pivot_offset = node.size * 0.5
+		var tw := node.create_tween().set_parallel().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		tw.tween_property(node, "scale", Vector2.ONE, 0.42)
+		tw.tween_property(node, "modulate:a", 1.0, 0.28)
+	node.resized.connect(go, CONNECT_ONE_SHOT)
 
 
 ## Page contents cascade in, line by line.
@@ -294,6 +310,7 @@ func _show_page(id: String, quiet := false) -> void:
 	if changed and not quiet:
 		_frame.call("glitch")
 		ui_sound(self, "ui_page", -10.0)
+		_pop_in(scroll)
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -350,7 +367,7 @@ func _swap_in(scroll: ScrollContainer, old: ScrollContainer, keep: int) -> void:
 ## (ui/tutorial.gd, added by arena.gd when it sees the flag).
 static func start_tutorial(from: Node) -> void:
 	Engine.set_meta("tutorial", true)
-	from.get_tree().change_scene_to_file(NetScript.TRAINING_SCENE)
+	SceneLoader.go(from.get_tree(), NetScript.TRAINING_SCENE)
 
 
 func _header(parent: Control, title: String, sub: String) -> void:
@@ -918,7 +935,8 @@ func _chat_line(entry: Dictionary) -> void:
 	var text := "[color=#%s][b][%s][/b][/color] " % [GLOBAL_COLOR.to_html(false), esc.call(String(entry.get("server", "?")))]
 	if String(entry.get("title", "")) != "":
 		if ModScript.is_rainbow_title(String(entry["title"])):
-			text += Rainbow.bbcode("[b][%s][/b]" % esc.call(String(entry["title"]))) + " "
+			Rainbow.install(label)
+			text += Rainbow.bbcode("[b][lb]%s][/b]" % esc.call(String(entry["title"]))) + " "
 		else:
 			text += "[color=#%s][b][%s][/b][/color] " % [Color(entry.get("title_color", Color.WHITE)).to_html(false), esc.call(String(entry["title"]))]
 	text += "[color=#%s][b]%s[/b][/color]: " % [Color(entry.get("color", Color.WHITE)).to_html(false), esc.call(String(entry.get("name", "?")))]

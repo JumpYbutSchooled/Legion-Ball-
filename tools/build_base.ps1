@@ -8,12 +8,14 @@
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Godot = $env:GODOT
-if (-not $Godot) { $Godot = "C:\Users\MagnusBradley\Downloads\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe" }
+if (-not $Godot) { $Godot = "C:\My stuff\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe" }
 
 $out = "$Root\build\base"
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force $out | Out-Null
-& $Godot --headless --path $Root --export-release "Windows Desktop" "$out\Ballistic.exe"
+# Not headless: the Shader Baker needs the GPU to pre-build the shaders (no freezes
+# the first time players see each effect).
+& $Godot --path $Root --export-release "Windows Desktop" "$out\Ballistic.exe"
 if (-not (Test-Path "$out\Ballistic.exe")) { throw "Export failed: no Ballistic.exe" }
 
 $version = (Get-Content "$Root\version.txt" -Raw).Trim()

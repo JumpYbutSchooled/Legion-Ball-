@@ -7,8 +7,8 @@ extends "res://scripts/weapons/simple_weapon.gd"
 const MAX_TIME := 2.5
 ## Speed you're flung at, as a multiple of your top speed.
 const SPEED_MULT := 1.25
-## x4 online (ball.gd PVP_DAMAGE_SCALE) = 35 HP. The impact blast is visual only.
-const HIT_DAMAGE := 8.75
+## x4 online (ball.gd PVP_DAMAGE_SCALE) = exactly 25 HP. The impact blast is visual only.
+const HIT_DAMAGE := 6.25
 
 var _rushing := false
 

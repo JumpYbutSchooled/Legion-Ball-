@@ -221,11 +221,14 @@ func _physics_process(delta: float) -> void:
 				current_weapon().exit()
 			controls = false
 	if controls and Input.is_action_just_pressed("toggle_staff_weapons") and WeaponInfo.has_staff_weapons(get_tree()):
+		var shown := not WeaponInfo.staff_shown(get_tree())
+		var net := get_tree().root.get_node_or_null("Net")
 		var settings := get_tree().root.get_node_or_null("Settings")
-		if settings:
-			var shown: bool = not settings.call("get_value", "show_staff_weapons")
+		if net and not net.get("online"):
+			WeaponInfo.practice_staff_shown = shown
+		elif settings:
 			settings.call("set_value", "show_staff_weapons", shown)
-			staff_weapons_toggled.emit(shown)
+		staff_weapons_toggled.emit(shown)
 	var unlocked := unlocked_count()
 	if current >= unlocked:
 		# Staff weapon no longer available (hidden with 0, or left the server).

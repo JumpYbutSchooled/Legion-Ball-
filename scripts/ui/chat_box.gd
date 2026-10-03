@@ -148,7 +148,8 @@ func _add_line(entry: Dictionary, age: float) -> void:
 		text += "[color=#%s][b][GLOBAL · %s][/b][/color] " % [GLOBAL_COLOR.to_html(false), _escape(String(entry.get("server", "?")))]
 	if entry.get("title", "") != "":
 		if ModScript.is_rainbow_title(String(entry["title"])):
-			text += Rainbow.bbcode("[b][%s][/b]" % entry["title"]) + " "
+			Rainbow.install(label)
+			text += Rainbow.bbcode("[b][lb]%s][/b]" % _escape(String(entry["title"]))) + " "
 		else:
 			text += "[color=#%s][b][%s][/b][/color] " % [Color(entry["title_color"]).to_html(false), entry["title"]]
 	text += "[color=#%s][b]%s[/b][/color]: " % [Color(entry["color"]).to_html(false), _escape(entry["name"])]

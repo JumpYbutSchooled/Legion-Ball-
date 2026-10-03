@@ -34,9 +34,7 @@ var _panel: PanelContainer
 func _ready() -> void:
 	layer = 7
 	_panel = PanelContainer.new()
-	var style := UIStyle.panel_box(UIStyle.ACCENT, Color(0.02, 0.04, 0.07, 0.88))
-	style.set_content_margin_all(14)
-	_panel.add_theme_stylebox_override("panel", style)
+	UIStyle.glass(_panel, Color(0.02, 0.04, 0.07, 0.72), Color(UIStyle.ACCENT, 0.8), 14)
 	_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_panel.custom_minimum_size = Vector2(620, 0)
 	_panel.position = Vector2(-310, 40)

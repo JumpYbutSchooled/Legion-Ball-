@@ -19,9 +19,7 @@ var _open_left := 0.0
 func _ready() -> void:
 	layer = 6
 	_panel = PanelContainer.new()
-	var style := UIStyle.panel_box(Color(1.0, 0.78, 0.25), Color(0.02, 0.04, 0.07, 0.9))
-	style.set_content_margin_all(12)
-	_panel.add_theme_stylebox_override("panel", style)
+	UIStyle.glass(_panel, Color(0.02, 0.04, 0.07, 0.78), Color(1.0, 0.78, 0.25, 0.75), 12)
 	_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	_panel.visible = false
 	add_child(_panel)

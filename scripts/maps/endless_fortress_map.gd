@@ -94,11 +94,13 @@ func _room(p: Vector3, size: Vector2, screens: bool) -> void:
 			continue
 		var a: Vector2 = corners[k] + Vector2(p.x, p.z)
 		var b: Vector2 = corners[(k + 1) % 4] + Vector2(p.x, p.z)
-		# The screen: paper panels in a wooden frame (the frame's solid, the paper glows).
-		wall(a, b, y + h - 0.6, 0.6, 0.5, _dark_wood)
-		wall(a, b, y, 0.5, 0.5, _dark_wood)
+		# The screen: paper panels in a wooden frame. You can roll through the paper, so
+		# the rails along its bottom and top are decoration too (a solid rail the ball's
+		# height stopped dashes dead); only the posts are solid.
 		var mid := (a + b) / 2.0
 		var d := b - a
+		deco(Vector3(mid.x, y + h - 0.3, mid.y), Vector3(d.length() + 0.5, 0.6, 0.5), _dark_wood, -d.angle())
+		deco(Vector3(mid.x, y + 0.25, mid.y), Vector3(d.length() + 0.5, 0.5, 0.5), _dark_wood, -d.angle())
 		deco(Vector3(mid.x, y + h / 2.0, mid.y), Vector3(d.length(), h - 1.2, 0.2), _paper, -d.angle())
 		for t in 5:
 			var q := a.lerp(b, t / 4.0)

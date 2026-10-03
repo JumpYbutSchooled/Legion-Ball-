@@ -94,6 +94,7 @@ const SERVER_MAPS := [ARENA_SCENE, ARENA_SCENE, TRAINING_SCENE, TRAINING_SCENE]
 ## CLASSIC servers (0-based: SERVER 3 and 4): everyone plays the original six weapons.
 const CLASSIC_SERVERS := [2, 3]
 const MENU_SCENE := "res://scenes/menu.tscn"
+const SceneLoader := preload("res://scripts/ui/scene_loader.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
 const CONNECT_TIMEOUT := 8.0
 ## A sleeping free-tier server takes up to about a minute to wake; keep retrying this long.
@@ -419,7 +420,7 @@ func host_dedicated(port := SERVER_PORT) -> Error:
 	var relay := get_tree().root.get_node_or_null("GlobalChat")
 	if relay:
 		relay.call("on_server_started")
-	get_tree().change_scene_to_file(map_scene)
+	SceneLoader.go(get_tree(), map_scene)
 	return OK
 
 
@@ -566,7 +567,7 @@ func end_match() -> void:
 ## Leave the match and return to the main menu.
 func quit_to_menu() -> void:
 	leave()
-	get_tree().change_scene_to_file(MENU_SCENE)
+	SceneLoader.go(get_tree(), MENU_SCENE)
 
 
 func _process(delta: float) -> void:
@@ -653,7 +654,7 @@ func _fail(reason: String) -> void:
 	_set_status(reason)
 	disconnected.emit(reason)
 	if was_in_match:
-		get_tree().change_scene_to_file(MENU_SCENE)
+		SceneLoader.go(get_tree(), MENU_SCENE)
 
 
 # --- RPCs ---------------------------------------------------------------------------
@@ -745,7 +746,7 @@ func _sync_roster(roster: Dictionary) -> void:
 func _load_arena() -> void:
 	in_match = true
 	input_blocked = false
-	get_tree().change_scene_to_file(map_scene)
+	SceneLoader.go(get_tree(), map_scene)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -753,7 +754,7 @@ func _back_to_lobby() -> void:
 	in_match = false
 	input_blocked = false
 	Engine.time_scale = 1.0
-	get_tree().change_scene_to_file(MENU_SCENE)
+	SceneLoader.go(get_tree(), MENU_SCENE)
 
 
 # --- Helpers ------------------------------------------------------------------------

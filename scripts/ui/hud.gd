@@ -140,6 +140,7 @@ func _ready() -> void:
 	_board.custom_minimum_size = Vector2(520, 0)
 	_board.position = Vector2(-260, -200)
 	_board.visible = false
+	UIStyle.glass(_board)
 	root.add_child(_board)
 	_board_rows = VBoxContainer.new()
 	_board_rows.add_theme_constant_override("separation", 6)
@@ -152,6 +153,7 @@ func _ready() -> void:
 	_vote_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_vote_box.offset_bottom = -24
 	_vote_box.visible = false
+	UIStyle.glass(_vote_box)
 	root.add_child(_vote_box)
 
 	# Team score, top-centre (team games only).
@@ -206,6 +208,11 @@ func _process(delta: float) -> void:
 			line = "%s %s  //  %s" % ["SPECTATING" if watching else "BY", _killed_by, line]
 		_center_sub.text = line
 	if _vote_box.visible:
+		# Kept in the middle of the screen whatever its contents (it was drifting off centre).
+		_vote_box.reset_size()
+		var view := get_viewport().get_visible_rect().size
+		_vote_box.position = Vector2((view.x - _vote_box.size.x) * 0.5, view.y - _vote_box.size.y - 24.0)
+		_vote_box.pivot_offset = _vote_box.size * 0.5
 		_vote_left = maxf(_vote_left - delta, 0.0)
 		_refresh_vote()
 	_update_mode_line()
@@ -291,12 +298,24 @@ func _on_vote_opened(options: Array) -> void:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 10)
 	_vote_box.add_child(column)
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 16)
-	column.add_child(head)
 	_vote_title = UIStyle.label("", 16, UIStyle.ACCENT, true)
-	_vote_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(_vote_title)
+	_vote_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(_vote_title)
+	# The modes in one row that scrolls sideways, the maps in a grid that scrolls down,
+	# both as wide as the map grid (so the panel keeps its size, centred).
+	var cols := 6
+	var tile := Vector2(150, 88)
+	var grid_w := cols * tile.x + (cols - 1) * 8.0
+	var mode_scroll := ScrollContainer.new()
+	mode_scroll.custom_minimum_size = Vector2(grid_w, 46)
+	mode_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	mode_scroll.follow_focus = true
+	column.add_child(mode_scroll)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.alignment = BoxContainer.ALIGNMENT_CENTER
+	mode_scroll.add_child(head)
 	_mode_buttons.clear()
 	# Only the modes this server plays (Server 1 the free-for-all ones, Server 2 the team
 	# ones). Each button still votes with its index in Net.MODES.
@@ -308,15 +327,28 @@ func _on_vote_opened(options: Array) -> void:
 		b.visible = pool.has(NetScript.MODES[i])
 		head.add_child(b)
 		_mode_buttons.append(b)
+	var map_scroll := ScrollContainer.new()
+	map_scroll.custom_minimum_size = Vector2(grid_w + 12.0, minf(3.0, ceilf(options.size() / float(cols))) * (tile.y + 8.0))
+	map_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	map_scroll.follow_focus = true
+	column.add_child(map_scroll)
 	var grid := MapGrid.new()
 	grid.maps = options
-	grid.columns = 6
-	grid.tile_size = Vector2(150, 88)
+	grid.columns = cols
+	grid.tile_size = tile
 	grid.picked.connect(func(path: String) -> void: _vote(options.find(path)))
-	column.add_child(grid)
+	map_scroll.add_child(grid)
 	_vote_grid = grid
-	column.add_child(UIStyle.label("CLICK A MAP AND A MODE  //  ARROWS OR D-PAD + ENTER / A", 11, UIStyle.TEXT_DIM))
+	var hint := UIStyle.label("CLICK A MAP AND A MODE  //  SCROLL FOR MORE  //  ARROWS OR D-PAD + ENTER / A", 11, UIStyle.TEXT_DIM)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(hint)
 	_vote_box.visible = true
+	# Swells softly into place (its pivot is kept centred in _process).
+	_vote_box.modulate.a = 0.0
+	_vote_box.scale = Vector2.ONE * 0.94
+	var pop := _vote_box.create_tween().set_parallel().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	pop.tween_property(_vote_box, "modulate:a", 1.0, 0.3)
+	pop.tween_property(_vote_box, "scale", Vector2.ONE, 0.5)
 	_center_sub.text = ""  # The vote panel says it all (and would cover it).
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var here: String = _net.get("map_scene") if _net else ""

@@ -14,6 +14,8 @@ const SERVICES := {
 	"GlobalChat": "res://scripts/net/global_relay.gd",
 	"Steamworks": "res://scripts/steam.gd",
 	"Credits": "res://scripts/credits.gd",
+	"UIMotion": "res://scripts/ui/ui_motion.gd",
+	"Loader": "res://scripts/ui/scene_loader.gd",
 }
 
 

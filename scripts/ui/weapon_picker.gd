@@ -36,9 +36,7 @@ func _ready() -> void:
 	add_child(shade)
 
 	var window := PanelContainer.new()
-	var style := UIStyle.panel_box(UIStyle.ACCENT, Color(0.02, 0.04, 0.07, 0.96))
-	style.set_content_margin_all(18)
-	window.add_theme_stylebox_override("panel", style)
+	UIStyle.glass(window, Color(0.02, 0.04, 0.07, 0.85), Color(UIStyle.ACCENT, 0.7), 18)
 	window.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	window.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	window.grow_vertical = Control.GROW_DIRECTION_BOTH

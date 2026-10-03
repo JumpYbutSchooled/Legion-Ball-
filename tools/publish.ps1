@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $Godot = $env:GODOT
-if (-not $Godot) { $Godot = "C:\Users\MagnusBradley\Downloads\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe" }
+if (-not $Godot) { $Godot = "C:\My stuff\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe" }
 
 $Gh = (Get-Command gh -ErrorAction SilentlyContinue).Source
 if (-not $Gh) { $Gh = "$env:LOCALAPPDATA\gh-cli\bin\gh.exe" }
@@ -47,7 +47,9 @@ $Entries = @([pscustomobject]@{ version = $Version; date = (Get-Date -Format "yy
 New-Item -ItemType Directory -Force "$Root\build" | Out-Null
 $pck = "$Root\build\game.pck"
 if (Test-Path $pck) { Remove-Item $pck }
-& $Godot --headless --path $Root --export-pack "Windows Desktop" $pck
+# Not headless: the Shader Baker needs the GPU to pre-build the shaders (no freezes
+# the first time players see each effect).
+& $Godot --path $Root --export-pack "Windows Desktop" $pck
 if (-not (Test-Path $pck)) { throw "Export failed: build\game.pck was not created" }
 Write-Host ("Exported game.pck ({0:N1} MB)" -f ((Get-Item $pck).Length / 1MB))
 

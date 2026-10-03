@@ -32,6 +32,7 @@ const PlayerScene := preload("res://scenes/player.tscn")
 const LocalViewScene := preload("res://scenes/local_view.tscn")
 const HudScript := preload("res://scripts/ui/hud.gd")
 const ShardBurst := preload("res://scripts/shard_burst.gd")
+const ShaderWarmup := preload("res://scripts/shader_warmup.gd")
 const MapIntro := preload("res://scripts/map_intro.gd")
 const HillScript := preload("res://scripts/koth_hill.gd")
 const TutorialScript := preload("res://scripts/ui/tutorial.gd")
@@ -159,6 +160,9 @@ func _start(net: Node) -> void:
 	(func() -> void:
 		if is_inside_tree():
 			Graphics.apply_scene(get_tree())).call_deferred()
+	# Build the kill effects' shaders now, while the map loads in, not at the first kill.
+	if DisplayServer.get_name() != "headless":
+		add_child(ShaderWarmup.new())
 	# Joining a match that's already going: ask the host for its clock and team scores.
 	if net.get("online") and not multiplayer.is_server():
 		_zzhello.rpc_id(1)

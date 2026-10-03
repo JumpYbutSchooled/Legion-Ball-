@@ -327,9 +327,7 @@ func _build_ui() -> void:
 
 	# Dark glass panel with a thin cyan border, like the minimap and menus.
 	_panel = PanelContainer.new()
-	var box := UIStyle.panel_box(UIStyle.ACCENT_DIM, Color(0.02, 0.05, 0.08, 0.6))
-	box.set_content_margin_all(10)
-	_panel.add_theme_stylebox_override("panel", box)
+	UIStyle.glass(_panel, Color(0.02, 0.05, 0.08, 0.5), Color(UIStyle.ACCENT, 0.45), 10)
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_panel)
 	var column := VBoxContainer.new()

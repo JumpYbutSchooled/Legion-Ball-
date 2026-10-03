@@ -40,24 +40,30 @@ func _ready() -> void:
 
 ## Every hexagon's outline in the disc, as thin quads (one mesh).
 func _hex_mesh() -> ArrayMesh:
+	return hex_mesh(Vector2(RADIUS, RADIUS), HEX, func(center: Vector2) -> bool: return center.length() <= RADIUS - HEX * 0.5)
+
+
+## Hexagon outlines (size hex) whose centres lie within extent (half-size) and pass
+## keep, as thin quads in the XY plane: one mesh. The Crystal Wall uses it too.
+static func hex_mesh(extent: Vector2, hex: float, keep: Callable) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var w := HEX * sqrt(3.0)
-	var rows := int(RADIUS / (HEX * 1.5)) + 1
-	var cols := int(RADIUS / w) + 1
+	var w := hex * sqrt(3.0)
+	var rows := int(extent.y / (hex * 1.5)) + 1
+	var cols := int(extent.x / w) + 1
 	for r in range(-rows, rows + 1):
 		for c in range(-cols, cols + 1):
-			var center := Vector2(c * w + (w * 0.5 if r % 2 != 0 else 0.0), r * HEX * 1.5)
-			if center.length() > RADIUS - HEX * 0.5:
+			var center := Vector2(c * w + (w * 0.5 if r % 2 != 0 else 0.0), r * hex * 1.5)
+			if not keep.call(center):
 				continue
 			for k in 6:
 				var a0 := TAU * k / 6.0 + PI / 6.0
 				var a1 := TAU * (k + 1) / 6.0 + PI / 6.0
-				_edge(st, center + Vector2(cos(a0), sin(a0)) * HEX, center + Vector2(cos(a1), sin(a1)) * HEX)
+				_edge(st, center + Vector2(cos(a0), sin(a0)) * hex, center + Vector2(cos(a1), sin(a1)) * hex)
 	return st.commit()
 
 
-func _edge(st: SurfaceTool, a: Vector2, b: Vector2) -> void:
+static func _edge(st: SurfaceTool, a: Vector2, b: Vector2) -> void:
 	var along := (b - a).normalized()
 	var side := Vector2(-along.y, along.x) * 0.06
 	var p := [a + side, b + side, b - side, a - side]

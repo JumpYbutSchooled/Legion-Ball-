@@ -11,8 +11,10 @@ extends Node
 ## Built once on a worker thread at startup (a few seconds); silent until then.
 ## Volume: Settings "music_volume" (0..1).
 
-const RATE := 22050
+## CD quality (was 22.05 kHz: duller, and the saws aliased).
+const RATE := 44100
 const Graphics := preload("res://scripts/graphics.gd")
+const SoundCache := preload("res://scripts/sound_cache.gd")
 const FADE_TIME := 1.6
 ## Seed for the break chops, so the loop is the same every time.
 const SEED := 1742
@@ -24,6 +26,8 @@ var _live := 0
 var _track := ""
 var _enabled := true
 var _task := -1
+## Identifies this build of the music in the disk cache (scripts/sound_cache.gd).
+var _key := ""
 var _check := 0.0
 
 
@@ -39,6 +43,12 @@ func _ready() -> void:
 		p.volume_db = -80.0
 		add_child(p)
 		_players.append(p)
+	# Built before (this version)? Load it; otherwise build it, then keep it.
+	_key = SoundCache.key_for(get_script(), RATE)
+	var cached := SoundCache.load_set("music", _key)
+	if cached.has("game"):
+		_streams = cached
+		return
 	_task = WorkerThreadPool.add_task(_build_all)
 
 
@@ -91,6 +101,7 @@ func _build_all() -> void:
 	var s := {}
 	s["menu"] = _loop_wav(_deep_space())
 	s["game"] = _loop_wav(_breakcore())
+	SoundCache.save_set("music", _key, s)
 	_set_streams.call_deferred(s)
 
 
@@ -101,19 +112,27 @@ func _set_streams(s: Dictionary) -> void:
 		_task = -1
 
 
+## The loop as a stereo WAV, widened: the sides carry the difference between the sound
+## and a 13 ms echo of itself (wrapping round the loop), so it fills the room instead of
+## sitting in the middle, and still sums back to the original in mono.
 func _loop_wav(samples: PackedFloat32Array) -> AudioStreamWAV:
+	var n := samples.size()
+	var d := int(0.013 * RATE)
 	var data := PackedByteArray()
-	data.resize(samples.size() * 2)
-	for i in samples.size():
-		data.encode_s16(i * 2, int(clampf(samples[i], -1.0, 1.0) * 32767.0))
+	data.resize(n * 4)
+	for i in n:
+		var x := samples[i]
+		var side := (x - samples[(i - d + n) % n]) * 0.32
+		data.encode_s16(i * 4, int(clampf(x * 0.92 + side, -1.0, 1.0) * 32767.0))
+		data.encode_s16(i * 4 + 2, int(clampf(x * 0.92 - side, -1.0, 1.0) * 32767.0))
 	var w := AudioStreamWAV.new()
 	w.format = AudioStreamWAV.FORMAT_16_BITS
 	w.mix_rate = RATE
-	w.stereo = false
+	w.stereo = true
 	w.data = data
 	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	w.loop_begin = 0
-	w.loop_end = samples.size()
+	w.loop_end = n
 	return w
 
 

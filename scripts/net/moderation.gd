@@ -38,7 +38,7 @@ const ROLE_CODES := [["owner", "OWNER_CODE"], ["mod", "MOD_CODE"], ["tester", "T
 const CS_CODE_HASH := "7bccae9cb091542259416cb6168646bf27876544fcda7a099abffaf279d09248"
 ## Title shown by each role's name: [text, colour].
 const TITLES := {
-	"owner": ["OWNER", Color(1.0, 0.78, 0.2)],
+	"owner": ["Owner >w<", Color(1.0, 0.55, 0.8)],
 	"mod": ["MOD", Color(0.35, 0.9, 1.0)],
 	"tester": ["TESTER", Color(0.35, 1.0, 0.35)],
 	"cs": ["CS", Color(0.72, 0.35, 1.0)],
@@ -46,9 +46,9 @@ const TITLES := {
 }
 
 
-## The OWNER title is drawn in a moving rainbow (scripts/ui/rainbow.gd).
+## The owner's title is drawn in moving pink / white / light blue (scripts/ui/rainbow.gd).
 static func is_rainbow_title(title: String) -> bool:
-	return title == "OWNER"
+	return title == TITLES["owner"][0]
 
 ## True once the server has accepted this player's moderator (or owner) code.
 var is_mod := false

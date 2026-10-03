@@ -2,10 +2,13 @@ extends CanvasLayer
 ## Speedometer, bottom right (local player). Speed is shown as m/s x 5, so the ball's
 ## top speed (100 m/s) reads 500.
 ## - The dial shakes harder the faster you go.
-## - Every 100 it SHATTERS: the dial breaks into glass shards that fly apart, and a new
-##   dial in the next colour takes its place.
+## - Every 100 it SHATTERS: the glass over the dial cracks from a point near the middle,
+##   flashes, and bursts into tumbling, glinting shards that carry the old dial's picture,
+##   and a new dial in the next colour takes its place (scripts/ui/glass_shards.gd).
 ## - At 500 it shatters away completely into a pulsing infinity sign.
 ## - Slowing back down REWINDS the shatter: the shards fly back together into the old dial.
+## - Each shatter (or rewind) is its own burst, so several can be flying at once when the
+##   speed jumps through tiers quickly.
 ## Also shows the shield (Q) cooldown underneath.
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
@@ -13,6 +16,7 @@ const SteamScript := preload("res://scripts/steam.gd")
 const Sfx := preload("res://scripts/sfx.gd")
 const SettingsScript := preload("res://scripts/settings.gd")
 const InputSetup := preload("res://scripts/input_setup.gd")
+const GlassShards := preload("res://scripts/ui/glass_shards.gd")
 
 const SCALE := 5.0
 const MAX_DISPLAY := 500.0
@@ -31,7 +35,12 @@ const PANEL := Rect2(-110.0, -92.0, 220.0, 172.0)
 ## Dial sweep: 240 degrees, open at the bottom.
 const ARC_START := PI * 0.75
 const ARC_END := PI * 2.25
-const SHATTER_TIME := 0.55
+const SHATTER_TIME := 0.85
+## The breaking glass's radius round the dial's centre.
+const GLASS_R := RADIUS + 16.0
+## Hidden views the dial is drawn into when it breaks (one per burst in the air; reused
+## oldest first), so each burst's shards carry the dial it came from.
+const SNAPSHOTS := 8
 
 var ball: RigidBody3D
 
@@ -45,8 +54,13 @@ var _noise := FastNoiseLite.new()
 # Shatter animation: progress 0..1 and direction (+1 breaking, -1 rewinding).
 var _anim := 1.0
 var _anim_dir := 1
-var _shard_color := Color.WHITE
-var _shards: Array = []  # Each: [polygon (PackedVector2Array), velocity, spin]
+## Bursts in the air: each {glass: GlassShards, color, anim (0..1), dir, view (its snapshot)}.
+var _bursts: Array = []
+## What's being drawn on: the HUD, or (for a moment) a snapshot of the dial that breaks.
+var _ci: CanvasItem
+## The snapshot views, each with the tier and reading it shows: [SubViewport, canvas, tier, display].
+var _snaps: Array = []
+var _next_snap := 0
 
 
 func _ready() -> void:
@@ -59,6 +73,19 @@ func _ready() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.draw.connect(_draw_all)
 	add_child(_root)
+	_ci = _root
+	for i in SNAPSHOTS:
+		var vp := SubViewport.new()
+		vp.size = Vector2i(int(GLASS_R * 2.0), int(GLASS_R * 2.0))
+		vp.transparent_bg = true
+		vp.disable_3d = true
+		vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		add_child(vp)
+		var canvas := Control.new()
+		canvas.set_anchors_preset(Control.PRESET_FULL_RECT)
+		canvas.draw.connect(_draw_snapshot.bind(i))
+		vp.add_child(canvas)
+		_snaps.append([vp, canvas, 0, 0.0])
 
 
 func _process(delta: float) -> void:
@@ -73,6 +100,9 @@ func _process(delta: float) -> void:
 	elif goal < _tier:
 		_change_tier(_tier, goal, -1)
 	_anim = move_toward(_anim, 1.0, delta / SHATTER_TIME)
+	for b in _bursts:
+		b["anim"] = move_toward(b["anim"], 1.0, delta / SHATTER_TIME)
+	_bursts = _bursts.filter(func(b: Dictionary) -> bool: return b["anim"] < 1.0)
 	_shake_t += delta * 38.0
 	_root.queue_redraw()
 
@@ -91,8 +121,14 @@ func _change_tier(from: int, to: int, dir: int) -> void:
 	_anim = 0.0
 	_anim_dir = dir
 	# Breaking: the old dial is what shatters. Rewinding: the lower dial reassembles.
-	_shard_color = TIER_COLORS[from] if dir > 0 else TIER_COLORS[to]
-	_make_shards()
+	# Breaking: the old dial is what shatters. Rewinding: the lower dial reassembles.
+	var snap: Array = _snaps[_next_snap]
+	_next_snap = (_next_snap + 1) % _snaps.size()
+	snap[2] = mini(from if dir > 0 else to, 4)
+	snap[3] = minf(_display, from * 100.0 + 99.0) if dir > 0 else to * 100.0 + 99.0
+	(snap[1] as Control).queue_redraw()
+	(snap[0] as SubViewport).render_target_update_mode = SubViewport.UPDATE_ONCE
+	_bursts.append({"glass": _make_glass(), "color": TIER_COLORS[from] if dir > 0 else TIER_COLORS[to], "anim": 0.0, "dir": dir, "view": snap[0]})
 	_tier = to
 	if to == 5:
 		SteamScript.achieve(get_tree(), "INFINITY")
@@ -105,29 +141,31 @@ func _change_tier(from: int, to: int, dir: int) -> void:
 		Sfx.play_flat(get_tree(), "unshatter", -8.0 + linear_to_db(volume), 1.0 + to * 0.08)
 
 
-## Glass pieces covering the dial: rings of wedges, each flung outward with a spin.
-func _make_shards() -> void:
-	_shards.clear()
-	var rings := [0.0, 0.45, 0.8, 1.12]
-	for r in 3:
-		var count := 6 + r * 5
-		var offset := randf() * TAU
-		for i in count:
-			var a0 := offset + TAU * i / count
-			var a1 := offset + TAU * (i + 1) / count
-			var r0: float = rings[r] * RADIUS
-			var r1: float = rings[r + 1] * RADIUS
-			var poly := PackedVector2Array()
-			# Jagged: jitter the outer corners a little.
-			poly.append(Vector2.from_angle(a0) * r0)
-			poly.append(Vector2.from_angle(a0) * r1 * randf_range(0.9, 1.08))
-			poly.append(Vector2.from_angle((a0 + a1) * 0.5) * r1 * randf_range(0.95, 1.12))
-			poly.append(Vector2.from_angle(a1) * r1 * randf_range(0.9, 1.08))
-			if r0 > 0.0:
-				poly.append(Vector2.from_angle(a1) * r0)
-			var mid := Vector2.from_angle((a0 + a1) * 0.5)
-			var vel := mid * randf_range(90.0, 260.0) * (0.6 + r * 0.3) + Vector2(randf_range(-40, 40), randf_range(-120, 0))
-			_shards.append([poly, vel, randf_range(-9.0, 9.0)])
+## Cracks the round glass over the dial from a point near its middle.
+func _make_glass() -> GlassShards:
+	var region := PackedVector2Array()
+	for i in 32:
+		region.append(Vector2.from_angle(TAU * i / 32.0) * GLASS_R)
+	var glass := GlassShards.new()
+	glass.build(region, Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 10.0)), 1.0 + _tier * 0.12, 12, 4)
+	return glass
+
+
+## Snapshot index: its dial, alone, centred in the hidden view.
+func _draw_snapshot(index: int) -> void:
+	if not ball:
+		return
+	var snap: Array = _snaps[index]
+	var keep := [_tier, _display, _ci]
+	_tier = snap[2]
+	_display = snap[3]
+	_ci = snap[1]
+	_ci.draw_set_transform(Vector2.ONE * GLASS_R, 0.0, Vector2.ONE)
+	_draw_dial(1.0)
+	_ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_tier = keep[0]
+	_display = keep[1]
+	_ci = keep[2]
 
 
 func _draw_all() -> void:
@@ -148,7 +186,7 @@ func _draw_all() -> void:
 	if _anim < 1.0:
 		face_alpha = p if _anim_dir > 0 else pow(_anim, 3.0)
 
-	_root.draw_set_transform(center, jitter_rot, Vector2.ONE)
+	_ci.draw_set_transform(center, jitter_rot, Vector2.ONE)
 	_draw_panel()
 	if _tier >= 5:
 		_draw_infinity(face_alpha)
@@ -156,10 +194,10 @@ func _draw_all() -> void:
 		_draw_dial(face_alpha)
 	_draw_shield(Vector2(0.0, PANEL.end.y - 22.0))
 	# Shards: flying apart (breaking) or flying back together (rewinding).
-	if _anim < 1.0:
-		var k := p if _anim_dir > 0 else 1.0 - p
-		_draw_shards(k)
-	_root.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# (The glass eases itself: crack flash, then the burst.)
+	for b in _bursts:
+		_draw_shards(b["anim"] if b["dir"] > 0 else 1.0 - b["anim"], b)
+	_ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## Colour of the current tier (cycling hue once at infinity).
@@ -174,29 +212,29 @@ func _tier_color() -> Color:
 func _draw_panel() -> void:
 	var col := _tier_color()
 	var r := PANEL
-	_root.draw_rect(r, Color(0.02, 0.05, 0.08, 0.45))
-	_root.draw_rect(r, Color(col, 0.16), false, 1.0)
+	_ci.draw_rect(r, Color(0.02, 0.05, 0.08, 0.45))
+	_ci.draw_rect(r, Color(col, 0.16), false, 1.0)
 	# Scanlines, and a brighter band sweeping down through them.
 	var sweep := fmod(Time.get_ticks_msec() / 1800.0, 1.0) * r.size.y
 	var y := 0.0
 	while y < r.size.y:
 		var near := 1.0 - clampf(absf(y - sweep) / 18.0, 0.0, 1.0)
-		_root.draw_line(Vector2(r.position.x + 1.0, r.position.y + y), Vector2(r.end.x - 1.0, r.position.y + y), Color(col, 0.035 + near * 0.08), 1.0)
+		_ci.draw_line(Vector2(r.position.x + 1.0, r.position.y + y), Vector2(r.end.x - 1.0, r.position.y + y), Color(col, 0.035 + near * 0.08), 1.0)
 		y += 4.0
 	# Corner brackets.
 	var b := 12.0
 	for corner in [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]:
 		var sx := 1.0 if corner.x == r.position.x else -1.0
 		var sy := 1.0 if corner.y == r.position.y else -1.0
-		_root.draw_line(corner, corner + Vector2(b * sx, 0.0), Color(col, 0.85), 1.5)
-		_root.draw_line(corner, corner + Vector2(0.0, b * sy), Color(col, 0.85), 1.5)
+		_ci.draw_line(corner, corner + Vector2(b * sx, 0.0), Color(col, 0.85), 1.5)
+		_ci.draw_line(corner, corner + Vector2(0.0, b * sy), Color(col, 0.85), 1.5)
 	# Header: title left, tier right, hairline under both.
 	var top := r.position.y + 16.0
-	_root.draw_string(_font, Vector2(r.position.x + 10.0, top), "// VELOCITY", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UIStyle.TEXT_DIM)
+	_ci.draw_string(_font, Vector2(r.position.x + 10.0, top), "// VELOCITY", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UIStyle.TEXT_DIM)
 	var tier_text := "TIER --" if _tier >= 5 else "TIER %02d" % (_tier + 1)
 	var tw := _font.get_string_size(tier_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
-	_root.draw_string(_font, Vector2(r.end.x - 10.0 - tw, top), tier_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
-	_root.draw_line(Vector2(r.position.x + 10.0, top + 5.0), Vector2(r.end.x - 10.0, top + 5.0), Color(col, 0.2), 1.0)
+	_ci.draw_string(_font, Vector2(r.end.x - 10.0 - tw, top), tier_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
+	_ci.draw_line(Vector2(r.position.x + 10.0, top + 5.0), Vector2(r.end.x - 10.0, top + 5.0), Color(col, 0.2), 1.0)
 
 
 ## Segmented dial: a ring of cells that light up through each hundred, the leading one
@@ -216,31 +254,31 @@ func _draw_dial(alpha: float) -> void:
 			c = col
 		elif i == lit and within > 0.02:
 			c = Color(1, 1, 1, alpha)
-		_root.draw_arc(Vector2.ZERO, RADIUS, a0, a1, 4, c, 7.0)
+		_ci.draw_arc(Vector2.ZERO, RADIUS, a0, a1, 4, c, 7.0)
 	# Outer rail with a tick every five cells.
-	_root.draw_arc(Vector2.ZERO, RADIUS + 8.0, ARC_START, ARC_END, 48, Color(col, alpha * 0.3), 1.0, true)
+	_ci.draw_arc(Vector2.ZERO, RADIUS + 8.0, ARC_START, ARC_END, 48, Color(col, alpha * 0.3), 1.0, true)
 	for i in range(0, SEGMENTS + 1, 5):
 		var d := Vector2.from_angle(ARC_START + span * i)
-		_root.draw_line(d * (RADIUS + 8.0), d * (RADIUS + 12.0), Color(col, alpha * 0.6), 1.0)
+		_ci.draw_line(d * (RADIUS + 8.0), d * (RADIUS + 12.0), Color(col, alpha * 0.6), 1.0)
 	# Scanner ring: dashes turning inside the dial.
 	var spin := Time.get_ticks_msec() / 1000.0 * (0.6 + within * 3.0)
 	for k in 12:
 		var a := spin + TAU * k / 12.0
-		_root.draw_arc(Vector2.ZERO, RADIUS - 11.0, a, a + 0.22, 3, Color(col, alpha * 0.35), 1.0)
+		_ci.draw_arc(Vector2.ZERO, RADIUS - 11.0, a, a + 0.22, 3, Color(col, alpha * 0.35), 1.0)
 	# Digital readout: dim "888" ghost segments behind the lit digits.
 	var fs := 30
 	var ghost := "888"
 	var text := "%03d" % int(_display)
 	var w := _font_bold.get_string_size(ghost, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	_root.draw_string(_font_bold, Vector2(-w / 2.0, 10.0), ghost, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(col, alpha * 0.08))
-	_root.draw_string(_font_bold, Vector2(-w / 2.0, 10.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, alpha))
+	_ci.draw_string(_font_bold, Vector2(-w / 2.0, 10.0), ghost, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(col, alpha * 0.08))
+	_ci.draw_string(_font_bold, Vector2(-w / 2.0, 10.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, alpha))
 	var unit := "U/S  //  x%d" % (_tier + 1)
 	var uw := _font.get_string_size(unit, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
-	_root.draw_string(_font, Vector2(-uw / 2.0, 26.0), unit, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
+	_ci.draw_string(_font, Vector2(-uw / 2.0, 26.0), unit, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
 	# Tier ladder: five pips, filled up to the current one.
 	for i in 5:
 		var pip := Rect2(Vector2(-22.0 + i * 10.0, 36.0), Vector2(6.0, 3.0))
-		_root.draw_rect(pip, Color(TIER_COLORS[i], alpha * (0.9 if i <= _tier else 0.15)))
+		_ci.draw_rect(pip, Color(TIER_COLORS[i], alpha * (0.9 if i <= _tier else 0.15)))
 
 
 ## Past the top: a glowing, breathing infinity sign in shifting colour.
@@ -257,34 +295,15 @@ func _draw_infinity(alpha: float) -> void:
 	for layer_i in 3:
 		var c := hue_col
 		c.a = alpha * [0.12, 0.3, 1.0][layer_i]
-		_root.draw_polyline(pts, c, [14.0, 7.0, 2.5][layer_i], true)
+		_ci.draw_polyline(pts, c, [14.0, 7.0, 2.5][layer_i], true)
 	var text := "MAX"
 	var w := _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
-	_root.draw_string(_font_bold, Vector2(-w / 2.0, 40.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, alpha))
+	_ci.draw_string(_font_bold, Vector2(-w / 2.0, 40.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, alpha))
 
 
-func _draw_shards(k: float) -> void:
-	var col := _shard_color
-	col.a = 1.0 - k * 0.85
-	var edge := Color(1, 1, 1, col.a * 0.8)
-	for s in _shards:
-		var poly: PackedVector2Array = s[0]
-		var vel: Vector2 = s[1]
-		var spin: float = s[2]
-		var offset := vel * k * 0.5 + Vector2(0, 260.0) * k * k * 0.5
-		var rot := spin * k
-		var moved := PackedVector2Array()
-		var center := Vector2.ZERO
-		for v in poly:
-			center += v
-		center /= poly.size()
-		for v in poly:
-			moved.append(center + offset + (v - center).rotated(rot) * (1.0 - k * 0.3))
-		var fill := col
-		fill.a *= 0.55
-		_root.draw_colored_polygon(moved, fill)
-		moved.append(moved[0])
-		_root.draw_polyline(moved, edge, 1.0, true)
+func _draw_shards(k: float, burst: Dictionary) -> void:
+	(burst["glass"] as GlassShards).draw(_ci, Vector2.ZERO, k, burst["color"], (burst["view"] as SubViewport).get_texture())
+
 
 ## Shield (Q) status: label plus a segmented charge bar.
 func _draw_shield(pos: Vector2) -> void:
@@ -299,9 +318,9 @@ func _draw_shield(pos: Vector2) -> void:
 	if blocking:
 		label = "SHIELD  ACTIVE"
 	var left := PANEL.position.x + 10.0
-	_root.draw_string(_font, Vector2(left, pos.y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
+	_ci.draw_string(_font, Vector2(left, pos.y), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
 	var cells := 20
 	var cw := (PANEL.size.x - 20.0) / cells
 	for i in cells:
 		var on := float(i) / cells < ready_k
-		_root.draw_rect(Rect2(Vector2(left + i * cw, pos.y + 6.0), Vector2(cw - 2.0, 4.0)), Color(col, 0.9 if on else 0.15))
+		_ci.draw_rect(Rect2(Vector2(left + i * cw, pos.y + 6.0), Vector2(cw - 2.0, 4.0)), Color(col, 0.9 if on else 0.15))
