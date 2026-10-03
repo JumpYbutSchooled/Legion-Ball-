@@ -72,9 +72,17 @@ func _ready() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
 	_root.gui_input.connect(_on_root_input)
 	add_child(_root)
-	for f in DirAccess.get_files_at("res://textures/maps"):
+	# (ResourceLoader's listing, not DirAccess's: in the exported game the pictures are
+	# stored imported, so the folder holds "eden.png.import", not "eden.png".)
+	for f in ResourceLoader.list_directory("res://textures/maps"):
 		if f.ends_with(".png") and f != "training.png":
 			_maps.append("res://textures/maps/" + f)
+	# Solid behind everything: the menu never shows through, even if a picture won't load.
+	var backing := ColorRect.new()
+	backing.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backing.color = Color(0.01, 0.02, 0.035)
+	backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(backing)
 	_maps.shuffle()
 	# The backdrop: a map picture, zoomed so it can drift.
 	for i in 1:
