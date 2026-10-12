@@ -20,8 +20,9 @@ func _ready() -> void:
 		_sphere = SphereMesh.new()
 		_sphere.radius = 0.5
 		_sphere.height = 1.0
-		_sphere.radial_segments = 16
-		_sphere.rings = 8
+		# Smooth enough that the bend never shows the sphere's facets.
+		_sphere.radial_segments = 40
+		_sphere.rings = 20
 		_shared_mat = ShaderMaterial.new()
 		_shared_mat.shader = WarpShader
 		_shared_mat.render_priority = Material.RENDER_PRIORITY_MIN + 1

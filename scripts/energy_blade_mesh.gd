@@ -3,10 +3,17 @@ extends MeshInstance3D
 ## Half of a Halo 2 style energy sword: one crescent blade that starts behind the ball,
 ## wraps round its side in a semicircle, then sweeps forward to a point.
 ## Built in local space with the ball at the origin and forward = -Z.
-## Solid low-poly body: a polygonal cross-section swept along the curve, flat-shaded
-## so every face reads as its own polygon.
+## Solid low-poly body: a polygonal cross-section swept along the curve. It's drawn as
+## pentagons spread over that body (weapons/pentagon_skin.gd, shaders/pentagon_blade.gdshader)
+## rather than the body itself.
 
 const BladeShader := preload("res://shaders/blade_warp.gdshader")
+const PentagonShader := preload("res://shaders/pentagon_blade.gdshader")
+const PentagonSkin := preload("res://scripts/weapons/pentagon_skin.gd")
+## Drawn as pentagons rather than its solid body. The body is then built clean (no jag)
+## for the right-hand side only, and a left-hand blade wears the mirror image of its
+## pentagons, so the two sides match exactly.
+const PENTAGONS := true
 
 ## 1 = right side of the ball, -1 = mirrored onto the left.
 @export var side := 1.0:
@@ -49,7 +56,8 @@ const BladeShader := preload("res://shaders/blade_warp.gdshader")
 	set(value):
 		segments = value
 		_rebuild()
-## Random roughness on every vertex (fraction of the local size), for a chipped crystal look.
+## Random roughness on every vertex (fraction of the local size), for a chipped crystal look
+## (not used when it's drawn as pentagons).
 @export_range(0.0, 0.6) var jag := 0.3:
 	set(value):
 		jag = value
@@ -82,7 +90,12 @@ func _ready() -> void:
 
 ## Tip position in this blade's local space, with mirroring applied.
 func get_tip() -> Vector3:
-	var p := Vector3(tip.x * side, tip.y, tip.z) * scale_factor
+	return _tip_for(side)
+
+
+## The tip for a blade on side `s` (1 right, -1 left).
+func _tip_for(s: float) -> Vector3:
+	var p := Vector3(tip.x * s, tip.y, tip.z) * scale_factor
 	var clear := _clearance()
 	if p.length() < clear:
 		p = (p.normalized() if p.length() > 0.001 else Vector3.FORWARD) * clear
@@ -98,18 +111,62 @@ func _clearance() -> float:
 func _rebuild() -> void:
 	if not is_inside_tree():
 		return
-	var path := _build_path()
+	var shape := _shape()
+	var path: PackedVector3Array = shape[0]
+	var rings: Array = shape[1]
+	var half_ws: PackedFloat32Array = shape[2]
+	var along: PackedFloat32Array = shape[3]
+	var total := along[along.size() - 1]
+	var mat := ShaderMaterial.new()
+	if PENTAGONS and DisplayServer.get_name() != "headless":
+		var key := _shape_key()
+		var skin: ArrayMesh = PentagonSkin.skin(path, rings, key)
+		mesh = skin if side >= 0.0 else PentagonSkin.mirrored(skin, key)
+		mat.shader = PentagonShader
+		material_override = mat
+		cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		return
 
-	# Normalized length along the path, for the width/thickness profile.
+	# Every triangle gets its own flat normal so the blade reads as hard facets.
+	# UV.x holds how far along the blade the segment is (0 = back point, 1 = tip); UV2.y how
+	# far across (-1 / 1 at its two side edges); CUSTOM0 the facet's normal and the width.
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
+	for i in path.size() - 1:
+		var mid := (path[i] + path[i + 1]) * 0.5
+		var seg_u := (along[i] + along[i + 1]) * 0.5 / total
+		var width := (half_ws[i] + half_ws[i + 1])
+		for k in cross_sides:
+			var k1 := (k + 1) % cross_sides
+			var ca := cos(k * TAU / cross_sides)
+			var cb := cos(k1 * TAU / cross_sides)
+			var a: Vector3 = rings[i][k]
+			var b: Vector3 = rings[i][k1]
+			var c: Vector3 = rings[i + 1][k1]
+			var d: Vector3 = rings[i + 1][k]
+			_add_facet(st, [a, b, c], [ca, cb, cb], mid, seg_u, width)
+			_add_facet(st, [a, c, d], [ca, cb, ca], mid, seg_u, width)
+	mesh = st.commit()
+	mat.shader = BladeShader
+	material_override = mat
+	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## The blade's shape (no scene tree needed, so the pentagons can be worked out ahead of
+## time on another thread, skin_warmup.gd): [path, cross-section rings, half widths, metres
+## along]. Drawn as pentagons it's the right-hand shape (the left wears its mirror image).
+func _shape() -> Array:
+	var path := _build_path(1.0 if PENTAGONS else side)
 	var along := PackedFloat32Array([0.0])
 	for i in range(1, path.size()):
 		along.append(along[i - 1] + path[i].distance_to(path[i - 1]))
 	var total := along[along.size() - 1]
-
 	# Polygon cross-section rings along the path.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = jag_seed
-	var rings: Array[PackedVector3Array] = []
+	var rings: Array = []
+	var half_ws := PackedFloat32Array()
 	for i in path.size():
 		var prev := path[maxi(i - 1, 0)]
 		var next := path[mini(i + 1, path.size() - 1)]
@@ -123,49 +180,44 @@ func _rebuild() -> void:
 		var ring := PackedVector3Array()
 		for k in cross_sides:
 			var ang := k * TAU / cross_sides
-			var rough := 1.0 + rng.randf_range(-jag, jag)
+			var rough := 1.0 if PENTAGONS else 1.0 + rng.randf_range(-jag, jag)
 			ring.append(path[i] + (outward * cos(ang) * half_w + Vector3.UP * sin(ang) * half_t) * rough)
 		rings.append(ring)
-
-	# Every triangle gets its own flat normal so the blade reads as hard facets.
-	# UV.x holds how far along the blade the segment is (0 = back point, 1 = tip);
-	# the shader uses it for the holster/draw wave.
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in path.size() - 1:
-		var mid := (path[i] + path[i + 1]) * 0.5
-		var seg_u := (along[i] + along[i + 1]) * 0.5 / total
-		for k in cross_sides:
-			var a := rings[i][k]
-			var b := rings[i][(k + 1) % cross_sides]
-			var c := rings[i + 1][(k + 1) % cross_sides]
-			var d := rings[i + 1][k]
-			_add_facet(st, a, b, c, mid, seg_u)
-			_add_facet(st, a, c, d, mid, seg_u)
-
-	mesh = st.commit()
-	var mat := ShaderMaterial.new()
-	mat.shader = BladeShader
-	material_override = mat
-	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		half_ws.append(half_w)
+	return [path, rings, half_ws, along]
 
 
-func _add_facet(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, inside: Vector3, along_u: float) -> void:
+## For skin_warmup.gd: [key, path, rings], to work this blade's pentagons out ahead of time.
+func pentagon_job() -> Array:
+	var shape := _shape()
+	return [_shape_key(), shape[0], shape[1]]
+
+func _add_facet(st: SurfaceTool, pts: Array, across: Array, inside: Vector3, along_u: float, width: float) -> void:
+	var a: Vector3 = pts[0]
+	var b: Vector3 = pts[1]
+	var c: Vector3 = pts[2]
 	var n := (b - a).cross(c - a)
 	if n.length_squared() < 1e-12:
 		return  # Collapsed at the pointed ends.
 	n = n.normalized()
 	if n.dot((a + b + c) / 3.0 - inside) < 0.0:
 		n = -n
-	st.set_normal(n)
-	st.set_uv(Vector2(along_u, 0.0))
-	st.add_vertex(a)
-	st.add_vertex(b)
-	st.add_vertex(c)
+	for v in 3:
+		st.set_normal(n)
+		st.set_custom(0, Color(n.x, n.y, n.z, width))
+		st.set_uv(Vector2(along_u, 0.0))
+		st.set_uv2(Vector2(0.0, across[v]))
+		st.add_vertex(pts[v])
 
 
-func _build_path() -> PackedVector3Array:
-	var mirror := Vector3(side, 1.0, 1.0)
+## Everything that makes this blade's shape what it is (but not its side: the left one is
+## the right one's mirror image).
+func _shape_key() -> String:
+	return var_to_str([arc_radius, arc_start_deg, arc_end_deg, tip, max_width, max_thickness, cross_sides, segments, scale_factor, jag])
+
+
+func _build_path(s: float) -> PackedVector3Array:
+	var mirror := Vector3(s, 1.0, 1.0)
 	var pts := PackedVector3Array()
 	var arc_steps := segments / 2
 	var radius := arc_radius * scale_factor * ARC_TIGHT
@@ -180,7 +232,7 @@ func _build_path() -> PackedVector3Array:
 	var p0 := Vector3(sin(a_end), 0.0, -cos(a_end)) * radius * mirror
 	var arc_tangent := Vector3(-cos(a_end), 0.0, -sin(a_end)) * mirror
 	var bend := (arc_tangent * 0.4 + Vector3.FORWARD * 0.6).normalized()
-	var end := get_tip()
+	var end := _tip_for(s)
 	var p1 := p0 + bend * p0.distance_to(end) * 0.45
 	var curve_steps := segments - arc_steps
 	for i in curve_steps + 1:
@@ -192,6 +244,6 @@ func _build_path() -> PackedVector3Array:
 	for i in pts.size():
 		var p := pts[i]
 		if p.length() < clear:
-			var out := p.normalized() if p.length() > 0.001 else Vector3(side, 0.0, 0.0)
+			var out := p.normalized() if p.length() > 0.001 else Vector3(s, 0.0, 0.0)
 			pts[i] = out * clear
 	return pts

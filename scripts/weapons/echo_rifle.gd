@@ -85,3 +85,8 @@ func _echo(target: Object) -> void:
 	manager.spawn_light(p, 25.0, 5.0, 0.15, color)
 	manager.spawn_warp(p, 0.1, 2.0)
 	manager.play_sound("zap", p, -4.0)
+
+
+## How far through its reload it is, for the blades' refill animation (simple_weapon.gd).
+func reload_progress() -> float:
+	return 1.0 - _reload / reload_time if _reload > 0.0 else -1.0

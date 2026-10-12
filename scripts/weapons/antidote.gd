@@ -63,3 +63,8 @@ func _fire(_pressed: bool, just: bool, _released: bool, _hit: Dictionary, _delta
 		manager.cure(ball())
 	manager.spawn_light(ball().global_position, 20.0, 6.0, 0.15, color)
 	manager.play_sound("shield", ball().global_position, 0.0)
+
+
+## How far through its reload it is, for the blades' refill animation (simple_weapon.gd).
+func reload_progress() -> float:
+	return _reload_t / 60.0 if reloading else -1.0

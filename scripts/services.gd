@@ -16,6 +16,7 @@ const SERVICES := {
 	"Credits": "res://scripts/credits.gd",
 	"UIMotion": "res://scripts/ui/ui_motion.gd",
 	"Loader": "res://scripts/ui/scene_loader.gd",
+	"SkinWarmup": "res://scripts/weapons/skin_warmup.gd",
 }
 
 

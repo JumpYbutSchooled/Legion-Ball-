@@ -4,8 +4,9 @@ extends Node
 ## /root/Music.
 ##   "menu": deep space. Slow swelling minor-9 pads, a sub drone, a whisper of cosmic
 ##           wind and sparse echoing star pings. ~34 s loop.
-##   "game": breakcore. 174 BPM chopped breaks with snare rolls and stutters, a growling
-##           reese bass ducked by the kick, and a fast arp over the second half. 8 bars.
+##   "game": breakcore, a whole song: 36 bars at 174 BPM (~50 s) in sections (intro, theme,
+##           a higher B melody, a breakdown, the theme again, outro), with a gliding lead
+##           melody over chopped breaks, a reese bass ducked by the kick, arps and pads.
 ## Picks the track itself: the game track while an arena is loaded (it has
 ## request_hit), the menu track everywhere else. Crossfades between them.
 ## Built once on a worker thread at startup (a few seconds); silent until then.
@@ -100,14 +101,17 @@ func _volume_db() -> float:
 func _build_all() -> void:
 	var s := {}
 	s["menu"] = _loop_wav(_deep_space())
+	# The menu's music can start while the long game song is still being made.
+	_set_streams.call_deferred(s.duplicate())
 	s["game"] = _loop_wav(_breakcore())
 	SoundCache.save_set("music", _key, s)
 	_set_streams.call_deferred(s)
 
 
+## Called twice: with the menu track, then with both.
 func _set_streams(s: Dictionary) -> void:
 	_streams = s
-	if _task >= 0:
+	if _task >= 0 and s.has("game"):
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
 
@@ -224,9 +228,9 @@ func _deep_space() -> PackedFloat32Array:
 	for i in n:
 		var ph := float(i) / n
 		var lfo := 0.5 + 0.5 * sin(TAU * ph * 3.0)
-		var cutoff := lerpf(0.004, 0.03, lfo)
-		low += cutoff * (rng.randf_range(-1.0, 1.0) - low)
-		band += 0.02 * (low - band)
+		var cutoff := _k(lerpf(0.004, 0.03, lfo))
+		low += cutoff * (rng.randf_range(-1.0, 1.0) - low) * 1.41
+		band += _k(0.02) * (low - band)
 		buf[i] += (low - band) * lerpf(0.5, 1.6, 0.5 + 0.5 * sin(TAU * ph * 2.0 + 1.0))
 	return _master(buf, 1.2, 0.8)
 
@@ -271,43 +275,99 @@ func _bell(freq: float, length: float) -> PackedFloat32Array:
 
 
 # --- Breakcore (game) ------------------------------------------------------------------
+# A whole song, not a short loop: 36 bars at 174 BPM (about 50 seconds) in D minor, in
+# sections, with a lead melody over the top. It still loops seamlessly (the outro runs
+# back into the intro).
+#   intro (4)  pads, an arp and hats, a riser into...
+#   A     (8)  the full break, reese bass, the lead's main theme (Dm  Bb  F  C)
+#   B     (8)  a new, higher melody over Dm  Bb  Gm  A
+#   break (4)  no drums: pads, the lead in long notes, a riser back in
+#   A2    (8)  the theme again, busier
+#   outro (4)  the B chords, the melody resolving, back round to the intro
+
+const BPM := 174.0
+const PROG_A := [[38, [62, 65, 69]], [34, [58, 62, 65]], [41, [60, 65, 69]], [36, [60, 64, 67]]]
+const PROG_B := [[38, [62, 65, 69]], [34, [58, 62, 65]], [43, [62, 67, 70]], [45, [61, 64, 69]]]
+## The lead, a bar at a time: [MIDI note (0 = rest), length in 16ths], adding up to 16.
+const THEME := [
+	[[74, 4], [77, 2], [81, 2], [79, 3], [77, 1], [76, 2], [74, 2]],
+	[[77, 4], [74, 2], [70, 2], [72, 4], [74, 4]],
+	[[81, 4], [84, 2], [81, 2], [79, 3], [77, 1], [79, 4]],
+	[[76, 6], [79, 2], [77, 4], [76, 4]],
+]
+const THEME_END := [[76, 2], [77, 2], [79, 2], [81, 10]]
+const MELODY_B := [
+	[[81, 2], [81, 2], [86, 4], [84, 2], [81, 2], [77, 4]],
+	[[82, 6], [81, 2], [77, 4], [74, 4]],
+	[[79, 2], [82, 2], [86, 4], [84, 2], [82, 2], [79, 4]],
+	[[81, 4], [85, 4], [88, 8]],
+]
+const MELODY_B_END := [[85, 2], [88, 2], [85, 2], [81, 2], [76, 8]]
+const BREAK_LINE := [[[74, 16]], [[72, 8], [70, 8]], [[69, 16]], [[67, 8], [72, 8]]]
+const REST := [[0, 16]]
+
+
+## The song's bars, in order: each {root, chord, drums, bass, lead (one bar of notes),
+## arp, pad, riser, fill}.
+func _song() -> Array:
+	var bars := []
+	var add := func(prog: Array, count: int, drums: String, bass: String, lead: Array, arp: bool, pad: bool) -> void:
+		for i in count:
+			var c: Array = prog[i % 4]
+			bars.append({"root": c[0], "chord": c[1], "drums": drums, "bass": bass,
+				"lead": lead[i] if i < lead.size() else REST, "arp": arp, "pad": pad, "riser": false, "fill": i % 4 == 3})
+	add.call(PROG_A, 4, "hats", "off", [], true, true)
+	add.call(PROG_A, 8, "full", "on", THEME + THEME.slice(0, 3) + [THEME_END], false, false)
+	add.call(PROG_B, 8, "full", "on", MELODY_B + MELODY_B.slice(0, 3) + [MELODY_B_END], true, false)
+	add.call(PROG_A, 4, "none", "soft", BREAK_LINE, false, true)
+	add.call(PROG_A, 8, "full", "on", THEME + THEME.slice(0, 3) + [THEME_END], true, false)
+	add.call(PROG_B, 4, "half", "on", MELODY_B.slice(0, 3) + [MELODY_B_END], true, true)
+	# Risers in the bar before each drop.
+	bars[3]["riser"] = true
+	bars[23]["riser"] = true
+	return bars
+
 
 func _breakcore() -> PackedFloat32Array:
-	var bpm := 174.0
-	var step := 60.0 / bpm / 4.0  # A 16th note, in seconds.
-	var bars := 8
-	var steps := bars * 16
+	var step := 60.0 / BPM / 4.0  # A 16th note, in seconds.
+	var song := _song()
+	var steps := song.size() * 16
 	var n := int(steps * step * RATE)
-	var drums := PackedFloat32Array()
-	drums.resize(n)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = SEED
 
+	# Drums.
+	var drums := PackedFloat32Array()
+	drums.resize(n)
 	var kick := _kick()
 	var snare := _snare(0.2)
 	var ghost := _snare(0.09)
 	var hat := _hat(0.035)
 	var open_hat := _hat(0.16)
 	# An amen-flavoured two-bar break: K kick, S snare, g ghost snare, h hat, o open hat.
-	var pattern := [
-		"K.h.S.hgh.KKS.hg",
-		"h.K.S.hgh.K.S.og",
-	]
-	# How each 16th of the envelope is ducked by kicks (for the bass sidechain).
+	var pattern := ["K.h.S.hgh.KKS.hg", "h.K.S.hgh.K.S.og"]
+	var half_pattern := "K.h.h.h.S.h.h.hg"
 	var duck := PackedFloat32Array()
 	duck.resize(steps)
 	duck.fill(1.0)
 	for s in steps:
-		var bar := s >> 4
+		var bar_i := s >> 4
+		var bar: Dictionary = song[bar_i]
 		var pos := s % 16
-		var ch: String = pattern[bar % 2][pos]
 		var at := int(s * step * RATE)
-		# The last bar of every four is a fill: snare rolls speeding up and stutters.
-		var fill := bar % 4 == 3 and pos >= 8
-		if fill:
-			var rolls := 2 if pos < 12 else 4
-			if pos >= 14:
-				rolls = 8
+		var mode: String = bar["drums"]
+		if mode == "none":
+			continue
+		if mode == "hats":
+			if pos % 2 == 0:
+				_add_wrapped(drums, hat, at, 0.3 if pos % 4 == 0 else 0.18)
+			if pos == 14:
+				_add_wrapped(drums, open_hat, at, 0.22)
+			continue
+		var ch: String = (half_pattern if mode == "half" else pattern[bar_i % 2])[pos]
+		# Fills on the last bar of every four: snare rolls speeding up.
+		if mode == "full" and bar["fill"] and pos >= 8:
+			var rolls := 2 if pos < 12 else (4 if pos < 14 else 8)
 			for r in rolls:
 				var sub := at + int(r * step / rolls * RATE)
 				_add_wrapped(drums, snare if r == 0 else ghost, sub, lerpf(0.5, 1.0, float(r) / rolls))
@@ -327,57 +387,178 @@ func _breakcore() -> PackedFloat32Array:
 				_add_wrapped(drums, hat, at, 0.35)
 			"o":
 				_add_wrapped(drums, open_hat, at, 0.3)
-		# Random chops: now and then a hit is doubled into a stutter.
-		if ch != "." and rng.randf() < 0.18:
-			var hit := snare if ch == "S" else (kick if ch == "K" else hat)
-			_add_wrapped(drums, hit, at + int(step * 0.5 * RATE), 0.55)
-		# The odd 32nd hat.
-		if rng.randf() < 0.25:
-			_add_wrapped(drums, hat, at + int(step * 0.5 * RATE), 0.2)
+		if mode == "full":
+			if ch != "." and rng.randf() < 0.16:
+				var hit := snare if ch == "S" else (kick if ch == "K" else hat)
+				_add_wrapped(drums, hit, at + int(step * 0.5 * RATE), 0.5)
+			if rng.randf() < 0.22:
+				_add_wrapped(drums, hat, at + int(step * 0.5 * RATE), 0.18)
 
-	# Reese bass: two detuned saws through a moving low-pass, ducked hard after kicks.
-	var roots := [38, 38, 41, 36, 38, 38, 34, 36]  # One root per bar (D minor).
+	# Reese bass: two detuned saws through a moving low-pass, ducked after kicks. In the
+	# breakdown a soft sustained sine instead.
 	var bass := PackedFloat32Array()
 	bass.resize(n)
 	var ph1 := 0.0
 	var ph2 := 0.0
 	var lp := 0.0
 	var lp2 := 0.0
+	var bar_len := 16.0 * step
 	for i in n:
 		var t := float(i) / RATE
 		var s := int(t / step) % steps
-		var bar := s >> 4
-		var freq := _midi(roots[bar] - 12.0)
-		# Octave jumps on the off-beats for bounce.
-		if s % 4 == 3:
-			freq *= 2.0
+		var bar: Dictionary = song[s >> 4]
+		var mode: String = bar["bass"]
+		if mode == "off":
+			lp *= 0.999
+			lp2 *= 0.999
+			bass[i] = lp2 * 0.3
+			continue
+		var freq := _midi(float(bar["root"]) - 12.0)
+		if mode == "on" and s % 4 == 3:
+			freq *= 2.0  # octave jumps on the off-beats for bounce
 		ph1 = fmod(ph1 + freq / RATE, 1.0)
 		ph2 = fmod(ph2 + freq * 1.012 / RATE, 1.0)
+		if mode == "soft":
+			bass[i] = sin(ph1 * TAU) * 0.28 * minf(fmod(t, bar_len) * 4.0, 1.0)
+			continue
 		var saw := (ph1 * 2.0 - 1.0) + (ph2 * 2.0 - 1.0)
-		var wob := 0.5 + 0.5 * sin(TAU * float(i) / n * bars * 2.0)
-		var cutoff := lerpf(0.02, 0.09, wob)
+		var wob := 0.5 + 0.5 * sin(TAU * t / bar_len * 0.5)
+		var cutoff := _k(lerpf(0.02, 0.09, wob))
 		lp += cutoff * (saw - lp)
 		lp2 += cutoff * (lp - lp2)
-		# Sidechain: after a kick the bass swells back in over the 16th.
 		var in_step := fmod(t, step) / step
 		var gate := 1.0 if duck[s] > 0.5 else smoothstep(0.0, 1.0, in_step)
-		bass[i] = tanh(lp2 * 2.2) * 0.42 * gate
+		bass[i] = tanh(lp2 * 2.2) * 0.4 * gate
 
-	# Arp: fast, bright 16ths over the second half of the loop.
+	# Arp: quick plucks running up and down the chord.
 	var arp := PackedFloat32Array()
 	arp.resize(n)
-	var arp_notes := [62, 65, 69, 72, 74, 72, 69, 65]
-	for s in range(steps >> 1, steps):
-		var bar := s >> 4
-		var note: float = arp_notes[s % arp_notes.size()] + (roots[bar] - 38)
-		_add_wrapped(arp, _pluck(_midi(note), step * 1.8), int(s * step * RATE), 0.12)
-	_echo(arp, step * 3.0, 0.35, 0.5)
+	var shape := [0, 1, 2, 3, 2, 1, 0, 1]
+	for s in steps:
+		var bar: Dictionary = song[s >> 4]
+		if not bar["arp"]:
+			continue
+		var chord: Array = bar["chord"]
+		var k: int = shape[s % shape.size()]
+		var note: float = chord[k % 3] + 12 * (k / 3)
+		_add_wrapped(arp, _pluck(_midi(note), step * 1.8), int(s * step * RATE), 0.1)
+	_echo(arp, step * 3.0, 0.35, 0.45)
+
+	# Pads under the intro, the breakdown and the outro.
+	var half := PackedFloat32Array()
+	half.resize(n >> 1)
+	for b in song.size():
+		var bar: Dictionary = song[b]
+		if not bar["pad"]:
+			continue
+		var start := int(b * bar_len * RATE / 2.0)
+		for note in bar["chord"]:
+			var voice := _pad_voice(_midi(float(note) - 12.0), bar_len + 1.5, 0.4, 1.2, 0.13, rng)
+			_add_wrapped(half, voice, start)
+	var pads := PackedFloat32Array()
+	pads.resize(n)
+	for i in n:
+		var x := i * 0.5
+		var a := int(x)
+		pads[i] = lerpf(half[a % half.size()], half[(a + 1) % half.size()], x - a)
+
+	# The lead.
+	var notes := []  # [start sample, length in samples, MIDI note]
+	for b in song.size():
+		var at16 := 0
+		for nt in song[b]["lead"]:
+			if int(nt[0]) > 0:
+				notes.append([int((b * 16 + at16) * step * RATE), int(int(nt[1]) * step * RATE), int(nt[0])])
+			at16 += int(nt[1])
+	var lead := _lead(notes, n)
+	_echo(lead, step * 3.0, 0.3, 0.32)
+
+	# Risers: noise sweeping up into the drops.
+	var riser := PackedFloat32Array()
+	riser.resize(n)
+	for b in song.size():
+		if song[b]["riser"]:
+			var start := int(b * bar_len * RATE)
+			var len_s := int(bar_len * RATE)
+			var lo := 0.0
+			var lo2 := 0.0
+			for j in len_s:
+				var u := float(j) / len_s
+				var c := _k(lerpf(0.01, 0.4, u * u))
+				lo += c * (rng.randf_range(-1.0, 1.0) - lo)
+				lo2 += c * (lo - lo2)
+				riser[(start + j) % n] += (lo - lo2) * u * u * 0.9
 
 	var out := PackedFloat32Array()
 	out.resize(n)
 	for i in n:
-		out[i] = drums[i] * 0.9 + bass[i] + arp[i]
-	return _master(out, 1.6, 0.85)
+		out[i] = drums[i] * 0.9 + bass[i] + arp[i] + pads[i] * 0.8 + lead[i] + riser[i]
+	return _master(out, 1.5, 0.85)
+
+
+## The lead synth: three detuned saws (smoothed so they don't alias) and a sub, gliding
+## between notes, a vibrato that blooms on longer notes, and a filter that opens bright
+## on each note and settles. One continuous voice, so legato notes slide into each other.
+func _lead(notes: Array, n: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var phases := [0.0, 0.33, 0.66]
+	var detune := [1.0, 1.007, 0.9935]
+	var sub := 0.0
+	var freq := 440.0
+	var amp := 0.0
+	var lp := 0.0
+	var lp2 := 0.0
+	var glide := _k(0.004)
+	var attack := _k(0.01)
+	var release := _k(0.0025)
+	var ni := 0
+	for i in n:
+		# Which note (if any) is playing here.
+		while ni < notes.size() and i >= int(notes[ni][0]) + int(notes[ni][1]):
+			ni += 1
+		var on := ni < notes.size() and i >= int(notes[ni][0])
+		var since := 0.0
+		if on:
+			var target := _midi(float(notes[ni][2]))
+			since = float(i - int(notes[ni][0])) / RATE
+			freq += (target - freq) * glide
+		amp += ((1.0 if on else 0.0) - amp) * (attack if on else release)
+		if amp < 0.0005 and not on:
+			out[i] = 0.0
+			continue
+		var vib := 1.0 + 0.005 * sin(TAU * 5.5 * since) * smoothstep(0.12, 0.35, since)
+		var f := freq * vib
+		var s := 0.0
+		for v in 3:
+			var dt: float = f * detune[v] / RATE
+			var ph: float = fmod(phases[v] + dt, 1.0)
+			phases[v] = ph
+			s += 2.0 * ph - 1.0 - _blep(ph, dt)
+		s /= 3.0
+		sub = fmod(sub + f * 0.5 / RATE, 1.0)
+		s += sin(sub * TAU) * 0.35
+		var cutoff := _k(0.07 + 0.22 * exp(-since * 7.0))
+		lp += cutoff * (s - lp)
+		lp2 += cutoff * (lp - lp2)
+		out[i] = lp2 * amp * 0.34
+	return out
+
+
+## Smooths a saw's jump (PolyBLEP), so the lead doesn't buzz with aliasing.
+static func _blep(ph: float, dt: float) -> float:
+	if ph < dt:
+		var x := ph / dt
+		return x + x - x * x - 1.0
+	if ph > 1.0 - dt:
+		var x := (ph - 1.0) / dt
+		return x * x + x + x + 1.0
+	return 0.0
+
+
+## A one-pole filter strength tuned at 22.05 kHz, at this sample rate.
+static func _k(c: float) -> float:
+	return 1.0 - pow(1.0 - clampf(c, 0.0, 0.999), 22050.0 / RATE)
 
 
 func _kick() -> PackedFloat32Array:
@@ -437,6 +618,6 @@ func _pluck(freq: float, length: float) -> PackedFloat32Array:
 		var t := float(i) / RATE
 		phase = fmod(phase + freq / RATE, 1.0)
 		var sq := 1.0 if phase < 0.5 else -1.0
-		lp += lerpf(0.5, 0.05, minf(t / length, 1.0)) * (sq - lp)
+		lp += _k(lerpf(0.5, 0.05, minf(t / length, 1.0))) * (sq - lp)
 		out[i] = lp * exp(-t * 6.0 / length)
 	return out

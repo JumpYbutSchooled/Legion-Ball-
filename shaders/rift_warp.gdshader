@@ -4,6 +4,8 @@ shader_type spatial;
 // edge and fading out. Drawn after the rift so the rift itself isn't bent.
 render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled;
 
+#include "res://shaders/warp.gdshaderinc"
+
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform float strength = 0.028;
 // Where the rift's edge sits in this quad's UV radius (the quad is bigger).
@@ -21,7 +23,9 @@ void fragment() {
 	// Pull in toward the rift and twist round it, rippling.
 	vec2 radial = normalize(p) * (0.6 + 0.4 * sin(a * 5.0 + time * 4.0));
 	vec2 twist = vec2(-p.y, p.x) / max(r, 0.001);
-	vec2 offset = (radial + twist * 0.6) * band * strength;
-	ALBEDO = texture(screen_tex, SCREEN_UV - offset).rgb;
+	// Fades in from nothing at the inner edge too, so the ring has no visible seam.
+	band *= smoothstep(inner - 0.02, inner + 0.06, r);
+	vec2 offset = warp_aspect((radial + twist * 0.6) * band * strength, VIEWPORT_SIZE);
+	ALBEDO = warp_sample(screen_tex, SCREEN_UV, -offset);
 	ALPHA = 1.0;
 }

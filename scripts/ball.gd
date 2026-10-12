@@ -995,11 +995,12 @@ func _get_move_direction() -> Vector3:
 	return (right * input.x - _get_camera_forward() * input.y).limit_length(1.0)
 
 
-## Where the local camera is looking (straight ahead if there's none).
+## Where the local camera is looking (straight ahead if there's none). The aim camera, so
+## free look (camera_rig.gd) doesn't change it.
 func _camera_look() -> Vector3:
 	if bot:
 		return bot_look.normalized()
-	var camera := get_viewport().get_camera_3d()
+	var camera: Camera3D = camera_rig.call("aim_camera") if camera_rig and camera_rig.has_method("aim_camera") else get_viewport().get_camera_3d()
 	return -camera.global_basis.z if camera else _get_camera_forward()
 
 

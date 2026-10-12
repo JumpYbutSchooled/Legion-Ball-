@@ -21,10 +21,11 @@ const WAVE_END := 1.4  # Wave position where every facet has fully broken/joined
 const BLADE_SCALE := 1.15
 
 @export var color := Color(0.3, 0.8, 1.0)
-## Seconds for the enter/exit wave to run the length of the blades.
-@export var toggle_time := 0.55
+## Seconds for the enter/exit wave to run the length of the blades (slow enough to see the
+## pentagons ripple together / apart).
+@export var toggle_time := 0.8
 @export var equip_flash_time := 0.35
-@export var equip_light_energy := 40.0
+@export var equip_light_energy := 14.0
 ## How far a blade jolts back when it fires, and how fast it settles.
 @export var kick_distance := 0.3
 @export var kick_recover := 14.0
@@ -46,12 +47,26 @@ var _kicks := PackedFloat32Array()
 var _wave := -1.0
 var _flash := 0.0
 var _flash_color := Color.WHITE
+## Fire waves per blade (each blade is drawn as pentagons, energy_blade_mesh.gd /
+## pentagon_skin.gd), two each so a quick second shot from the same blade starts its own
+## wave instead of snapping the first one back.
+const PULSE_TIME := 0.4
+const PULSE_END := 1.5
+var _pulse_a := PackedFloat32Array()
+var _pulse_b := PackedFloat32Array()
+## True while this enter / exit is half of a weapon switch (weapon.gd select): the old
+## weapon's pentagons scatter, and the new one's gather out of the same cloud.
+var _switching := false
 
 
 func _ready() -> void:
 	_build()
 	_kicks.resize(_blades.size())
 	_kicks.fill(0.0)
+	_pulse_a.resize(_blades.size())
+	_pulse_a.fill(-1.0)
+	_pulse_b.resize(_blades.size())
+	_pulse_b.fill(-1.0)
 	_set_param("color", color)
 	visible = false
 
@@ -61,7 +76,8 @@ func _ready() -> void:
 func add_blade(side: float, roll_deg: float, props := {}) -> MeshInstance3D:
 	var blade := BladeMesh.new()
 	blade.side = side
-	blade.jag_seed = _blades.size() + 1
+	# Pairs share a seed, so a blade and its mirror image on the other side match.
+	blade.jag_seed = int(absf(roll_deg) * 10.0) + 1
 	blade.scale_factor = BLADE_SCALE
 	for key in props:
 		blade.set(key, props[key])
@@ -73,18 +89,20 @@ func add_blade(side: float, roll_deg: float, props := {}) -> MeshInstance3D:
 	return blade
 
 
-func enter() -> void:
+func enter(switching := false) -> void:
 	if state == State.READY or state == State.ENTERING:
 		return
+	_switching = switching
 	state = State.ENTERING
 	_wave = 0.0
 	visible = true
 	_sound("equip", -10.0)
 
 
-func exit() -> void:
+func exit(switching := false) -> void:
 	if state == State.HOLSTERED or state == State.EXITING:
 		return
+	_switching = switching
 	state = State.EXITING
 	_wave = 0.0
 	_on_exit()
@@ -116,8 +134,25 @@ func get_arm_amount() -> float:
 ## Jolts blade `index` backward (it settles on its own). Other players see it too.
 func kick(index: int) -> void:
 	_kicks[index] = 1.0
+	wave(index)
 	if manager and manager.is_multiplayer_authority():
 		manager.call("broadcast_kick", self, index)
+
+
+## A fire wave down blade `index` (-1: every blade): its pentagons each ride round a
+## circle as it rolls from the back to the point.
+func wave(index := -1) -> void:
+	if _pulse_a.is_empty():
+		return
+	var targets: Array = range(_blades.size()) if index < 0 or index >= _blades.size() else [index]
+	for m in targets:
+		# Already started this frame (a kick and a cooldown together): once is enough.
+		if _pulse_a[m] == 0.0 or _pulse_b[m] == 0.0:
+			continue
+		if _pulse_a[m] < 0.0 or (_pulse_b[m] >= 0.0 and _pulse_a[m] >= _pulse_b[m]):
+			_pulse_a[m] = 0.0
+		else:
+			_pulse_b[m] = 0.0
 
 
 ## Flash in `c`: every blade glows, gets its own blade-shaped flare, and a light rides
@@ -130,6 +165,11 @@ func flash(c: Color) -> void:
 		var flare := BladeFlare.new()
 		flare.mesh = blade.mesh
 		flare.color = c
+		# Hundreds of overlapping pentagons: each one's glow kept soft so together they
+		# flash, not white out the screen.
+		flare.intensity = 0.45
+		flare.grow_start = 0.005
+		flare.grow_end = 0.03
 		blade.add_child(flare)
 	var light := FlashLight.new()
 	light.light_color = c
@@ -148,7 +188,9 @@ func _process(delta: float) -> void:
 		time_scale = manager.ball.call("weapon_time_scale")
 	_cooldown = maxf(_cooldown - delta * time_scale, 0.0)
 	var settle := 1.0 - exp(-kick_recover * delta)
+	var kick_most := 0.0
 	for i in _blades.size():
+		kick_most = maxf(kick_most, _kicks[i])
 		_kicks[i] = lerpf(_kicks[i], 0.0, settle)
 		_blades[i].transform = Transform3D(_bases[i], Vector3(0, 0, _kicks[i] * kick_distance))
 		# Per blade: its own shot kick can open its tip on top of the weapon-wide opening.
@@ -166,10 +208,29 @@ func _process(delta: float) -> void:
 	_flash = move_toward(_flash, 0.0, delta / equip_flash_time)
 	_set_param("wave_pos", _wave if animating else -1.0)
 	_set_param("wave_assembling", state == State.ENTERING)
+	_set_param("switching", _switching)
+	_update_model_waves(delta)
 	_set_param("grey", 1.0 if animating else 0.0)
 	_set_param("flash_amount", _flash)
 	_update(delta)
 
+
+## The fire waves rolling on down each blade.
+func _update_model_waves(delta: float) -> void:
+	for i in _blades.size():
+		var was_a := _pulse_a[i]
+		var was_b := _pulse_b[i]
+		if _pulse_a[i] >= 0.0:
+			_pulse_a[i] = -1.0 if _pulse_a[i] + delta / PULSE_TIME > PULSE_END else _pulse_a[i] + delta / PULSE_TIME
+		if _pulse_b[i] >= 0.0:
+			_pulse_b[i] = -1.0 if _pulse_b[i] + delta / PULSE_TIME > PULSE_END else _pulse_b[i] + delta / PULSE_TIME
+		# Only when something's rolling (or just stopped): no uniform traffic at rest.
+		if was_a < 0.0 and was_b < 0.0 and _pulse_a[i] < 0.0 and _pulse_b[i] < 0.0:
+			continue
+		var mat := _blades[i].material_override as ShaderMaterial
+		if mat:
+			mat.set_shader_parameter("blade_pulse_a", PackedFloat32Array([_pulse_a[i]]))
+			mat.set_shader_parameter("blade_pulse_b", PackedFloat32Array([_pulse_b[i]]))
 
 func _finish_wave() -> void:
 	_wave = -1.0

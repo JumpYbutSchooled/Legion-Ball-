@@ -51,4 +51,7 @@ void fragment() {
 	EMISSION = glow;
 	ROUGHNESS = clamp(roughness + v.y, 0.0, 1.0);
 	METALLIC = metallic;
+	NORMAL = (VIEW_MATRIX * vec4(surface_bumped_normal(world_pos, normalize(world_normal), length(VERTEX), 0.7), 0.0)).xyz;
+	CLEARCOAT = 0.35 * surface_detail;
+	CLEARCOAT_ROUGHNESS = 0.2;
 }

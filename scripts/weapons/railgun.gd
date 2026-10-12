@@ -80,8 +80,8 @@ func _build() -> void:
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.5
 	sphere.height = 1.0
-	sphere.radial_segments = 24
-	sphere.rings = 12
+	sphere.radial_segments = 40
+	sphere.rings = 20
 	_warp_mat = ShaderMaterial.new()
 	_warp_mat.shader = WarpShader
 	# Before the blade, or the warp would paint over it (see muzzle_warp.gd).

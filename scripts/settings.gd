@@ -56,7 +56,9 @@ const DEFAULTS := {
 	"shadows": true,
 	"aa": "MSAA 2X",
 	"ssao": true,
-	"ssr": false,
+	"ssr": true,
+	## One-time upgrades to saved graphics settings (see _ready).
+	"gfx_upgrade": 0,
 	"ssil": false,
 	"render_scale": 1.0,
 	## Frame cap (0 = none).
@@ -98,6 +100,13 @@ func _ready() -> void:
 	if loaded == OK:
 		for key in DEFAULTS:
 			_values[key] = file.get_value("settings", key, DEFAULTS[key])
+	# 2.7: reflections joined the HIGH preset (shiny floors); players already on HIGH get
+	# them once too (after that, their own choice stands).
+	if int(get_value("gfx_upgrade")) < 1:
+		if String(get_value("graphics_preset")) in ["HIGH", "ULTRA"]:
+			_values["ssr"] = true
+		_values["gfx_upgrade"] = 1
+		_save()
 	# Older settings: fullscreen on/off becomes the window mode.
 	if String(get_value("window_mode")) == "":
 		_values["window_mode"] = "BORDERLESS" if get_value("fullscreen") else "WINDOWED"

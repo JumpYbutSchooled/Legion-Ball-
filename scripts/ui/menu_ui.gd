@@ -51,6 +51,11 @@ var _icons: Node
 
 var _page_holder: PanelContainer
 var _scroll: ScrollContainer
+## Pages that take a while to build (and don't change behind your back) are kept, hidden,
+## once built, so going back to one is instant: id -> its ScrollContainer. A refresh (a
+## button on the page changed something) still rebuilds it.
+const KEPT_PAGES := ["armory", "controls", "updates", "credits", "practice"]
+var _kept := {}
 var _frame: Control
 var _page_title: Label
 var _page: Control
@@ -76,10 +81,19 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 28)
 	add_child(row)
 
+	# The buttons on the left scroll when they don't all fit: staff in a match get extra ones
+	# (moderation, turrets, bots), and they used to push LEAVE MATCH off the bottom.
+	var nav_scroll := ScrollContainer.new()
+	nav_scroll.custom_minimum_size = Vector2(342, 0)
+	nav_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	nav_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	row.add_child(nav_scroll)
 	var nav := VBoxContainer.new()
 	nav.custom_minimum_size = Vector2(330, 0)
-	nav.add_theme_constant_override("separation", 10)
-	row.add_child(nav)
+	nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	nav.add_theme_constant_override("separation", 6 if pause_mode else 8)
+	nav_scroll.add_child(nav)
 	var net := get_tree().root.get_node_or_null("Net")
 	var online: bool = net != null and net.get("online")
 	if pause_mode:
@@ -146,6 +160,16 @@ func _ready() -> void:
 	# Back from a match (still connected): land on the lobby.
 	_show_page("multiplayer" if online and not pause_mode else "armory", true)
 	_intro.call_deferred()
+	# The Practice page's map pictures and the Armory's weapon pictures, read in the
+	# background before anyone opens those pages.
+	MapGrid.preload_thumbs(MAP_BLURBS.keys())
+	WeaponIcons.preload_disk(WeaponInfo.pool())
+	if not pause_mode:
+		_prebuild_later()
+	# Staff status decides what the Armory lists: build it fresh next time.
+	var staff := _mod()
+	if staff:
+		staff.connect("mod_changed", func() -> void: _drop_kept("armory"))
 	visibility_changed.connect(func() -> void:
 		if is_visible_in_tree():
 			_intro())
@@ -213,9 +237,18 @@ func _nav(parent: Control, id: String, text: String, action: Callable) -> void:
 	var b := Button.new()
 	b.text = "[ " + text + " ]"
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	b.add_theme_font_size_override("font_size", 18)
+	b.add_theme_font_size_override("font_size", 16 if pause_mode else 18)
 	b.pressed.connect(action)
 	parent.add_child(b)
+	# Slim buttons, so they all fit under the title (the pause menu has the most: staff get
+	# moderation, turrets and bots too).
+	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
+		var sb := b.get_theme_stylebox(state)
+		if sb:
+			sb = sb.duplicate()
+			sb.content_margin_top = 5 if pause_mode else 7
+			sb.content_margin_bottom = 5 if pause_mode else 7
+			b.add_theme_stylebox_override(state, sb)
 	_nav_buttons[id] = b
 	_animate_button(b)
 
@@ -296,7 +329,23 @@ func _show_page(id: String, quiet := false) -> void:
 	_current_page = id
 	_listening = {}
 	if _scroll and not refresh:
-		_scroll.queue_free()
+		if _kept.values().has(_scroll):
+			_scroll.visible = false
+		else:
+			_scroll.queue_free()
+	# Back to a page that's already built: show it as it was.
+	if changed and _kept.has(id) and is_instance_valid(_kept[id]):
+		_scroll = _kept[id]
+		_scroll.visible = true
+		_page_holder.move_child(_scroll, 0)
+		if not quiet:
+			_frame.call("glitch")
+			ui_sound(self, "ui_page", -10.0)
+			_pop_in(_scroll)
+		for key in _nav_buttons:
+			var nb: Button = _nav_buttons[key]
+			nb.add_theme_color_override("font_color", UIStyle.ACCENT if key == id else UIStyle.TEXT)
+		return
 	_chat_log = null
 	_chat_status = null
 	# Pages scroll when they're taller than the window.
@@ -307,6 +356,8 @@ func _show_page(id: String, quiet := false) -> void:
 	# The tech frame stays drawn on top of the page.
 	_page_holder.move_child(scroll, 0)
 	_scroll = scroll
+	if KEPT_PAGES.has(id):
+		_kept[id] = scroll
 	if changed and not quiet:
 		_frame.call("glitch")
 		ui_sound(self, "ui_page", -10.0)
@@ -316,6 +367,20 @@ func _show_page(id: String, quiet := false) -> void:
 	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_theme_constant_override("separation", 14)
 	scroll.add_child(box)
+	_fill(id, box)
+	if refresh:
+		scroll.modulate.a = 0.0
+		scroll.set_meta("keep", keep)
+		_swap_in.call_deferred(scroll, old_scroll, keep)
+	else:
+		_animate_page(box)
+	for key in _nav_buttons:
+		var b: Button = _nav_buttons[key]
+		b.add_theme_color_override("font_color", UIStyle.ACCENT if key == id else UIStyle.TEXT)
+
+
+## Builds page `id`'s contents into `box`.
+func _fill(id: String, box: VBoxContainer) -> void:
 	match id:
 		"multiplayer":
 			_header(box, "MULTIPLAYER", "FREE-FOR-ALL ARENA  //  2-%d PILOTS" % NetScript.MAX_PLAYERS)
@@ -336,15 +401,45 @@ func _show_page(id: String, quiet := false) -> void:
 			_build_updates(box)
 		"credits":
 			_build_credits(box)
-	if refresh:
-		scroll.modulate.a = 0.0
-		scroll.set_meta("keep", keep)
-		_swap_in.call_deferred(scroll, old_scroll, keep)
-	else:
-		_animate_page(box)
-	for key in _nav_buttons:
-		var b: Button = _nav_buttons[key]
-		b.add_theme_color_override("font_color", UIStyle.ACCENT if key == id else UIStyle.TEXT)
+
+
+## Builds a kept page now, hidden, so opening it later is instant (the main menu does this
+## for each of them, one at a time, a few seconds after it opens).
+func _prebuild(id: String) -> void:
+	if _kept.has(id) or id == _current_page or not is_inside_tree():
+		return
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	PadScroll.attach(scroll)
+	scroll.visible = false
+	_page_holder.add_child(scroll)
+	_page_holder.move_child(scroll, 0)
+	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 14)
+	scroll.add_child(box)
+	_fill(id, box)
+	_kept[id] = scroll
+
+
+func _prebuild_later() -> void:
+	await get_tree().create_timer(3.0).timeout
+	for id in KEPT_PAGES:
+		if not is_inside_tree():
+			return
+		_prebuild(id)
+		await get_tree().create_timer(0.35).timeout
+
+
+## Forgets a kept page (it's rebuilt next time it opens), unless it's the one showing.
+func _drop_kept(id: String) -> void:
+	var page: ScrollContainer = _kept.get(id)
+	if page == null or page == _scroll:
+		return
+	_kept.erase(id)
+	if is_instance_valid(page):
+		page.queue_free()
 
 
 ## A refreshed page: once it's laid out (two frames), scroll it to where the old one was,
@@ -601,16 +696,21 @@ func _build_practice_admin(box: VBoxContainer, mod: Node) -> void:
 		b.add_theme_color_override("font_color", gold)
 		powers.add_child(b)
 	var name_creator: bool = mod.call("staff_role") == "namecreator"
+	var is_owner: bool = mod.call("staff_role") == "owner"
+	var pink := Color(1.0, 0.45, 0.75)
 	if name_creator:
-		var pink := Color(1.0, 0.45, 0.75)
 		for nc_entry in [
 			["FREECAM: %s" % ("ON" if mod.get("freecam") else "OFF"), func() -> void: mod.call("practice_toggle_freecam")],
 			["PICTURE MODE: %s" % ("ON" if mod.get("picture_mode") else "OFF"), func() -> void: mod.call("practice_toggle_picture_mode")],
-			["CINEMATIC: %s" % ("ON" if mod.get("cinematic") else "OFF"), func() -> void: mod.call("practice_toggle_cinematic")],
 		]:
 			var ncb := _small_button(nc_entry[0], nc_entry[1])
 			ncb.add_theme_color_override("font_color", pink)
 			powers.add_child(ncb)
+	# The cinematic overlay: the NAME CREATOR's trailer tool, and the owner's too.
+	if name_creator or is_owner:
+		var cb := _small_button("CINEMATIC: %s" % ("ON" if mod.get("cinematic") else "OFF"), func() -> void: mod.call("practice_toggle_cinematic"))
+		cb.add_theme_color_override("font_color", pink if name_creator else gold)
+		powers.add_child(cb)
 	var row := HFlowContainer.new()
 	row.add_theme_constant_override("h_separation", 10)
 	box.add_child(row)
@@ -629,7 +729,9 @@ func _build_practice_admin(box: VBoxContainer, mod: Node) -> void:
 	row.add_child(_small_button("RESET", func() -> void: mod.call("practice_set_speed", 1.0)))
 	var help := "GOLD SHIELD: the owner's invincible shell. LOW GRAVITY: everything floats. LAUNCH ME: straight up. SPEED: how fast you roll, top speed, acceleration and dash all together. The AI turrets switch is in the menu on the left."
 	if name_creator:
-		help += " FREECAM: flies the camera freely through the map, WASD/stick to move, jump/dash for up/down. PICTURE MODE: hides the HUD. CINEMATIC: letterbox bars and a vignette. (NAME CREATOR only, for trailer shots.)"
+		help += " FREECAM: flies the camera freely through the map, WASD/stick to move, jump/dash for up/down. PICTURE MODE: hides the HUD. CINEMATIC: letterbox bars and a vignette. (NAME CREATOR only, for trailer shots; the owner gets CINEMATIC too.)"
+	elif is_owner:
+		help += " CINEMATIC: letterbox bars and a vignette, for clips and screenshots."
 	box.add_child(_wrapped(UIStyle.label(help, 12, UIStyle.TEXT_DIM)))
 
 
@@ -698,21 +800,31 @@ func _build_updates(box: VBoxContainer) -> void:
 		return
 	var f := FileAccess.open("res://version.txt", FileAccess.READ)
 	var installed := f.get_as_text().strip_edges() if f else ""
+	# Every patch in one text block, laid out on a background thread (`threaded`): a label
+	# per patch made opening this page stall for a third of a second.
+	var accent := UIStyle.ACCENT.to_html(false)
+	var dim := UIStyle.TEXT_DIM.to_html(false)
+	var text := PackedStringArray()
 	for e in all:
 		var version := String(e["version"])
-		var head := HBoxContainer.new()
-		head.add_theme_constant_override("separation", 14)
-		box.add_child(head)
 		var current := version == installed
-		head.add_child(UIStyle.label("v" + version, 18, UIStyle.ACCENT if current else Color.WHITE, true))
-		head.add_child(UIStyle.label(String(e.get("date", "")), 13, UIStyle.TEXT_DIM))
+		var head := "[font_size=18][b][color=#%s]v%s[/color][/b][/font_size]   [font_size=13][color=#%s]%s[/color][/font_size]" % [accent if current else "ffffff", version, dim, String(e.get("date", ""))]
 		if current:
-			head.add_child(UIStyle.label("// INSTALLED", 13, UIStyle.ACCENT))
-		box.add_child(_wrapped(UIStyle.label(String(e.get("notes", "")), 15, UIStyle.TEXT)))
-		var line := ColorRect.new()
-		line.color = Color(UIStyle.ACCENT, 0.12)
-		line.custom_minimum_size = Vector2(0, 1)
-		box.add_child(line)
+			head += "   [font_size=13][color=#%s]// INSTALLED[/color][/font_size]" % accent
+		text.append(head + "\n" + String(e.get("notes", "")).replace("[", "[lb]"))
+	var log := RichTextLabel.new()
+	log.bbcode_enabled = true
+	log.fit_content = true
+	log.scroll_active = false
+	log.threaded = true
+	log.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log.add_theme_font_size_override("normal_font_size", 15)
+	log.add_theme_font_size_override("bold_font_size", 18)
+	log.add_theme_color_override("default_color", UIStyle.TEXT)
+	log.add_theme_constant_override("paragraph_separation", 6)
+	log.text = "\n\n".join(text)
+	box.add_child(log)
 
 
 # --- CREDITS --------------------------------------------------------------------

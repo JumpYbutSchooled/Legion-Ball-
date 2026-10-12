@@ -161,8 +161,10 @@ func _start(net: Node) -> void:
 		if is_inside_tree():
 			Graphics.apply_scene(get_tree())).call_deferred()
 	# Build the kill effects' shaders now, while the map loads in, not at the first kill.
+	var warmup: Node = null
 	if DisplayServer.get_name() != "headless":
-		add_child(ShaderWarmup.new())
+		warmup = ShaderWarmup.new()
+		add_child(warmup)
 	# Joining a match that's already going: ask the host for its clock and team scores.
 	if net.get("online") and not multiplayer.is_server():
 		_zzhello.rpc_id(1)
@@ -189,6 +191,12 @@ func _start(net: Node) -> void:
 	if DisplayServer.get_name() != "headless" and has_node("Map") and not intro_on:
 		_merge_map.call_deferred()
 	if intro_on:
+		# The merge is worked out now, under the loading card, and its pieces drawn by the
+		# warm-up, so the reveal only has to swap them in (doing it all then froze the game
+		# for a third of a second as the map went solid).
+		_prepared = MapMerge.prepare($Map)
+		if warmup:
+			warmup.call("add_samples", _prepared["meshes"])
 		var intro := MapIntro.new()
 		intro.map = $Map
 		intro.done.connect(_merge_map)
@@ -206,12 +214,20 @@ func _exit_tree() -> void:
 			mod.call("practice_reset")
 
 
+## The map merge worked out ahead of the build-in (map_merge.gd prepare), to swap in at the end.
+var _prepared := {}
+
+
 ## Combine the map's static boxes (map_merge.gd). Once only.
 func _merge_map() -> void:
 	if not is_inside_tree() or has_meta("merged") or not has_node("Map"):
 		return
 	set_meta("merged", true)
-	MapMerge.merge($Map)
+	if _prepared.is_empty():
+		MapMerge.merge($Map)
+	else:
+		MapMerge.commit($Map, _prepared)
+		_prepared = {}
 	# Looping maps: now draw copies of the merged map all round it.
 	var layout := get_node_or_null("Map/Layout")
 	if layout and layout.has_method("make_wrap_visuals"):

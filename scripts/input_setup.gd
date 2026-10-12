@@ -50,6 +50,8 @@ const KEYS := {
 ## Keys bound to their right-hand copy only (so left Shift stays free).
 const RIGHT_KEYS := {
 	"chat_global": [KEY_SHIFT],
+	# Hold to look round the ball without moving the aim (camera_rig.gd).
+	"free_look": [KEY_ALT],
 }
 
 ## Keys that moved to another action: stripped from their old action on every start.
@@ -147,6 +149,7 @@ const REBINDABLE := [
 	"CAMERA & HUD",
 	["camera_left", "Rotate camera left"],
 	["camera_right", "Rotate camera right"],
+	["free_look", "Free look (hold: look round, aim stays)"],
 	["zoom_in", "Zoom in"],
 	["zoom_out", "Zoom out"],
 	["scoreboard", "Scoreboard"],

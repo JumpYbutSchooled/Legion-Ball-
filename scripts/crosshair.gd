@@ -72,6 +72,10 @@ func _on_fired(index: int) -> void:
 
 
 func _process(delta: float) -> void:
+	# Free look (camera_rig.gd): the view is off the aim, so the crosshair fades out.
+	var rig: Node = weapon.get("camera_rig") if weapon else null
+	var looking: bool = rig != null and rig.has_method("is_free_looking") and rig.call("is_free_looking")
+	modulate.a = move_toward(modulate.a, 0.0 if looking else 1.0, delta * 8.0)
 	var settle := 1.0 - exp(-kick_recover * delta)
 	for i in _kicks.size():
 		_kicks[i] = lerpf(_kicks[i], 0.0, settle)

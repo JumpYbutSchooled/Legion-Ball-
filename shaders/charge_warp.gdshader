@@ -3,6 +3,8 @@ shader_type spatial;
 // center, pulling the view inward as they pass. Used for the railgun charge.
 render_mode unshaded, cull_back, depth_draw_never, shadows_disabled;
 
+#include "res://shaders/warp.gdshaderinc"
+
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform float strength = 0.0;
 // Advanced by the script; each whole step moves a ring from the rim to the center.
@@ -22,7 +24,9 @@ void fragment() {
 		amount += exp(-(d * d) / (ring_width * ring_width)) * smoothstep(0.0, 0.15, r) * (1.0 - r * 0.6);
 	}
 	// Sampling further out along the normal squeezes the image toward the center.
-	vec2 offset = NORMAL.xy * amount * strength;
-	ALBEDO = texture(screen_tex, SCREEN_UV + offset).rgb;
+	// (Faded to nothing at the very rim, so the sphere's outline never shows.)
+	amount *= smoothstep(0.0, 0.12, facing);
+	vec2 offset = warp_aspect(NORMAL.xy * amount * strength, VIEWPORT_SIZE);
+	ALBEDO = warp_sample(screen_tex, SCREEN_UV, offset) * (1.0 + min(amount * strength * 4.0, 0.3));
 	ALPHA = 1.0;
 }

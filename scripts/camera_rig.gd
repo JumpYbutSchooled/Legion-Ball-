@@ -118,6 +118,16 @@ var _noise := FastNoiseLite.new()
 ## Rushing-air loop, louder and higher the faster the ball goes.
 var _wind: AudioStreamPlayer
 
+## Free look (hold Right Alt, `free_look`): the view orbits the ball while the aim stays
+## put. The rig and its camera (what the weapons and movement aim with) don't turn; a second
+## camera shows the orbited view, and swings back behind the aim when you let go.
+const FREE_LOOK_RETURN := 12.0
+var _view_cam: Camera3D
+var _fl_yaw := 0.0
+var _fl_pitch := 0.0
+var _fl_held := false
+var _fl_active := false
+
 
 ## An explosion went off at pos: the closer (in blast radii), the harder the screen
 ## warps, rings with a shockwave and shakes.
@@ -346,7 +356,8 @@ func _process(delta: float) -> void:
 	var net := get_tree().root.get_node_or_null("Net")
 	if not (net and net.get("input_blocked")):
 		var turn := Input.get_axis("camera_left", "camera_right")
-		rotation.y -= turn * key_turn_speed * delta
+		if turn != 0.0:
+			_turn(-turn * key_turn_speed * delta, 0.0)
 		_pad_look(delta)
 		_gyro_look(delta)
 		if Input.is_action_just_pressed("recenter_camera"):
@@ -363,6 +374,83 @@ func _process(delta: float) -> void:
 	_pitch.position.y = _pivot_height + _spring_arm.spring_length * sin(look_up) * look_up_lift
 
 	_update_warp(delta)
+	_update_free_look(delta)
+
+
+## Turns the view: the aim (the rig itself), or only the free-look orbit while it's held.
+func _turn(yaw: float, pitch: float) -> void:
+	if _fl_held:
+		_fl_yaw = wrapf(_fl_yaw + yaw, -PI, PI)
+		var base := _pitch.rotation.x
+		_fl_pitch = clampf(base + _fl_pitch + pitch, deg_to_rad(min_pitch_deg), deg_to_rad(max_pitch_deg)) - base
+		return
+	rotation.y += yaw
+	_pitch.rotation.x = clampf(_pitch.rotation.x + pitch, deg_to_rad(min_pitch_deg), deg_to_rad(max_pitch_deg))
+
+
+## The camera the weapons and movement aim with (the rig's own, even during free look).
+func aim_camera() -> Camera3D:
+	return _camera
+
+
+## True while the view is orbited away from the aim (held, or still swinging back).
+func is_free_looking() -> bool:
+	return _fl_active
+
+
+## Free look: while held, the view camera orbits the aim camera round the ball's pivot by the
+## free-look turn; let go and the turn eases back to nothing, then the aim camera takes over.
+func _update_free_look(delta: float) -> void:
+	var net := get_tree().root.get_node_or_null("Net")
+	var blocked: bool = net != null and net.get("input_blocked")
+	_fl_held = not freecam and not blocked and InputMap.has_action("free_look") and Input.is_action_pressed("free_look")
+	if not _fl_held:
+		var k := exp(-FREE_LOOK_RETURN * delta)
+		_fl_yaw *= k
+		_fl_pitch *= k
+		if absf(_fl_yaw) < 0.003 and absf(_fl_pitch) < 0.003:
+			_fl_yaw = 0.0
+			_fl_pitch = 0.0
+			if _fl_active:
+				_fl_active = false
+				if _view_cam and _view_cam.current:
+					_camera.make_current()
+			return
+	if not _view_cam:
+		_view_cam = Camera3D.new()
+		_view_cam.name = "FreeLookCamera"
+		_view_cam.top_level = true
+		add_child(_view_cam)
+	if not _fl_active:
+		_fl_active = true
+		_view_cam.make_current()
+	# Same lens as the aim camera (FOV kicks, shake, environment).
+	_view_cam.fov = _camera.fov
+	_view_cam.near = _camera.near
+	_view_cam.far = _camera.far
+	_view_cam.cull_mask = _camera.cull_mask
+	_view_cam.environment = _camera.environment
+	_view_cam.attributes = _camera.attributes
+	_view_cam.h_offset = _camera.h_offset
+	_view_cam.v_offset = _camera.v_offset
+	var pivot := _pitch.global_position
+	var turn := Basis(Vector3.UP, _fl_yaw) * Basis(_pitch.global_basis.x.normalized(), _fl_pitch)
+	var aim := _camera.global_transform
+	var pos := pivot + turn * (aim.origin - pivot)
+	# Looking up: raise it like the aim camera's pivot is raised (_process), so it tilts up
+	# from behind the ball instead of swinging under the floor.
+	var lift := func(p: float) -> float: return _spring_arm.spring_length * sin(maxf(p, 0.0)) * look_up_lift
+	var raise: float = lift.call(_pitch.rotation.x + _fl_pitch) - lift.call(_pitch.rotation.x)
+	pivot += Vector3.UP * raise
+	pos += Vector3.UP * raise
+	# Kept out of walls, like the spring arm keeps the aim camera.
+	var query := PhysicsRayQueryParameters3D.create(pivot, pos, _spring_arm.collision_mask)
+	if target is CollisionObject3D:
+		query.exclude = [(target as CollisionObject3D).get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		pos = (hit["position"] as Vector3) + (pivot - pos).normalized() * 0.4
+	_view_cam.global_transform = Transform3D(turn * aim.basis, pos)
 
 
 func _update_warp(delta: float) -> void:
@@ -432,12 +520,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var sens := mouse_sensitivity * _sensitivity_scale
-		rotation.y -= event.relative.x * sens
-		_pitch.rotation.x = clampf(
-			_pitch.rotation.x - event.relative.y * sens * (-1.0 if _invert_y else 1.0),
-			deg_to_rad(min_pitch_deg),
-			deg_to_rad(max_pitch_deg)
-		)
+		_turn(-event.relative.x * sens, -event.relative.y * sens * (-1.0 if _invert_y else 1.0))
 
 
 ## Right stick orbits the camera (any connected controller), with a curve so small tilts
@@ -451,12 +534,8 @@ func _pad_look(delta: float) -> void:
 		return
 	stick = stick.normalized() * inverse_lerp(PAD_DEADZONE, 1.0, minf(stick.length(), 1.0))
 	stick *= stick.length()
-	rotation.y -= stick.x * PAD_YAW_SPEED * _pad_yaw_scale * delta
-	_pitch.rotation.x = clampf(
-		_pitch.rotation.x - stick.y * PAD_PITCH_SPEED * _pad_pitch_scale * delta * (-1.0 if _invert_y else 1.0),
-		deg_to_rad(min_pitch_deg),
-		deg_to_rad(max_pitch_deg)
-	)
+	_turn(-stick.x * PAD_YAW_SPEED * _pad_yaw_scale * delta,
+		-stick.y * PAD_PITCH_SPEED * _pad_pitch_scale * delta * (-1.0 if _invert_y else 1.0))
 
 
 ## Motion controls: the controller's gyro turns the camera like a mouse would, 1:1 with how
@@ -479,10 +558,9 @@ func _gyro_look(delta: float) -> void:
 	var yaw := gyro.y + gyro.z
 	var pitch := gyro.x * (-1.0 if _motion_invert else 1.0)
 	if absf(yaw) > GYRO_DEADZONE:
-		rotation.y += yaw * _motion_scale * delta
+		_turn(yaw * _motion_scale * delta, 0.0)
 	if absf(pitch) > GYRO_DEADZONE:
-		_pitch.rotation.x = clampf(_pitch.rotation.x + pitch * _motion_scale * delta,
-			deg_to_rad(min_pitch_deg), deg_to_rad(max_pitch_deg))
+		_turn(0.0, pitch * _motion_scale * delta)
 
 
 ## R3: point the camera the way the ball is rolling (or keep facing if it's still) and

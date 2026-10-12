@@ -11,7 +11,7 @@ extends Node
 ##   tester - a green TESTER title
 ##   namecreator - a pink NAME CREATOR title (NAMECREATOR_CODE), plus trailer tools in
 ##                 practice: a freecam, picture mode (hides the HUD) and a cinematic
-##                 letterbox/vignette overlay
+##                 letterbox/vignette overlay (the owner gets the cinematic overlay too)
 ## The server checks every request, so a modified game can't fake being a mod.
 ## On a player-hosted game the host can moderate without a code.
 ## Bans live in the server's memory: they last until that server restarts or sleeps.
@@ -72,7 +72,7 @@ var muted: Array = []
 var freecam := false
 ## NAME CREATOR only, practice: every HUD overlay hidden for a clean shot.
 var picture_mode := false
-## NAME CREATOR only, practice: letterbox bars and a vignette (scripts/ui/cinematic_overlay.gd).
+## NAME CREATOR and owner, practice: letterbox bars and a vignette (scripts/ui/cinematic_overlay.gd).
 var cinematic := false
 ## Which CanvasLayers picture mode hid, so turning it off restores only those (and not,
 ## say, a minimap that was already off for its own reasons).
@@ -323,10 +323,14 @@ func _hide_layers(node: Node) -> void:
 		_hide_layers(child)
 
 
-## NAME CREATOR only: letterbox bars and a vignette (scripts/ui/cinematic_overlay.gd),
+## NAME CREATOR and owner: letterbox bars and a vignette (scripts/ui/cinematic_overlay.gd),
 ## created the first time this is turned on.
+## Who may turn the cinematic overlay on.
+const CINEMATIC_ROLES := ["namecreator", "owner"]
+
+
 func practice_toggle_cinematic() -> void:
-	if staff_role() != "namecreator":
+	if not CINEMATIC_ROLES.has(staff_role()):
 		return
 	cinematic = not cinematic
 	_apply_cinematic()

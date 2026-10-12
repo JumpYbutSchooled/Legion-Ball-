@@ -11,7 +11,7 @@ extends RefCounted
 const PRESETS := {
 	"LOW": {"shadows": false, "aa": "OFF", "ssao": false, "ssr": false, "ssil": false, "render_scale": 0.75},
 	"MEDIUM": {"shadows": true, "aa": "FXAA", "ssao": false, "ssr": false, "ssil": false, "render_scale": 1.0},
-	"HIGH": {"shadows": true, "aa": "MSAA 2X", "ssao": true, "ssr": false, "ssil": false, "render_scale": 1.0},
+	"HIGH": {"shadows": true, "aa": "MSAA 2X", "ssao": true, "ssr": true, "ssil": false, "render_scale": 1.0},
 	"ULTRA": {"shadows": true, "aa": "MSAA 4X", "ssao": true, "ssr": true, "ssil": true, "render_scale": 1.0},
 }
 const AA_MODES := ["OFF", "FXAA", "MSAA 2X", "MSAA 4X", "TAA"]
@@ -27,8 +27,13 @@ const CONTRAST := 1.05
 const SUN_WARM := Color(1.0, 0.9, 0.76)
 const SUN_WARMTH := 0.35
 const SUN_MAX_ELEVATION := 0.84  # radians, about 48 degrees
-const SATURATION := 1.1
+const SATURATION := 1.2
+## Rocket League-style bloom: wide and soft, weighted to the big blur levels, bright
+## things glowing generously, smeared across a little lens dirt.
+const GLOW_LEVELS := [0.0, 0.25, 0.6, 1.0, 0.9, 0.6, 0.35]
+const LENS_DIRT := 0.6
 const VignetteShader := preload("res://shaders/vignette.gdshader")
+const AmbientDust := preload("res://scripts/ambient_dust.gd")
 
 
 ## Everything, from the current settings.
@@ -79,6 +84,7 @@ static func apply_scene(tree: SceneTree) -> void:
 			env.ssr_fade_out = 2.0
 		var fancy: bool = s.call("get_value", "graphics_preset") != "LOW"
 		_vignette(scene, fancy)
+		_dust(scene, fancy, sun)
 	if sun:
 		var on: bool = s.call("get_value", "shadows") and not indoor
 		sun.shadow_enabled = on
@@ -127,9 +133,17 @@ static func _grade(env: Environment, sun: DirectionalLight3D, indoor: bool) -> v
 	env.ssao_power = 1.7
 	env.ssao_detail = 0.6
 	env.ssao_light_affect = 0.4
-	env.glow_bloom = 0.0
-	env.glow_hdr_threshold = 1.0
-	env.glow_intensity = 0.8
+	env.glow_enabled = true
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
+	env.glow_bloom = 0.035
+	env.glow_hdr_threshold = 0.9
+	env.glow_hdr_scale = 2.2
+	env.glow_intensity = 0.55
+	env.glow_strength = 1.1
+	for i in GLOW_LEVELS.size():
+		env.set_glow_level(i, GLOW_LEVELS[i])
+	env.glow_map = _lens_dirt()
+	env.glow_map_strength = LENS_DIRT
 	if env.fog_enabled and not indoor:
 		env.fog_aerial_perspective = 0.35
 		env.fog_sun_scatter = 0.12
@@ -138,6 +152,64 @@ static func _grade(env: Environment, sun: DirectionalLight3D, indoor: bool) -> v
 	env.adjustment_enabled = true
 	env.adjustment_contrast = CONTRAST
 	env.adjustment_saturation = saturation * SATURATION
+	env.tonemap_agx_contrast = 1.45
+
+
+## A lens-dirt picture for the bloom (made once): faint smudges, specks and a few soft
+## round blots, so bright lights smear across the "lens" the way they do in Rocket
+## League instead of glowing perfectly evenly. Mostly mid-grey, so the bloom everywhere
+## stays; the dirt just brightens it in patches.
+static var _dirt: Texture2D
+
+static func _lens_dirt() -> Texture2D:
+	if _dirt:
+		return _dirt
+	var w := 384
+	var h := 216
+	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2207
+	var buf := PackedFloat32Array()
+	buf.resize(w * h)
+	buf.fill(0.55)
+	# Soft round blots (bokeh-like) and long faint smudges.
+	for k in 70:
+		var c := Vector2(rng.randf() * w, rng.randf() * h)
+		var r := rng.randf_range(3.0, 22.0) if k < 55 else rng.randf_range(25.0, 60.0)
+		var amp := rng.randf_range(0.1, 0.45) if k < 55 else rng.randf_range(0.05, 0.15)
+		var stretch := Vector2(1.0, 1.0) if k < 60 else Vector2(rng.randf_range(2.0, 4.0), 0.6)
+		for y in range(maxi(0, int(c.y - r * stretch.y)), mini(h, int(c.y + r * stretch.y) + 1)):
+			for x in range(maxi(0, int(c.x - r * stretch.x)), mini(w, int(c.x + r * stretch.x) + 1)):
+				var d := Vector2((x - c.x) / stretch.x, (y - c.y) / stretch.y).length() / r
+				if d < 1.0:
+					buf[y * w + x] += amp * (1.0 - d * d) * (0.75 + 0.25 * smoothstep(0.7, 1.0, d))
+	# Fine specks.
+	for k in 900:
+		var i := rng.randi() % (w * h)
+		buf[i] += rng.randf_range(0.1, 0.5)
+	# Brighter toward the corners (where real lens dirt shows most).
+	for y in h:
+		for x in w:
+			var e := Vector2(float(x) / w - 0.5, float(y) / h - 0.5).length()
+			var v := clampf(buf[y * w + x] * (0.85 + e * 0.6), 0.0, 1.0)
+			img.set_pixel(x, y, Color(v, v * 0.98, v * 0.95))
+	_dirt = ImageTexture.create_from_image(img)
+	return _dirt
+
+
+## Dust drifting in the air round the camera (scripts/ambient_dust.gd; off on LOW), tinted
+## by the sun (or white on lamp-lit maps).
+static func _dust(scene: Node, on: bool, sun: DirectionalLight3D) -> void:
+	var dust := scene.get_node_or_null("AmbientDust") as GPUParticles3D
+	if not dust and on and scene.has_method("player_ball"):
+		dust = AmbientDust.new()
+		dust.name = "AmbientDust"
+		if sun and sun.light_energy > 0.05:
+			dust.tint = sun.light_color.lerp(Color.WHITE, 0.4)
+		scene.add_child(dust)
+	if dust:
+		dust.emitting = on
+		dust.visible = on
 
 
 ## A soft darkening at the screen's edges, under the HUD (off on LOW).

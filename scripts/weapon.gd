@@ -162,8 +162,12 @@ func select(slot: int) -> void:
 	if slot < 0 or slot >= weapons.size() or not _slot_allowed(slot):
 		return
 	if slot != current:
-		current_weapon().exit()
+		# A switch: the old weapon's pentagons scatter and the new one's gather from there.
+		var was_out := is_drawn()
+		current_weapon().exit(true)
 		current = slot
+		current_weapon().enter(was_out)
+		return
 	current_weapon().enter()
 
 

@@ -15,8 +15,15 @@ void vertex() {
 }
 
 void fragment() {
-	vec2 v = surface_variation(world_pos, length(VERTEX));
+	float dist = length(VERTEX);
+	vec2 v = surface_variation(world_pos, dist);
 	ALBEDO = albedo * v.x;
 	ROUGHNESS = clamp(roughness + v.y, 0.0, 1.0);
 	METALLIC = metallic;
+	// Fine bumps, and a glossy clear coat on top (shiny highlights, like an arena's
+	// polished surfaces).
+	vec3 wn = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
+	NORMAL = (VIEW_MATRIX * vec4(surface_bumped_normal(world_pos, wn, dist, 1.0), 0.0)).xyz;
+	CLEARCOAT = 0.28 * surface_detail;
+	CLEARCOAT_ROUGHNESS = 0.3;
 }

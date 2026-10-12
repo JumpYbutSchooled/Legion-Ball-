@@ -4,6 +4,10 @@ extends "res://scripts/weapons/blade_weapon.gd"
 ## for what most of them do (hitscan with optional piercing, things near a point,
 ## statuses, spawning networked objects, set bonuses).
 ## A weapon overrides _build() (its blades) and _fire(pressed, just, released, hit, delta).
+## Every one of them also gets the same blade animations (shaders/blade_warp.gdshader):
+## firing sends a discharge racing to the tips and a flare; a cooldown (or a reload,
+## reload_progress()) drains the blades and refills them back-to-tip, with a flash when
+## ready; holding fire makes the energy flow faster and hum; charging glows.
 
 @export var cooldown := 1.0
 @export var crosshair_shape := "ring"
@@ -23,9 +27,20 @@ var lock_screen := Vector2.ZERO
 
 var charge := 0.0
 var _was_pressed := false
+## The shared blade animations: the discharge's progress (< 0 = none), the flare after a
+## shot, how long the current cooldown is, how much it's in use, and fire held.
+
+var _glow := 0.0
+var _cd_total := 0.0
+var _use := 0.0
+var _held := false
+var _recharging := false
+## A cooldown shorter than this isn't shown draining (rapid fire would just flicker).
+const RECHARGE_MIN := 0.5
 
 
 func handle_fire(pressed: bool, hit: Dictionary, delta: float) -> void:
+	_held = pressed
 	var just := pressed and not _was_pressed
 	var released := _was_pressed and not pressed
 	_was_pressed = pressed
@@ -71,6 +86,53 @@ func can_fire() -> bool:
 
 func start_cooldown(seconds := -1.0) -> void:
 	_cooldown = cooldown if seconds < 0.0 else seconds
+	_cd_total = _cooldown
+	_fired()
+
+
+## A shot (also on other players' screens: kick() is sent to them).
+func kick(index: int) -> void:
+	# (The base waves just the blade that fired.)
+	super.kick(index)
+	_glow = 1.0
+
+
+func _fired() -> void:
+	# The fire wave down every blade (blade_weapon.gd; a kick waves just its own blade).
+	wave(-1)
+	_glow = 1.0
+
+
+## How far through a reload this weapon is (0..1), or < 0 when not reloading. Weapons with
+## their own magazine and reload override this.
+func reload_progress() -> float:
+	return -1.0
+
+
+func _process(delta: float) -> void:
+	super._process(delta)
+	if not visible:
+		return
+	_glow = move_toward(_glow, 0.0, delta * 3.5)
+	var on := _held and is_ready()
+	_use = move_toward(_use, 1.0 if on else 0.0, delta * (6.0 if on else 3.0))
+	# Refilling: from a reload, or a cooldown long enough to read.
+	var fill := reload_progress()
+	if fill < 0.0 and _cd_total >= RECHARGE_MIN and _cooldown > 0.0:
+		fill = 1.0 - _cooldown / _cd_total
+	if fill >= 0.0 and fill < 1.0:
+		_recharging = true
+	elif _recharging:
+		# Full again: a quick flash in the weapon's colour.
+		_recharging = false
+		_flash = maxf(_flash, 0.4)
+		_set_param("flash_color", color)
+	_set_param("fire_glow", _glow)
+	_set_param("recharge", fill if fill >= 0.0 and fill < 1.0 else 1.0)
+	_set_param("use_amount", _use)
+	if charge > 0.0 or _use > 0.0:
+		_set_param("charge_glow", clampf(charge, 0.0, 1.0) * 1.5)
+		_set_param("charge_spread", clampf(charge, 0.0, 1.0) * 0.1)
 
 
 func get_crosshair() -> Dictionary:

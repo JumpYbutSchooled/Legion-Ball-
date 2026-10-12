@@ -60,6 +60,28 @@ func set_tokens(tokens: Dictionary) -> void:
 			row.add_child(token)
 
 
+## Map thumbnails, kept once loaded (they'd otherwise be freed with the page and read from
+## disk again every time it opened). preload_thumbs() starts reading them in the background.
+static var _thumbs := {}
+
+
+static func thumbnail(thumb: String) -> Texture2D:
+	if not _thumbs.has(thumb):
+		if ResourceLoader.load_threaded_get_status(thumb) != ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+			_thumbs[thumb] = ResourceLoader.load_threaded_get(thumb)
+		else:
+			_thumbs[thumb] = load(thumb)
+	return _thumbs[thumb]
+
+
+## Starts loading every map's thumbnail on a background thread (the menu calls this).
+static func preload_thumbs(maps: Array) -> void:
+	for path in maps:
+		var thumb := thumb_path(path)
+		if not _thumbs.has(thumb) and ResourceLoader.exists(thumb):
+			ResourceLoader.load_threaded_request(thumb)
+
+
 static func thumb_path(path: String) -> String:
 	var key := path.get_file().get_basename().trim_prefix("arena_")
 	if key == "arena":
@@ -94,7 +116,7 @@ func _tile(path: String) -> Button:
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var thumb := thumb_path(path)
 	if path != RANDOM and ResourceLoader.exists(thumb):
-		picture.texture = load(thumb)
+		picture.texture = thumbnail(thumb)
 	b.add_child(picture)
 	if path == RANDOM:
 		var q := UIStyle.label("?", 48, UIStyle.ACCENT, true)

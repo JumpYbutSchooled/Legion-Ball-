@@ -16,6 +16,14 @@ const SurfaceShader := preload("res://shaders/surface.gdshader")
 
 
 static func merge(map: Node3D) -> Dictionary:
+	return commit(map, prepare(map))
+
+
+## The heavy part, done ahead of time (the arena does it while the map loads, under the
+## loading card): the merged meshes, made but not added yet, and the boxes they replace.
+## commit() swaps them in. In between, shader_warmup.gd can draw copies so their shaders are
+## built before they first appear.
+static func prepare(map: Node3D) -> Dictionary:
 	# key -> {"mat", "shadow", "pieces": [[shape_key, transform], ...]}, then the arrays.
 	var groups := {}
 	var merged: Array[MeshInstance3D] = []
@@ -48,6 +56,7 @@ static func merge(map: Node3D) -> Dictionary:
 	var list: Array = groups.values()
 	var task := WorkerThreadPool.add_group_task(func(i: int) -> void: _build(list[i], shapes), list.size())
 	WorkerThreadPool.wait_for_group_task_completion(task)
+	var meshes: Array[MeshInstance3D] = []
 	for g in list:
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
@@ -62,10 +71,20 @@ static func merge(map: Node3D) -> Dictionary:
 		out.mesh = mesh
 		out.material_override = g["mat"]
 		out.cast_shadow = g["shadow"]
+		meshes.append(out)
+	return {"meshes": meshes, "originals": merged}
+
+
+## Swaps prepare()'s meshes in for the boxes they replace (hidden at once, so they're never
+## drawn again, even this frame).
+static func commit(map: Node3D, prepared: Dictionary) -> Dictionary:
+	for out in prepared["meshes"]:
 		map.add_child(out)
-	for inst in merged:
-		inst.queue_free()
-	return {"pieces": merged.size(), "meshes": groups.size()}
+	for inst in prepared["originals"]:
+		if is_instance_valid(inst):
+			inst.visible = false
+			inst.queue_free()
+	return {"pieces": (prepared["originals"] as Array).size(), "meshes": (prepared["meshes"] as Array).size()}
 
 
 ## One merged mesh's arrays from its pieces (a worker thread: plain maths on this group's

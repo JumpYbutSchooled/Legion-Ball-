@@ -45,10 +45,19 @@ func _on_wrapped(_offset: Vector3) -> void:
 	_skip_next = true
 
 
+var _last_cam: Camera3D
+
+
 func _process(_delta: float) -> void:
-	var camera := get_parent() as Camera3D
+	# The camera showing (free look, camera_rig.gd, shows its own); a switch isn't a smear.
+	var camera := get_viewport().get_camera_3d()
+	if not camera:
+		camera = get_parent() as Camera3D
 	if not camera:
 		return
+	if camera != _last_cam:
+		_last_cam = camera
+		_has_prev = false
 	var curr := camera.get_camera_projection() * Projection(camera.global_transform.affine_inverse())
 	if ball and ball.has_signal("wrapped") and not ball.is_connected("wrapped", _on_wrapped):
 		ball.connect("wrapped", _on_wrapped)

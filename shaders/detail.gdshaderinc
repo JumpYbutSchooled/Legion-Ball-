@@ -36,3 +36,25 @@ vec2 surface_variation(vec3 world_pos, float view_dist) {
 	float shade = 1.0 + (macro * 0.24 + grain * 0.08) * surface_detail;
 	return vec2(shade, grain * 0.18 * surface_detail);
 }
+
+// Fine bumps for the light to catch (a Rocket League-style surface texture without any
+// image files): a small noise height field whose slope tilts the surface normal. Fades
+// out with distance (and off on LOW). Returns the bumped world-space normal.
+float detail_bump_height(vec3 p) {
+	return detail_noise(p * 1.15);
+}
+
+vec3 surface_bumped_normal(vec3 world_pos, vec3 world_normal, float view_dist, float amount) {
+	if (surface_detail <= 0.0 || view_dist > 70.0) {
+		return world_normal;
+	}
+	float fade = (1.0 - smoothstep(28.0, 70.0, view_dist)) * surface_detail * amount;
+	float e = 0.12;
+	float h0 = detail_bump_height(world_pos);
+	vec3 g = vec3(
+		detail_bump_height(world_pos + vec3(e, 0.0, 0.0)) - h0,
+		detail_bump_height(world_pos + vec3(0.0, e, 0.0)) - h0,
+		detail_bump_height(world_pos + vec3(0.0, 0.0, e)) - h0) / e;
+	g -= world_normal * dot(g, world_normal);
+	return normalize(world_normal - g * 0.07 * fade);
+}

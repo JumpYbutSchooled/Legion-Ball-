@@ -25,11 +25,66 @@ var _wait := 0
 var _warm := 4
 
 
+## Pictures are also saved to disk, per game version, so each is only ever rendered once
+## (rendering them built every weapon, a hitch a frame for the first minute of the menu).
+const DISK := "user://icon_cache/"
+static var _disk_dir := ""
+
+
 static func cached(id: String) -> Texture2D:
+	if not _cache.has(id):
+		_from_disk(id)
 	return _cache.get(id)
 
 
+## This version's folder of saved pictures.
+static func _dir() -> String:
+	if _disk_dir == "":
+		var f := FileAccess.open("res://version.txt", FileAccess.READ)
+		_disk_dir = DISK + (f.get_as_text().strip_edges() if f else "dev") + "/"
+	return _disk_dir
+
+
+static func _from_disk(id: String) -> void:
+	# Decoded ahead of time on another thread (preload_disk)?
+	if _decode_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_decode_task)
+		_decode_task = -1
+	var image: Image = _decoded.get(id)
+	if image == null:
+		var file := _dir() + id + ".png"
+		if FileAccess.file_exists(file):
+			image = Image.load_from_file(file)
+	if image and not image.is_empty():
+		_cache[id] = ImageTexture.create_from_image(image)
+	_decoded.erase(id)
+
+
+## Starts decoding the saved pictures of `ids` on a worker thread (the menu calls this as it
+## opens), so the Armory doesn't stop to read them.
+static var _decoded := {}
+static var _decode_task := -1
+
+
+static func preload_disk(ids: Array) -> void:
+	if _decode_task >= 0 or DisplayServer.get_name() == "headless":
+		return
+	var dir := _dir()
+	var todo := ids.filter(func(id) -> bool: return not _cache.has(id))
+	_decode_task = WorkerThreadPool.add_task(func() -> void:
+		var out := {}
+		for id in todo:
+			var file: String = dir + id + ".png"
+			if FileAccess.file_exists(file):
+				var image := Image.load_from_file(file)
+				if image and not image.is_empty():
+					out[id] = image
+		_decoded = out)
+
+
 func request(id: String) -> Texture2D:
+	if not _cache.has(id):
+		_from_disk(id)
 	if _cache.has(id):
 		return _cache[id]
 	if DisplayServer.get_name() == "headless":
@@ -100,6 +155,8 @@ func _process(_delta: float) -> void:
 	var image := _viewport.get_texture().get_image()
 	if image:
 		_cache[_current] = ImageTexture.create_from_image(image)
+		DirAccess.make_dir_recursive_absolute(_dir())
+		image.save_png(_dir() + _current + ".png")
 	if is_instance_valid(_weapon):
 		_weapon.queue_free()
 	var done := _current

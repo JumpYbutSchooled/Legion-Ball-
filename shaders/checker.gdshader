@@ -16,7 +16,12 @@ void vertex() {
 void fragment() {
 	vec2 cell = floor(world_pos.xz / cell_size);
 	float checker = mod(cell.x + cell.y, 2.0);
-	vec2 v = surface_variation(world_pos, length(VERTEX));
+	float dist = length(VERTEX);
+	vec2 v = surface_variation(world_pos, dist);
 	ALBEDO = mix(color_a, color_b, checker) * v.x;
-	ROUGHNESS = clamp(0.85 + v.y, 0.0, 1.0);
+	ROUGHNESS = clamp(0.88 + v.y, 0.0, 1.0);
+	vec3 wn = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
+	// Floors (mostly grass and sand): gentle bumps, no gloss (a sun glint on a bumpy
+	// glossy floor broke up into sparkly noise).
+	NORMAL = (VIEW_MATRIX * vec4(surface_bumped_normal(world_pos, wn, dist, 0.45), 0.0)).xyz;
 }

@@ -74,3 +74,8 @@ func _fire(pressed: bool, just: bool, _released: bool, _hit: Dictionary, delta: 
 			if other.global_position.distance_to(t.global_position) <= SPREAD_RADIUS:
 				manager.heal(other, HEAL_PER_SEC * TICK * 0.5)
 	manager.spawn_beam(tip(), (t.global_position - tip()).normalized(), tip().distance_to(t.global_position), 0.1, 0.15, 6.0, color)
+
+
+## How far through its reload it is, for the blades' refill animation (simple_weapon.gd).
+func reload_progress() -> float:
+	return _reload_t / RELOAD_TIME if reloading else -1.0
