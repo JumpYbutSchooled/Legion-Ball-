@@ -13,11 +13,15 @@ signal rush_ended(pos: Vector3, hit: Node3D, into_wall: bool)
 signal wrapped(offset: Vector3)
 ## Went through a rift (weapons/rift.gd): turned by `turn`, now at `to`.
 signal rifted(turn: Basis, to: Vector3)
+## Our own shield turned a shot back (match_tracker.gd counts it).
+signal parried
 
 const DashLaser := preload("res://scripts/dash_laser.gd")
 const SteamScript := preload("res://scripts/steam.gd")
 const ShieldScript := preload("res://scripts/shield.gd")
 const Sfx := preload("res://scripts/sfx.gd")
+const BallShader := preload("res://shaders/ball.gdshader")
+const Profile := preload("res://scripts/profile.gd")
 
 @export var camera_rig: Node3D
 @export var roll_torque := 12.0
@@ -168,6 +172,39 @@ func _ready() -> void:
 	var god_mat := _god_shield.material_override as ShaderMaterial
 	god_mat.set_shader_parameter("shell_radius", 2.1)
 	god_mat.set_shader_parameter("intensity", 2.8)
+	# Dressed in the plain skin until the arena says what this player wears.
+	if _skin_id == "":
+		set_skin("core", Color(0.35, 0.9, 1.0))
+
+
+## The ball's look (shaders/ball.gdshader): what's on it, and the light it was last told.
+var _skin_mat: ShaderMaterial
+var _skin_id := ""
+var _skin_seam := Color(0, 0, 0, 0)
+var _status_shown := -1.0
+var _status_color_shown := Color(0, 0, 0, 0)
+
+
+## Dresses the ball in skin `id` (profile.gd SKINS), on every computer. `seam` is the
+## colour of the light between its faces for skins that don't bring their own (the
+## player's colour), and for everyone in a team game (the team's).
+func set_skin(id: String, seam: Color) -> void:
+	if id == _skin_id and seam == _skin_seam:
+		return
+	var skin: Dictionary = Profile.SKINS.get(id, Profile.SKINS["core"])
+	_skin_id = id
+	_skin_seam = seam
+	if not _skin_mat:
+		_skin_mat = ShaderMaterial.new()
+		_skin_mat.shader = BallShader
+		($Mesh as MeshInstance3D).material_override = _skin_mat
+	_skin_mat.set_shader_parameter("base", skin["base"])
+	_skin_mat.set_shader_parameter("accent", skin["accent"])
+	_skin_mat.set_shader_parameter("seam", seam)
+	_skin_mat.set_shader_parameter("glow", skin["glow"])
+	_skin_mat.set_shader_parameter("rough", skin["rough"])
+	_skin_mat.set_shader_parameter("metal", skin["metal"])
+	_skin_mat.set_shader_parameter("pattern", skin["pattern"])
 
 
 func _process(delta: float) -> void:
@@ -540,6 +577,7 @@ func _show_block(duration: float) -> void:
 func on_parried(shooter_pos := Vector3.INF) -> void:
 	if is_multiplayer_authority() and not bot:
 		SteamScript.achieve(get_tree(), "PARRY")
+		parried.emit()
 	_shield.call("hit_flash")
 	_shield.call("stop")
 	_block_timer = 0.0
@@ -614,16 +652,17 @@ func _update_status_glow(delta: float) -> void:
 	_stagger_timer = maxf(_stagger_timer - delta, 0.0)
 	_jam_timer = maxf(_jam_timer - delta, 0.0)
 	_block_timer = maxf(_block_timer - delta, 0.0)
-	var mesh := $Mesh as MeshInstance3D
-	if not mesh.mesh:
+	# The glow itself pulses in the shader: it's only told when it starts, stops or changes
+	# colour.
+	if not _skin_mat:
 		return
-	var mat := mesh.mesh.surface_get_material(0) as StandardMaterial3D
-	if not mat:
-		return
-	mat.emission_enabled = _status_timer > 0.0
-	if _status_timer > 0.0:
-		mat.emission = _status_color
-		mat.emission_energy_multiplier = 1.0 + 0.8 * sin(Time.get_ticks_msec() / 90.0)
+	var amount := 1.0 if _status_timer > 0.0 else 0.0
+	if amount != _status_shown:
+		_status_shown = amount
+		_skin_mat.set_shader_parameter("status_amount", amount)
+	if amount > 0.0 and _status_color != _status_color_shown:
+		_status_color_shown = _status_color
+		_skin_mat.set_shader_parameter("status", _status_color)
 
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:

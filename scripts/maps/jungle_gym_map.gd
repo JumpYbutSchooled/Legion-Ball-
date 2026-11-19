@@ -14,7 +14,7 @@ var _red := solid(Color(0.85, 0.15, 0.12), 0.45)
 var _blue := solid(Color(0.15, 0.4, 0.9), 0.45)
 var _yellow := solid(Color(1.0, 0.8, 0.1), 0.45)
 var _green := solid(Color(0.2, 0.75, 0.3), 0.45)
-var _sand := solid(Color(0.93, 0.83, 0.58), 0.95)
+var _sand := earth(Color(0.93, 0.83, 0.58), 0.95)
 var _fence := solid(Color(0.92, 0.92, 0.9), 0.6)
 
 ## Decks: [x, z, height, colour of their roof or rail].

@@ -16,11 +16,11 @@ const MOAT_IN := WALL_HALF + WALL_THICK / 2.0 + 6.0
 const MOAT_WIDTH := 22.0
 const FIELD_HALF := 230.0
 
-var _stone := panel(Color(0.52, 0.5, 0.46), Color(0.42, 0.4, 0.37), 3.0)
-var _stone_dark := panel(Color(0.4, 0.38, 0.35), Color(0.32, 0.3, 0.28), 3.0)
+var _stone := masonry(Color(0.52, 0.5, 0.46), Color(0.42, 0.4, 0.37), 3.0)
+var _stone_dark := masonry(Color(0.4, 0.38, 0.35), Color(0.32, 0.3, 0.28), 3.0)
 var _grass := checker(Color(0.25, 0.45, 0.2), Color(0.27, 0.48, 0.21), 10.0)
 var _wood := solid(Color(0.42, 0.28, 0.16))
-var _water := glow(Color(0.12, 0.32, 0.55), 0.5)
+var _water := water(Color(0.12, 0.32, 0.55))
 var _roof := solid(Color(0.45, 0.14, 0.12))
 var _hay := solid(Color(0.85, 0.72, 0.35))
 var _rock := solid(Color(0.45, 0.43, 0.4))

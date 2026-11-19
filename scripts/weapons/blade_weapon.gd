@@ -57,6 +57,14 @@ var _pulse_b := PackedFloat32Array()
 ## True while this enter / exit is half of a weapon switch (weapon.gd select): the old
 ## weapon's pentagons scatter, and the new one's gather out of the same cloud.
 var _switching := false
+## What every blade's shader was last told, by name (_set_param): the same value again is
+## skipped. A ball carries nine weapons and most of them are put away most of the time; the
+## dozen values each one sent to every blade every frame (a thousand shader calls a frame
+## for one ball) were the biggest script cost in the game.
+var _sent := {}
+## The kick and tip opening each blade was last drawn with (only redone when they change).
+var _drawn_kick := PackedFloat32Array()
+var _drawn_open := PackedFloat32Array()
 
 
 func _ready() -> void:
@@ -67,6 +75,10 @@ func _ready() -> void:
 	_pulse_a.fill(-1.0)
 	_pulse_b.resize(_blades.size())
 	_pulse_b.fill(-1.0)
+	_drawn_kick.resize(_blades.size())
+	_drawn_kick.fill(-1.0)
+	_drawn_open.resize(_blades.size())
+	_drawn_open.fill(-1.0)
 	_set_param("color", color)
 	visible = false
 
@@ -188,15 +200,24 @@ func _process(delta: float) -> void:
 		time_scale = manager.ball.call("weapon_time_scale")
 	_cooldown = maxf(_cooldown - delta * time_scale, 0.0)
 	var settle := 1.0 - exp(-kick_recover * delta)
-	var kick_most := 0.0
 	for i in _blades.size():
-		kick_most = maxf(kick_most, _kicks[i])
-		_kicks[i] = lerpf(_kicks[i], 0.0, settle)
-		_blades[i].transform = Transform3D(_bases[i], Vector3(0, 0, _kicks[i] * kick_distance))
+		var kick := _kicks[i]
+		if kick != 0.0:
+			# Settles to exactly nothing, so a blade at rest costs nothing.
+			kick = lerpf(kick, 0.0, settle)
+			if kick < 0.0005:
+				kick = 0.0
+			_kicks[i] = kick
+		if kick != _drawn_kick[i]:
+			_drawn_kick[i] = kick
+			_blades[i].transform = Transform3D(_bases[i], Vector3(0, 0, kick * kick_distance))
 		# Per blade: its own shot kick can open its tip on top of the weapon-wide opening.
-		var mat := _blades[i].material_override as ShaderMaterial
-		if mat:
-			mat.set_shader_parameter("tip_open", maxf(tip_open, _kicks[i] * kick_open))
+		var open := maxf(tip_open, kick * kick_open)
+		if open != _drawn_open[i]:
+			_drawn_open[i] = open
+			var mat := _blades[i].material_override as ShaderMaterial
+			if mat:
+				mat.set_shader_parameter("tip_open", open)
 
 	var animating := state == State.ENTERING or state == State.EXITING
 	if animating:
@@ -245,6 +266,10 @@ func _finish_wave() -> void:
 
 
 func _set_param(param: StringName, value: Variant) -> void:
+	var last: Variant = _sent.get(param)
+	if typeof(last) == typeof(value) and last == value:
+		return
+	_sent[param] = value
 	for blade in _blades:
 		var mat := blade.material_override as ShaderMaterial
 		if mat:

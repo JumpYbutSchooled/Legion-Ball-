@@ -10,6 +10,14 @@ extends CanvasLayer
 ## - Each shatter (or rewind) is its own burst, so several can be flying at once when the
 ##   speed jumps through tiers quickly.
 ## Also shows the shield (Q) cooldown underneath.
+##
+## It's drawn in layers, each redrawn only when what it shows changes (it used to redraw all
+## of it, a couple of hundred lines and arcs, every frame: 2 ms of every frame, standing
+## still): the glass panel (when its colour changes), the dial's cells (when another lights),
+## the digits (when the number changes) and the shield bar (when it moves a cell). What
+## moves all the time is moved, not redrawn: the whole thing is shaken and tilted as one
+## node, the scanner dashes are turned, the bright band slides down the scanlines, and a
+## face fading in or out is faded.
 
 const UIStyle := preload("res://scripts/ui/ui_style.gd")
 const SteamScript := preload("res://scripts/steam.gd")
@@ -45,6 +53,22 @@ const SNAPSHOTS := 8
 var ball: RigidBody3D
 
 var _root: Control
+## The layers (see the top of the file), all inside _holder, which sits on the dial's centre.
+var _holder: Control
+var _panel: Control
+var _band: TextureRect
+var _dial: Control
+var _scanner: Control
+var _readout: Control
+var _infinity: Control
+var _shield_layer: Control
+var _shards_layer: Control
+## What each layer last drew: it's redrawn when this changes.
+var _panel_key := ""
+var _dial_key := ""
+var _readout_key := ""
+var _shield_key := ""
+var _had_bursts := false
 var _font: Font
 var _font_bold: Font
 var _tier := 0
@@ -71,8 +95,37 @@ func _ready() -> void:
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.draw.connect(_draw_all)
 	add_child(_root)
+	_holder = _layer(_root, Callable())
+	_panel = _layer(_holder, _draw_panel)
+	# The bright band that slides down the scanlines: a soft strip, clipped to the panel.
+	var clip := Control.new()
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip.clip_contents = true
+	clip.position = PANEL.position
+	clip.size = PANEL.size
+	_holder.add_child(clip)
+	var fade := Gradient.new()
+	fade.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
+	fade.colors = PackedColorArray([Color(1, 1, 1, 0), Color(1, 1, 1, 0.075), Color(1, 1, 1, 0)])
+	var strip := GradientTexture2D.new()
+	strip.gradient = fade
+	strip.fill_from = Vector2(0, 0)
+	strip.fill_to = Vector2(0, 1)
+	strip.width = 4
+	strip.height = 36
+	_band = TextureRect.new()
+	_band.texture = strip
+	_band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_band.stretch_mode = TextureRect.STRETCH_SCALE
+	_band.size = Vector2(PANEL.size.x - 2.0, 36.0)
+	clip.add_child(_band)
+	_dial = _layer(_holder, _draw_cells)
+	_scanner = _layer(_holder, _draw_scanner)
+	_readout = _layer(_holder, _draw_readout)
+	_infinity = _layer(_holder, _draw_infinity_layer)
+	_shield_layer = _layer(_holder, func() -> void: _draw_shield(Vector2(0.0, PANEL.end.y - 22.0)))
+	_shards_layer = _layer(_holder, _draw_bursts)
 	_ci = _root
 	for i in SNAPSHOTS:
 		var vp := SubViewport.new()
@@ -104,7 +157,77 @@ func _process(delta: float) -> void:
 		b["anim"] = move_toward(b["anim"], 1.0, delta / SHATTER_TIME)
 	_bursts = _bursts.filter(func(b: Dictionary) -> bool: return b["anim"] < 1.0)
 	_shake_t += delta * 38.0
-	_root.queue_redraw()
+	_refresh()
+
+
+## A layer: a node drawn by `draw` (nothing, if it only holds others) at its parent's origin.
+func _layer(parent: Control, draw: Callable) -> Control:
+	var node := Control.new()
+	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if draw.is_valid():
+		node.draw.connect(draw)
+	parent.add_child(node)
+	return node
+
+
+## Moves what moves, and redraws only the layers whose picture has changed.
+func _refresh() -> void:
+	var view := _root.size
+	var base := Vector2(view.x - PANEL.size.x / 2.0 - 20.0, view.y - PANEL.end.y - 20.0)
+	var speed_k := clampf(_display / MAX_DISPLAY, 0.0, 1.0)
+	# Shake: grows with speed, sharper at the top end.
+	var shake := pow(speed_k, 1.6) * 7.0
+	_holder.position = base + Vector2(_noise.get_noise_1d(_shake_t), _noise.get_noise_1d(_shake_t + 500.0)) * shake
+	_holder.rotation = _noise.get_noise_1d(_shake_t + 900.0) * pow(speed_k, 2.0) * 0.06
+	var now := Time.get_ticks_msec()
+	# How much of the new face is in: breaking fades it in; rewinding holds it back until
+	# the shards have landed.
+	var face_alpha := 1.0
+	if _anim < 1.0:
+		face_alpha = ease(_anim, 0.5) if _anim_dir > 0 else pow(_anim, 3.0)
+	var top := _tier >= 5
+	# The panel: its colour (at the top tier that cycles, a few steps a second).
+	var panel_key := "%d|%d" % [_tier, int(now / 90.0) if top else 0]
+	if panel_key != _panel_key:
+		_panel_key = panel_key
+		_panel.queue_redraw()
+	_band.position = Vector2(1.0, fmod(now / 1800.0, 1.0) * (PANEL.size.y + 36.0) - 36.0)
+	_band.modulate = _tier_color()
+	# The dial.
+	_dial.visible = not top
+	_scanner.visible = not top
+	_readout.visible = not top
+	_infinity.visible = top
+	if top:
+		_infinity.modulate.a = face_alpha
+		_infinity.queue_redraw()
+	else:
+		var within := clampf((_display - _tier * 100.0) / 100.0, 0.0, 1.0)
+		var dial_key := "%d|%d|%s" % [_tier, int(within * SEGMENTS), within > 0.02]
+		if dial_key != _dial_key:
+			if not _dial_key.begins_with("%d|" % _tier):
+				_scanner.queue_redraw()
+			_dial_key = dial_key
+			_dial.queue_redraw()
+		var readout_key := "%d|%d" % [_tier, int(_display)]
+		if readout_key != _readout_key:
+			_readout_key = readout_key
+			_readout.queue_redraw()
+		_dial.modulate.a = face_alpha
+		_readout.modulate.a = face_alpha
+		_scanner.modulate.a = face_alpha
+		_scanner.rotation = now / 1000.0 * (0.6 + within * 3.0)
+	# The shield bar.
+	if ball.has_method("get_block_ready_ratio"):
+		var ready_k: float = ball.call("get_block_ready_ratio")
+		var shield_key := "%d|%s|%d" % [int(ready_k * 20.0), ball.call("is_blocking"), int((1.0 - ready_k) * float(ball.get("block_cooldown")) * 10.0)]
+		if shield_key != _shield_key:
+			_shield_key = shield_key
+			_shield_layer.queue_redraw()
+	# Flying glass: while any is in the air (and once more after, to clear it).
+	if not _bursts.is_empty() or _had_bursts:
+		_shards_layer.queue_redraw()
+	_had_bursts = not _bursts.is_empty()
 
 
 ## With a little hysteresis on the way down so it doesn't flicker at a boundary.
@@ -132,6 +255,9 @@ func _change_tier(from: int, to: int, dir: int) -> void:
 	_tier = to
 	if to == 5:
 		SteamScript.achieve(get_tree(), "INFINITY")
+		var profile := get_tree().root.get_node_or_null("Profile")
+		if profile:
+			profile.call("add_stat", "infinity")
 	var volume: float = SettingsScript.read(get_tree(), "speedometer_volume")
 	if volume <= 0.01:
 		return
@@ -161,44 +287,26 @@ func _draw_snapshot(index: int) -> void:
 	_display = snap[3]
 	_ci = snap[1]
 	_ci.draw_set_transform(Vector2.ONE * GLASS_R, 0.0, Vector2.ONE)
-	_draw_dial(1.0)
+	_cells(1.0)
+	_dashes(1.0)
+	_digits(1.0)
 	_ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	_tier = keep[0]
 	_display = keep[1]
 	_ci = keep[2]
 
 
-func _draw_all() -> void:
-	if not ball:
-		return
-	var view := _root.size
-	var base := Vector2(view.x - PANEL.size.x / 2.0 - 20.0, view.y - PANEL.end.y - 20.0)
-	var speed_k := clampf(_display / MAX_DISPLAY, 0.0, 1.0)
-	# Shake: grows with speed, sharper at the top end.
-	var shake := pow(speed_k, 1.6) * 7.0
-	var center := base + Vector2(_noise.get_noise_1d(_shake_t), _noise.get_noise_1d(_shake_t + 500.0)) * shake
-	var jitter_rot := _noise.get_noise_1d(_shake_t + 900.0) * pow(speed_k, 2.0) * 0.06
-
-	# How much of the new face is in: breaking fades it in; rewinding holds it back until
-	# the shards have landed.
-	var p := ease(_anim, 0.5)
-	var face_alpha := 1.0
-	if _anim < 1.0:
-		face_alpha = p if _anim_dir > 0 else pow(_anim, 3.0)
-
-	_ci.draw_set_transform(center, jitter_rot, Vector2.ONE)
-	_draw_panel()
-	if _tier >= 5:
-		_draw_infinity(face_alpha)
-	else:
-		_draw_dial(face_alpha)
-	_draw_shield(Vector2(0.0, PANEL.end.y - 22.0))
-	# Shards: flying apart (breaking) or flying back together (rewinding).
-	# (The glass eases itself: crack flash, then the burst.)
+## The flying glass: flying apart (breaking) or back together (rewinding). (The glass eases
+## itself: crack flash, then the burst.)
+func _draw_bursts() -> void:
+	_ci = _shards_layer
 	for b in _bursts:
 		_draw_shards(b["anim"] if b["dir"] > 0 else 1.0 - b["anim"], b)
-	_ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
+
+func _draw_infinity_layer() -> void:
+	_ci = _infinity
+	_draw_infinity(1.0)
 
 ## Colour of the current tier (cycling hue once at infinity).
 func _tier_color() -> Color:
@@ -208,18 +316,17 @@ func _tier_color() -> Color:
 
 
 ## Faint glass panel like the weapon selector: see-through fill, hairline border,
-## bright corner brackets, a header line, scanlines and a slow scanning sweep.
+## bright corner brackets, a header line and scanlines (the brighter band sweeping down
+## through them is its own node, _band).
 func _draw_panel() -> void:
+	_ci = _panel
 	var col := _tier_color()
 	var r := PANEL
 	_ci.draw_rect(r, Color(0.02, 0.05, 0.08, 0.45))
 	_ci.draw_rect(r, Color(col, 0.16), false, 1.0)
-	# Scanlines, and a brighter band sweeping down through them.
-	var sweep := fmod(Time.get_ticks_msec() / 1800.0, 1.0) * r.size.y
 	var y := 0.0
 	while y < r.size.y:
-		var near := 1.0 - clampf(absf(y - sweep) / 18.0, 0.0, 1.0)
-		_ci.draw_line(Vector2(r.position.x + 1.0, r.position.y + y), Vector2(r.end.x - 1.0, r.position.y + y), Color(col, 0.035 + near * 0.08), 1.0)
+		_ci.draw_line(Vector2(r.position.x + 1.0, r.position.y + y), Vector2(r.end.x - 1.0, r.position.y + y), Color(col, 0.035), 1.0)
 		y += 4.0
 	# Corner brackets.
 	var b := 12.0
@@ -230,17 +337,32 @@ func _draw_panel() -> void:
 		_ci.draw_line(corner, corner + Vector2(0.0, b * sy), Color(col, 0.85), 1.5)
 	# Header: title left, tier right, hairline under both.
 	var top := r.position.y + 16.0
-	_ci.draw_string(_font, Vector2(r.position.x + 10.0, top), "// VELOCITY", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UIStyle.TEXT_DIM)
+	_ci.draw_string(_font, Vector2(r.position.x + 10.0, top), "VELOCITY", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UIStyle.TEXT_DIM)
 	var tier_text := "TIER --" if _tier >= 5 else "TIER %02d" % (_tier + 1)
 	var tw := _font.get_string_size(tier_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
 	_ci.draw_string(_font, Vector2(r.end.x - 10.0 - tw, top), tier_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
 	_ci.draw_line(Vector2(r.position.x + 10.0, top + 5.0), Vector2(r.end.x - 10.0, top + 5.0), Color(col, 0.2), 1.0)
 
 
+func _draw_cells() -> void:
+	_ci = _dial
+	_cells(1.0)
+
+
+func _draw_scanner() -> void:
+	_ci = _scanner
+	_dashes(1.0)
+
+
+func _draw_readout() -> void:
+	_ci = _readout
+	_digits(1.0)
+
+
 ## Segmented dial: a ring of cells that light up through each hundred, the leading one
-## white-hot, a ticked outer rail, a slowly turning scanner ring, and a digital readout.
-func _draw_dial(alpha: float) -> void:
-	var col: Color = TIER_COLORS[_tier]
+## white-hot, a ticked outer rail and the tier ladder.
+func _cells(alpha: float) -> void:
+	var col: Color = TIER_COLORS[mini(_tier, 4)]
 	col.a = alpha
 	var dim := Color(col, alpha * 0.14)
 	var within := clampf((_display - _tier * 100.0) / 100.0, 0.0, 1.0)
@@ -260,25 +382,33 @@ func _draw_dial(alpha: float) -> void:
 	for i in range(0, SEGMENTS + 1, 5):
 		var d := Vector2.from_angle(ARC_START + span * i)
 		_ci.draw_line(d * (RADIUS + 8.0), d * (RADIUS + 12.0), Color(col, alpha * 0.6), 1.0)
-	# Scanner ring: dashes turning inside the dial.
-	var spin := Time.get_ticks_msec() / 1000.0 * (0.6 + within * 3.0)
+	# Tier ladder: five pips, filled up to the current one.
+	for i in 5:
+		var pip := Rect2(Vector2(-22.0 + i * 10.0, 36.0), Vector2(6.0, 3.0))
+		_ci.draw_rect(pip, Color(TIER_COLORS[i], alpha * (0.9 if i <= _tier else 0.15)))
+
+
+## Scanner ring: dashes inside the dial (the node is turned, faster the nearer the next tier).
+func _dashes(alpha: float) -> void:
+	var col: Color = TIER_COLORS[mini(_tier, 4)]
 	for k in 12:
-		var a := spin + TAU * k / 12.0
+		var a := TAU * k / 12.0
 		_ci.draw_arc(Vector2.ZERO, RADIUS - 11.0, a, a + 0.22, 3, Color(col, alpha * 0.35), 1.0)
-	# Digital readout: dim "888" ghost segments behind the lit digits.
+
+
+## Digital readout: dim "888" ghost segments behind the lit digits.
+func _digits(alpha: float) -> void:
+	var col: Color = TIER_COLORS[mini(_tier, 4)]
+	col.a = alpha
 	var fs := 30
 	var ghost := "888"
 	var text := "%03d" % int(_display)
 	var w := _font_bold.get_string_size(ghost, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	_ci.draw_string(_font_bold, Vector2(-w / 2.0, 10.0), ghost, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(col, alpha * 0.08))
 	_ci.draw_string(_font_bold, Vector2(-w / 2.0, 10.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, alpha))
-	var unit := "U/S  //  x%d" % (_tier + 1)
+	var unit := "U/S   ·   x%d" % (_tier + 1)
 	var uw := _font.get_string_size(unit, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
 	_ci.draw_string(_font, Vector2(-uw / 2.0, 26.0), unit, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
-	# Tier ladder: five pips, filled up to the current one.
-	for i in 5:
-		var pip := Rect2(Vector2(-22.0 + i * 10.0, 36.0), Vector2(6.0, 3.0))
-		_ci.draw_rect(pip, Color(TIER_COLORS[i], alpha * (0.9 if i <= _tier else 0.15)))
 
 
 ## Past the top: a glowing, breathing infinity sign in shifting colour.
@@ -307,7 +437,8 @@ func _draw_shards(k: float, burst: Dictionary) -> void:
 
 ## Shield (Q) status: label plus a segmented charge bar.
 func _draw_shield(pos: Vector2) -> void:
-	if not ball.has_method("get_block_ready_ratio"):
+	_ci = _shield_layer
+	if not ball or not ball.has_method("get_block_ready_ratio"):
 		return
 	var ready_k: float = ball.call("get_block_ready_ratio")
 	var blocking: bool = ball.call("is_blocking")

@@ -47,6 +47,9 @@ var _kind := ""
 var _prev_info := {}
 var _last_info := {}
 var _switch := 1.0
+## Everything the last drawing was made from, hashed: it's only redrawn when this changes
+## (a crosshair at rest was being redrawn, anti-aliased arcs and all, every frame).
+var _drawn := 0
 
 
 func _ready() -> void:
@@ -78,7 +81,8 @@ func _process(delta: float) -> void:
 	modulate.a = move_toward(modulate.a, 0.0 if looking else 1.0, delta * 8.0)
 	var settle := 1.0 - exp(-kick_recover * delta)
 	for i in _kicks.size():
-		_kicks[i] = lerpf(_kicks[i], 0.0, settle)
+		# (All the way to nothing, so a settled crosshair stops changing.)
+		_kicks[i] = lerpf(_kicks[i], 0.0, settle) if _kicks[i] > 0.002 else 0.0
 
 	var info := _info()
 	var kind: String = info.get("kind", "")
@@ -122,7 +126,15 @@ func _process(delta: float) -> void:
 			# Settle back onto the nearest quarter turn.
 			var quarter := PI / 2.0
 			_spin = lerpf(_spin, roundf(_spin / quarter) * quarter, t)
-	queue_redraw()
+	# Parts that move on their own (blinking reloads, spinning lock brackets) redraw every
+	# frame; otherwise only when something it's drawn from has changed.
+	var moving: bool = info.get("reloading", false) or info.get("locked", false) or info.get("overheated", false) \
+		or info.get("attached", false) or info.get("painting", false) or not (info.get("marks", []) as Array).is_empty()
+	var arm: float = weapon.call("get_arm_amount") if weapon and weapon.has_method("get_arm_amount") else 1.0
+	var state := hash([info, arm, _switch, _kicks, _gat_center.snappedf(0.05), snappedf(_gat_radius, 0.02), _rail_center.snappedf(0.05), snappedf(_rail_radius, 0.02), snappedf(_spin, 0.002), size])
+	if moving or state != _drawn:
+		_drawn = state
+		queue_redraw()
 
 
 func _info() -> Dictionary:

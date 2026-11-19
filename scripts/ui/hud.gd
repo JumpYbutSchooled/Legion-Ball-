@@ -15,6 +15,8 @@ const FEED_TIME := 5.0
 const FEED_MAX := 5
 
 var arena: Node
+## This match's tally for the local player (scripts/match_tracker.gd).
+var tracker: Node
 
 var _net: Node
 var _health_fill: ColorRect
@@ -63,17 +65,17 @@ func _ready() -> void:
 	# Health bar, bottom-left.
 	var hp_box := VBoxContainer.new()
 	hp_box.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	hp_box.position = Vector2(28, -70)
+	hp_box.position = Vector2(28, -86)
 	root.add_child(hp_box)
-	_health_text = UIStyle.label("INTEGRITY 100", 13, UIStyle.ACCENT)
+	_health_text = UIStyle.label("INTEGRITY  100", 20, Color.WHITE, true)
 	hp_box.add_child(_health_text)
 	var bar_bg := ColorRect.new()
 	bar_bg.color = Color(0.0, 0.05, 0.08, 0.7)
-	bar_bg.custom_minimum_size = Vector2(260, 8)
+	bar_bg.custom_minimum_size = Vector2(260, 10)
 	hp_box.add_child(bar_bg)
 	_health_fill = ColorRect.new()
 	_health_fill.color = UIStyle.ACCENT
-	_health_fill.size = Vector2(260, 8)
+	_health_fill.size = Vector2(260, 10)
 	bar_bg.add_child(_health_fill)
 
 	# Kill feed, top-right.
@@ -85,7 +87,7 @@ func _ready() -> void:
 	root.add_child(_feed)
 
 	# Shown while the owner has locked everyone's weapons.
-	_locked_label = UIStyle.label("// WEAPONS LOCKED BY OWNER", 14, Color(1.0, 0.78, 0.25), true)
+	_locked_label = UIStyle.label("WEAPONS LOCKED BY OWNER", 14, Color(1.0, 0.78, 0.25), true)
 	_locked_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_locked_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_locked_label.custom_minimum_size = Vector2(400, 0)
@@ -171,6 +173,19 @@ func _ready() -> void:
 	_team_label.visible = false
 	root.add_child(_team_label)
 
+	# Medals and experience, stacked under the killstreak; level-ups across the middle.
+	_medals = VBoxContainer.new()
+	_medals.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_medals.custom_minimum_size = Vector2(520, 0)
+	_medals.position = Vector2(-260, 150)
+	_medals.alignment = BoxContainer.ALIGNMENT_BEGIN
+	_medals.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_medals)
+	var profile := get_tree().root.get_node_or_null("Profile")
+	if profile:
+		profile.connect("medal_earned", _on_medal)
+		profile.connect("leveled_up", _on_level_up)
+		profile.connect("challenge_done", func(c: Dictionary) -> void: _pop("CHALLENGE COMPLETE: %s   +%d XP" % [c["text"], int(c["xp"])], UIStyle.ACCENT, 18))
 	if arena:
 		arena.connect("health_changed", _on_health)
 		arena.connect("player_killed", _on_killed)
@@ -205,7 +220,7 @@ func _process(delta: float) -> void:
 		if _killed_by != "":
 			# The killcam (camera_rig.gd) moves to the killer after KILLCAM_DELAY.
 			var watching := _respawn_total - _respawn_left >= CameraRig.KILLCAM_DELAY
-			line = "%s %s  //  %s" % ["SPECTATING" if watching else "BY", _killed_by, line]
+			line = "%s %s   ·   %s" % ["SPECTATING" if watching else "BY", _killed_by, line]
 		_center_sub.text = line
 	if _vote_box.visible:
 		# Kept in the middle of the screen whatever its contents (it was drifting off centre).
@@ -228,9 +243,9 @@ func _update_mode_line() -> void:
 	if mode == "team_koth":
 		var left_t := int(arena.call("koth_time_left"))
 		var scores: Array = arena.get("team_scores")
-		var text_t := "TEAM KING OF THE HILL  //  %d:%02d LEFT  //  RED %ds  -  BLUE %ds" % [left_t / 60, left_t % 60, int(scores[0]), int(scores[1])]
+		var text_t := "TEAM KING OF THE HILL   ·   %d:%02d LEFT   ·   RED %ds  -  BLUE %ds" % [left_t / 60, left_t % 60, int(scores[0]), int(scores[1])]
 		if arena.call("on_hill", me):
-			text_t += "  //  ON THE HILL"
+			text_t += "   ·   ON THE HILL"
 		_mode_label.text = text_t
 		return
 	match NetScript.base_mode(mode):
@@ -240,20 +255,20 @@ func _update_mode_line() -> void:
 			for id in roster:
 				if leader < 0 or int(roster[id].get("score", 0)) > int(roster[leader].get("score", 0)):
 					leader = id
-			var text := "KING OF THE HILL  //  %d:%02d LEFT  //  YOU %ds" % [left / 60, left % 60, int(mine.get("score", 0))]
+			var text := "KING OF THE HILL   ·   %d:%02d LEFT   ·   YOU %ds" % [left / 60, left % 60, int(mine.get("score", 0))]
 			if leader >= 0 and leader != me:
-				text += "  //  LEADER %s %ds" % [_name(leader), int(roster[leader].get("score", 0))]
+				text += "   ·   LEADER %s %ds" % [_name(leader), int(roster[leader].get("score", 0))]
 			if arena.call("on_hill", me):
-				text += "  //  ON THE HILL"
+				text += "   ·   ON THE HILL"
 			_mode_label.text = text
 		"gungame":
 			var gun := WeaponInfo.by_id(String(mine.get("gun", "")))
-			_mode_label.text = "%s  //  %s  //  KILLS %d / %d" % [NetScript.MODE_NAMES.get(mode, "GUN GAME"), String(gun.get("name", "?")), int(mine.get("kills", 0)), goal]
+			_mode_label.text = "%s   ·   %s   ·   KILLS %d / %d" % [NetScript.MODE_NAMES.get(mode, "GUN GAME"), String(gun.get("name", "?")), int(mine.get("kills", 0)), goal]
 		"juggernaut":
 			var jugg: int = arena.get("juggernaut_id")
 			var round_n := mini(int(arena.get("juggernaut_rounds")) + 1, int(arena.call("get_rules")["juggernaut_rounds"]))
 			var who := "YOU ARE THE JUGGERNAUT" if jugg == me else ("JUGGERNAUT: " + _name(jugg) if jugg != 0 else "PICKING A JUGGERNAUT")
-			_mode_label.text = "JUGGERNAUT  //  ROUND %d / %d  //  %s  //  KILLS %d" % [round_n, int(arena.call("get_rules")["juggernaut_rounds"]), who, int(mine.get("kills", 0))]
+			_mode_label.text = "JUGGERNAUT   ·   ROUND %d / %d   ·   %s   ·   KILLS %d" % [round_n, int(arena.call("get_rules")["juggernaut_rounds"]), who, int(mine.get("kills", 0))]
 		_:
 			_mode_label.text = ""
 
@@ -274,7 +289,7 @@ func _update_staff_status(mod: Node, delta: float) -> void:
 		if mod.get("low_gravity"):
 			parts.append("LOW GRAVITY")
 	_locked_label.visible = not parts.is_empty()
-	_locked_label.text = "// " + "  //  ".join(parts)
+	_locked_label.text = "" + "   ·   ".join(parts)
 
 
 func _on_announced(text: String, by: String) -> void:
@@ -322,7 +337,7 @@ func _on_vote_opened(options: Array) -> void:
 	var pool: Array = _net.call("mode_pool") if _net else NetScript.MODES
 	for i in NetScript.MODES.size():
 		var b := Button.new()
-		b.text = "[ %s ]" % NetScript.MODE_NAMES[NetScript.MODES[i]]
+		b.text = "%s" % NetScript.MODE_NAMES[NetScript.MODES[i]]
 		b.pressed.connect(_vote_mode.bind(i))
 		b.visible = pool.has(NetScript.MODES[i])
 		head.add_child(b)
@@ -339,7 +354,7 @@ func _on_vote_opened(options: Array) -> void:
 	grid.picked.connect(func(path: String) -> void: _vote(options.find(path)))
 	map_scroll.add_child(grid)
 	_vote_grid = grid
-	var hint := UIStyle.label("CLICK A MAP AND A MODE  //  SCROLL FOR MORE  //  ARROWS OR D-PAD + ENTER / A", 11, UIStyle.TEXT_DIM)
+	var hint := UIStyle.label("CLICK A MAP AND A MODE   ·   SCROLL FOR MORE   ·   ARROWS OR D-PAD + ENTER / A", 11, UIStyle.TEXT_DIM)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(hint)
 	_vote_box.visible = true
@@ -378,7 +393,7 @@ func _on_vote_state(map_votes: Dictionary, mode_votes: Dictionary) -> void:
 		if m >= 0 and m < counts.size():
 			counts[m] += 1
 	for i in _mode_buttons.size():
-		_mode_buttons[i].text = "[ %s ]%s" % [NetScript.MODE_NAMES[NetScript.MODES[i]], "  " + "■".repeat(counts[i]) if counts[i] > 0 else ""]
+		_mode_buttons[i].text = "%s ]%s" % [NetScript.MODE_NAMES[NetScript.MODES[i]], "  " + "■".repeat(counts[i]) if counts[i] > 0 else ""]
 
 
 func _vote(index: int) -> void:
@@ -409,7 +424,7 @@ func _click() -> void:
 
 func _refresh_vote() -> void:
 	if _vote_title:
-		_vote_title.text = "// %s: PICK A MAP AND A MODE   %ds" % ["FIRST ROUND" if _first_vote else "NEXT ROUND", ceili(_vote_left)]
+		_vote_title.text = "%s: PICK A MAP AND A MODE   %ds" % ["FIRST ROUND" if _first_vote else "NEXT ROUND", ceili(_vote_left)]
 
 
 ## Team game: "RED 12 — 9 BLUE" across the top.
@@ -438,7 +453,7 @@ func _on_health(id: int, hp: float) -> void:
 		tw.tween_property(_health_text, "scale", Vector2.ONE, 0.3)
 	else:
 		tw.tween_property(_health_fill, "color", goal_color, 0.3)
-	_health_text.text = "INTEGRITY %d" % int(maxf(hp, 0.0))
+	_health_text.text = "INTEGRITY  %d" % int(maxf(hp, 0.0))
 
 
 func _on_killed(victim: int, attacker: int) -> void:
@@ -524,7 +539,9 @@ func _on_match_over(winner: int) -> void:
 		if mode_achievement != "":
 			SteamScript.achieve(get_tree(), mode_achievement)
 	var dedicated_server: bool = _net != null and not _net.call("is_host")
-	_center_sub.text = "VOTE FOR THE NEXT MAP" if dedicated_server else "RETURNING TO LOBBY..."
+	_center_sub.text = "VOTE FOR THE NEXT MAP" if dedicated_server or (_net != null and _net.get("skirmish")) else "RETURNING TO LOBBY..."
+	if tracker:
+		_pop("THIS MATCH: +%d XP    ·    %d KILLS  %d DEATHS  %d MEDALS" % [int(tracker.call("total_earned")), int(tracker.get("kills")), int(tracker.get("deaths")), (tracker.get("medals") as Array).size()], UIStyle.ACCENT, 20, 9.0)
 	_slam_in(_center)
 	_board.visible = true
 	_rebuild_board()
@@ -541,7 +558,7 @@ func _rebuild_board() -> void:
 	var goal := "MOST HILL TIME IN %d:00" % int(rules.get("koth_time", 300.0) / 60.0) if koth else "FIRST TO %d" % int(rules["kills_to_win"])
 	if mode == "juggernaut":
 		goal = "%d JUGGERNAUTS, MOST KILLS WINS" % int(rules.get("juggernaut_rounds", 5))
-	_board_rows.add_child(UIStyle.label("// SCOREBOARD  //  %s  //  %s" % [NetScript.MODE_NAMES.get(mode, "FREE FOR ALL"), goal], 16, UIStyle.ACCENT, true))
+	_board_rows.add_child(UIStyle.label("SCOREBOARD   ·   %s   ·   %s" % [NetScript.MODE_NAMES.get(mode, "FREE FOR ALL"), goal], 16, UIStyle.ACCENT, true))
 	_board_rows.add_child(UIStyle.label("MATCH TIME  %02d:%02d" % [time / 60, time % 60], 14, UIStyle.TEXT))
 	if not _net:
 		return
@@ -567,6 +584,10 @@ func _board_row(id: int, roster: Dictionary) -> void:
 	swatch.color = _net.call("player_color", id)
 	swatch.custom_minimum_size = Vector2(8, 18)
 	row.add_child(swatch)
+	var card := ProfileScript.clean_card(roster[id].get("card", {}))
+	var lv := UIStyle.label(" %2d" % int(card["level"]), 13, ProfileScript.rank_of(int(card["level"]))[1], true)
+	lv.custom_minimum_size = Vector2(30, 0)
+	row.add_child(lv)
 	var name_label := UIStyle.label("  " + String(roster[id]["name"]), 16, Color.WHITE if id == multiplayer.get_unique_id() else UIStyle.TEXT)
 	name_label.custom_minimum_size = Vector2(210, 0)
 	row.add_child(name_label)
@@ -585,3 +606,42 @@ func _board_row(id: int, roster: Dictionary) -> void:
 
 func _name(id: int) -> String:
 	return _net.call("player_name", id) if _net else "?"
+
+
+var _medals: VBoxContainer
+const ProfileScript := preload("res://scripts/profile.gd")
+
+
+func _on_medal(id: String) -> void:
+	var m: Dictionary = ProfileScript.MEDALS[id]
+	_pop("%s   +%d XP" % [m["name"], int(m["xp"])], m["color"], 20 + 2 * int(m["tier"]))
+	var sfx := get_tree().root.get_node_or_null("Sfx")
+	if sfx:
+		sfx.call("play_ui", "medal", -7.0, 0.9 + 0.07 * int(m["tier"]))
+
+
+func _on_level_up(level: int) -> void:
+	var rank: Array = ProfileScript.rank_of(level)
+	_pop("LEVEL UP   ·   %d  %s" % [level, rank[0]], rank[1], 34, 4.5)
+	for u in ProfileScript.unlocks_at(level):
+		_pop("UNLOCKED %s: %s" % [u[0], u[2]], Color.WHITE, 18, 4.5)
+	var sfx := get_tree().root.get_node_or_null("Sfx")
+	if sfx:
+		sfx.call("play_ui", "level_up", -5.0, 1.0)
+
+
+## A line that slams in under the killstreak, holds, and fades (at most five at once).
+func _pop(text: String, color: Color, size: int, hold := 2.4) -> void:
+	var line := UIStyle.label(text, size, color, true)
+	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	line.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	line.add_theme_constant_override("outline_size", 6)
+	_medals.add_child(line)
+	while _medals.get_child_count() > 5:
+		_medals.get_child(0).free()
+	line.modulate.a = 0.0
+	var tw := line.create_tween()
+	tw.tween_property(line, "modulate:a", 1.0, 0.12)
+	tw.tween_interval(hold)
+	tw.tween_property(line, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(line.queue_free)

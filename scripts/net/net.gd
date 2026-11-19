@@ -7,6 +7,10 @@ extends Node
 ## - Local: one player hosts (ENet on PORT) and others on the same network join by IP.
 ## The server/host owns the roster {peer_id: {name, color, kills, deaths}} and sends it
 ## to everyone whenever it changes. Late joiners go straight into a running match.
+## - Skirmish: a match against bots on this computer alone (start_skirmish). It's a hosted
+##   match with nobody else in it and no connection at all: the "network" is the offline
+##   peer, so nothing listens on a port and no firewall asks. The match loops round after
+##   round (with the vote in between) like an online server's, until the player leaves.
 ## Offline (no host/join) the game runs as single-player practice.
 
 signal roster_changed
@@ -96,6 +100,7 @@ const CLASSIC_SERVERS := [2, 3]
 const MENU_SCENE := "res://scenes/menu.tscn"
 const SceneLoader := preload("res://scripts/ui/scene_loader.gd")
 const WeaponInfo := preload("res://scripts/weapon_info.gd")
+const Profile := preload("res://scripts/profile.gd")
 const CONNECT_TIMEOUT := 8.0
 ## A sleeping free-tier server takes up to about a minute to wake; keep retrying this long.
 const SERVER_WAKE_TIMEOUT := 100.0
@@ -162,6 +167,9 @@ var classic := false
 ## Bots on this server (any player can switch them off or on from the pause menu). The
 ## server's copy is the real one; everyone gets told when it changes (_zzbots_state).
 var bots_enabled := true
+## A skirmish (see the top): this player and `skirmish_bots` bots, nobody else.
+var skirmish := false
+var skirmish_bots := 3
 ## Round trip to the server in milliseconds (clients; measured every couple of seconds).
 var ping_ms := -1
 var _ping_timer := 0.0
@@ -172,6 +180,9 @@ var version := ""
 var _peer_versions := {}
 # Server: the loadout each peer sent before registering (weapon_info.gd ids).
 var _peer_loadouts := {}
+# Server: the card (ball skin, trail, level: profile.gd public_card) each peer sent before
+# registering.
+var _peer_cards := {}
 
 var _connecting := false
 var _connect_timer := 0.0
@@ -213,7 +224,12 @@ func update_bots() -> bool:
 		return false
 	var humans := human_count()
 	var want := 0
-	if bots_enabled and humans > 0 and humans < BOT_FILL:
+	if skirmish:
+		want = skirmish_bots
+		# Even teams: one more bot if there's room, else one fewer.
+		if TEAM_MODES.has(game_mode) and (humans + want) % 2 == 1:
+			want += 1 if humans + want < MAX_PLAYERS else -1
+	elif bots_enabled and humans > 0 and humans < BOT_FILL:
 		want = mini(BOT_FILL - humans, MAX_BOTS)
 		if TEAM_MODES.has(game_mode) and (humans + want) % 2 == 1 and want < MAX_BOTS:
 			want += 1
@@ -231,6 +247,10 @@ func update_bots() -> bool:
 		var id := BOT_ID_BASE - n
 		players[id] = _new_player("BOT " + String(BOT_NAMES[(n - 1) % BOT_NAMES.size()]), _free_color())
 		players[id]["bot"] = true
+		# Each bot in a look of its own (the same bot keeps it: picked from its number).
+		var skins: Array = Profile.SKINS.keys()
+		var trails: Array = Profile.TRAILS.keys()
+		players[id]["card"] = {"skin": skins[(n * 5 + 2) % skins.size()], "trail": trails[(n * 3 + 1) % trails.size()], "level": 3 + (n * 7) % 30}
 		if TEAM_MODES.has(game_mode):
 			players[id]["team"] = _smaller_team()
 		bots.append(id)
@@ -346,9 +366,32 @@ func host(port := PORT) -> Error:
 	online = true
 	players = {1: _new_player(local_name(), 0)}
 	players[1]["loadout"] = WeaponInfo.local_loadout(get_tree())
+	players[1]["card"] = _local_card()
 	_set_status("Hosting on port %d" % port)
 	roster_changed.emit()
 	return OK
+
+
+## A skirmish on `map` in `mode` against `bots` bots (see the top of the file). Starts at
+## once.
+func start_skirmish(map: String, mode: String, bots: int) -> void:
+	leave()
+	online = true
+	skirmish = true
+	skirmish_bots = clampi(bots, 1, MAX_PLAYERS - 1)
+	players = {1: _new_player(local_name(), 0)}
+	players[1]["loadout"] = WeaponInfo.local_loadout(get_tree())
+	players[1]["card"] = _local_card()
+	map_scene = map if MAP_NAMES.has(map) else ARENA_SCENE
+	game_mode = mode if MODES.has(mode) else "ffa"
+	roster_changed.emit()
+	start_match()
+
+
+## This player's card (ball skin, trail, level) from their career.
+func _local_card() -> Dictionary:
+	var profile := Profile.of(get_tree())
+	return Profile.clean_card(profile.call("public_card") if profile else {})
 
 
 func join(ip: String, port := PORT) -> Error:
@@ -481,6 +524,7 @@ func leave() -> void:
 	online = false
 	in_match = false
 	dedicated = false
+	skirmish = false
 	_connecting = false
 	_server_url = ""
 	_retry_timer = -1.0
@@ -551,7 +595,7 @@ func end_match() -> void:
 	update_bots()
 	assign_teams()
 	_sync_roster.rpc(players)
-	if dedicated:
+	if dedicated or skirmish:
 		_zzuse_mode.rpc(game_mode)
 		_use_map.rpc(map_scene)
 		_load_arena.rpc()
@@ -597,6 +641,8 @@ func _on_connected() -> void:
 	_version_is.rpc_id(1, version)
 	# Our loadout too, so we spawn with our own weapons even when joining mid-match.
 	_zset_loadout.rpc_id(1, WeaponInfo.local_loadout(get_tree()))
+	# ...and our card: the ball skin and trail everyone else will see, and our level.
+	_zzzcard.rpc_id(1, _local_card())
 	_register.rpc_id(1, local_name())
 
 
@@ -634,6 +680,7 @@ func _on_peer_connected(id: int) -> void:
 func _on_peer_disconnected(id: int) -> void:
 	_peer_versions.erase(id)
 	_peer_loadouts.erase(id)
+	_peer_cards.erase(id)
 	if not multiplayer.is_server() or not players.has(id):
 		return
 	if dedicated:
@@ -683,6 +730,7 @@ func _register(player_name_in: String) -> void:
 		return
 	players[id] = _new_player(player_name_in.strip_edges().substr(0, 16), _free_color())
 	players[id]["loadout"] = _allowed_loadout(_peer_loadouts.get(id, []))
+	players[id]["card"] = Profile.clean_card(_peer_cards.get(id, {}))
 	if TEAM_MODES.has(game_mode):
 		players[id]["team"] = _smaller_team()
 	_zzclassic.rpc_id(id, classic)
@@ -791,6 +839,35 @@ func _zset_loadout(ids: Array) -> void:
 		_sync_roster.rpc(players)
 	else:
 		_peer_loadouts[id] = clean
+
+
+## Tell the server our card changed (a new skin or trail picked in the Locker while
+## connected).
+func send_card() -> void:
+	if not online:
+		return
+	if multiplayer.is_server():
+		_zzzcard(_local_card())
+	else:
+		_zzzcard.rpc_id(1, _local_card())
+
+
+## A player's card (ball skin, trail, level): before they register (kept for _register),
+## or a change later. Only known skins and trails and a sane level get through
+## (profile.gd clean_card). (Named to sort last.)
+@rpc("any_peer", "reliable")
+func _zzzcard(card: Dictionary) -> void:
+	if not multiplayer.is_server():
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if id == 0:
+		id = 1
+	var clean := Profile.clean_card(card)
+	if players.has(id):
+		players[id]["card"] = clean
+		_sync_roster.rpc(players)
+	else:
+		_peer_cards[id] = clean
 
 
 ## The loadout a player gets here: their own, or the original six on a CLASSIC server.

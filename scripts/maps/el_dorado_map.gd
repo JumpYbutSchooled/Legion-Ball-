@@ -13,13 +13,13 @@ const BASE := 90.0
 
 var _gold := solid(Color(1.0, 0.78, 0.25), 0.25, 1.0)
 var _gold_dark := solid(Color(0.8, 0.55, 0.15), 0.35, 1.0)
-var _stone := panel(Color(0.62, 0.55, 0.42), Color(0.52, 0.46, 0.34), 3.0)
-var _stone_dark := panel(Color(0.48, 0.42, 0.32), Color(0.4, 0.35, 0.26), 3.0)
+var _stone := masonry(Color(0.62, 0.55, 0.42), Color(0.52, 0.46, 0.34), 3.0)
+var _stone_dark := masonry(Color(0.48, 0.42, 0.32), Color(0.4, 0.35, 0.26), 3.0)
 var _plaza := checker(Color(0.85, 0.66, 0.25), Color(0.78, 0.6, 0.22), 6.0)
 var _jungle := checker(Color(0.12, 0.32, 0.14), Color(0.14, 0.36, 0.16), 10.0)
 var _leaves := [solid(Color(0.12, 0.4, 0.15)), solid(Color(0.18, 0.48, 0.18)), solid(Color(0.1, 0.33, 0.12))]
 var _trunk := solid(Color(0.3, 0.2, 0.12))
-var _water := glow(Color(0.15, 0.55, 0.45), 0.6)
+var _water := water(Color(0.15, 0.55, 0.45))
 var _cliff := solid(Color(0.4, 0.34, 0.26))
 
 

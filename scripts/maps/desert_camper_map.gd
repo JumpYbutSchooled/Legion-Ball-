@@ -11,7 +11,7 @@ const HEIGHT := 2.9
 const FLOOR := 0.9
 
 var _sand := checker(Color(0.82, 0.68, 0.48), Color(0.78, 0.64, 0.45), 8.0)
-var _dirt := solid(Color(0.66, 0.52, 0.36), 0.95)
+var _dirt := earth(Color(0.66, 0.52, 0.36), 0.95)
 var _mesa := solid(Color(0.66, 0.36, 0.22), 0.95)
 var _mesa2 := solid(Color(0.74, 0.44, 0.28), 0.95)
 var _rock := solid(Color(0.55, 0.45, 0.36), 0.95)

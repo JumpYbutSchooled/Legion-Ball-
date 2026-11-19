@@ -22,8 +22,8 @@ func _setup() -> void:
 
 func _decorate() -> void:
 	# The infield lake: a sunken pool in the back half of the infield with a sandy rim.
-	var water := glow(Color(0.1, 0.45, 0.8), 0.6)
-	box(Vector3(20.0, 0.15, -40.0), Vector3(200.0, 0.3, 90.0), water)
+	var lake := water(Color(0.1, 0.45, 0.8))
+	box(Vector3(20.0, 0.15, -40.0), Vector3(200.0, 0.3, 90.0), lake)
 	for side: float in [-1.0, 1.0]:
 		box(Vector3(20.0, 0.6, -40.0 + side * 47.0), Vector3(204.0, 1.2, 4.0), solid(Color(0.8, 0.72, 0.5)))
 	for side: float in [-1.0, 1.0]:

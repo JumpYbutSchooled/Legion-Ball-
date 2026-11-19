@@ -60,6 +60,9 @@ var _fired := {}
 ## the background when the game starts (scripts/sfx.gd), and it isn't the same silent.
 var _sounds_ready := false
 var _held := 0.0
+## The main menu has a live map behind it (menu_backdrop.gd): show that through, instead
+## of this screen's own still pictures.
+var live := false
 
 
 func _ready() -> void:
@@ -94,6 +97,9 @@ func _ready() -> void:
 		_root.add_child(tex)
 		_back.append(tex)
 	_back[0].texture = _load_map(0)
+	if live:
+		backing.color.a = 0.0
+		_back[0].visible = false
 	# Shade over it: darker at the edges and the bottom, so the art and buttons stand out.
 	var shade := TextureRect.new()
 	var grad := GradientTexture2D.new()
@@ -122,7 +128,7 @@ func _ready() -> void:
 	# The buttons (hidden until the intro brings them up).
 	for spec in [["PLAY", "play"], ["TUTORIAL", "tutorial"]]:
 		var b := Button.new()
-		b.text = "[ %s ]" % spec[0]
+		b.text = "%s" % spec[0]
 		b.set_meta("ui_motion", true)  # its own springy motion, below
 		b.add_theme_font_size_override("font_size", 26)
 		b.custom_minimum_size = Vector2(250, 64)
@@ -134,7 +140,7 @@ func _ready() -> void:
 		_springs[b] = [0.0, 0.0]
 	_buttons[0].focus_neighbor_right = _buttons[1].get_path()
 	_buttons[1].focus_neighbor_left = _buttons[0].get_path()
-	var hint := UIStyle.label("CLICK OR PRESS A TO START", 13, UIStyle.TEXT_DIM)
+	var hint := UIStyle.caption("CLICK OR PRESS A TO START")
 	hint.name = "Hint"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.modulate.a = 0.0
@@ -536,7 +542,7 @@ class ArtLayer:
 class LogoLayer:
 	extends Control
 	const WORD := "BALLISTIC"
-	const SUB := "COMBAT SIMULATION  //  CRYSTAL WEAPONS DIVISION"
+	const SUB := "ARENA COMBAT   ·   CRYSTAL WEAPONS"
 	const SIZE := 132
 	var hue := 0.55
 	var now := 0.0
@@ -547,8 +553,8 @@ class LogoLayer:
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_font = UIStyle.font(true)
-		_sub_font = UIStyle.font(true)
+		_font = UIStyle.heading(10)
+		_sub_font = UIStyle.heading(3)
 
 	func slam(i: int, at: float) -> void:
 		_slams[i] = at

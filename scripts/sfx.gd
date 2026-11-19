@@ -225,6 +225,17 @@ func _build_all() -> void:
 	# Loops.
 	s["charge"] = _wav(_hum(1.0), true)
 	s["wind"] = _wav(_wind(3.0), true)
+	# Career: a bright two-step chime for a medal, a longer rising one for a level.
+	s["medal"] = _wav(_mix([
+		_gain(_shimmer(0.22, 700.0, 1400.0, 0.003), 0.5),
+		_delay(_gain(_shimmer(0.4, 1050.0, 2100.0, 0.003), 0.45), 0.1),
+	]))
+	s["level_up"] = _wav(_mix([
+		_gain(_shimmer(0.5, 400.0, 1600.0, 0.01), 0.5),
+		_delay(_gain(_shimmer(0.6, 800.0, 2400.0, 0.01), 0.45), 0.22),
+		_delay(_gain(_glass(0.7), 0.3), 0.45),
+		_gain(_sweep(0.6, 120.0, 60.0, 0.0, 0.005), 0.35),
+	]))
 	SoundCache.save_set("sfx", _key, s)
 	_set_streams.call_deferred(s)
 

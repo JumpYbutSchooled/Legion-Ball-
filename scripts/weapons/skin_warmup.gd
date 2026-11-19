@@ -39,5 +39,27 @@ func _process(_delta: float) -> void:
 		set_process(false)
 
 
+## Scripts that keep meshes, materials or textures in static variables (shared between
+## every effect of a kind), and those variables. They're let go when the game closes:
+## left alone, they were only freed after the renderer had already shut down, which
+## crashed the game on the way out (every quit ended in an access violation).
+const STATICS := {
+	"res://scripts/weapons/pentagon_skin.gd": {"_cache": {}, "_ready_arrays": {}, "_queued": {}},
+	"res://scripts/explosion.gd": {"_puff_tex": null, "_cache": {}, "_meshes": {}, "_glow_mat": null, "_smoke_mat": null},
+	"res://scripts/dash_laser.gd": {"_shared_mat": null, "_meshes": {}},
+	"res://scripts/light_flare.gd": {"_shared_mat": null, "_quad": null},
+	"res://scripts/muzzle_warp.gd": {"_shared_mat": null, "_sphere": null},
+	"res://scripts/wall_ripple.gd": {"_mat": null, "_mesh": null},
+	"res://scripts/graphics.gd": {"_dirt": null},
+	"res://scripts/ui/map_grid.gd": {"_thumbs": {}},
+	"res://scripts/ui/weapon_icons.gd": {"_cache": {}, "_decoded": {}},
+}
+
+
 func _exit_tree() -> void:
 	PentagonSkin.shutdown()
+	load("res://scripts/ui/weapon_icons.gd").finish_decoding()
+	for path in STATICS:
+		var script: Script = load(path)
+		for key in STATICS[path]:
+			script.set(key, STATICS[path][key])

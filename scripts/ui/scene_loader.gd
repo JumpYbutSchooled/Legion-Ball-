@@ -60,7 +60,7 @@ func _go(path: String) -> void:
 	# (Loaded here, not preloaded: net.gd preloads this script.)
 	var map_names: Dictionary = load("res://scripts/net/net.gd").MAP_NAMES
 	var name: String = map_names.get(path, "")
-	_sub.text = ("//  " + name) if name != "" else "//  BALLISTIC"
+	_sub.text = (" " + name) if name != "" else " BALLISTIC"
 	_sub.add_theme_color_override("font_color", UIStyle.ACCENT)
 	_bar.color = UIStyle.ACCENT
 	_root.visible = true

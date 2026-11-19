@@ -14,7 +14,7 @@ const SettingsScript := preload("res://scripts/settings.gd")
 
 const SIZE := 220.0
 const MARGIN := 20.0
-## Space round the map inside the box (the top has the "// MAP" header).
+## Space round the map inside the box (the top has the "MAP" header).
 const PAD := 20.0
 ## Players this close always show, wall or not.
 const CLOSE := 25.0
@@ -291,4 +291,4 @@ func _draw_map() -> void:
 		var sy := 1.0 if corner.y == 0.0 else -1.0
 		_panel.draw_line(corner, corner + Vector2(b * sx, 0), UIStyle.ACCENT, 2.0)
 		_panel.draw_line(corner, corner + Vector2(0, b * sy), UIStyle.ACCENT, 2.0)
-	_panel.draw_string(_font, Vector2(10, 16), "// MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UIStyle.TEXT_DIM)
+	_panel.draw_string(_font, Vector2(10, 16), "MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UIStyle.TEXT_DIM)

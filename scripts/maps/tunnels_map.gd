@@ -24,7 +24,7 @@ const ROW_COLORS := [
 ]
 
 var _floor := checker(Color(0.26, 0.26, 0.28), Color(0.31, 0.31, 0.33), 4.0)
-var _rock := panel(Color(0.24, 0.23, 0.22), Color(0.3, 0.29, 0.28), 5.0)
+var _rock := masonry(Color(0.24, 0.23, 0.22), Color(0.3, 0.29, 0.28), 5.0)
 var _roof := solid(Color(0.14, 0.14, 0.15))
 var _metal := solid(Color(0.3, 0.32, 0.35), 0.5, 0.6)
 ## Corridors, as pairs of grid cells [Vector2i, Vector2i].

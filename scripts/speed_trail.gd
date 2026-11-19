@@ -13,6 +13,10 @@ const MAX_WIDTH := 0.42
 
 var ball: Node3D
 var color := Color(0.35, 0.9, 1.0)
+## A trail from the Locker (profile.gd TRAILS): its colours tail to head (empty: `color`
+## all the way), or a rainbow running down it.
+var colors: Array = []
+var rainbow := false
 
 var _points: Array[Vector3] = []
 var _speeds: Array[float] = []
@@ -92,7 +96,12 @@ func _process(delta: float) -> void:
 		var k := clampf(inverse_lerp(START_SPEED, FULL_SPEED, _speeds[i]), 0.0, 1.0)
 		var fade := 1.0 - float(i) / (_points.size() - 1)
 		var width := MAX_WIDTH * k * fade
-		var col := Color(color.r, color.g, color.b, k * fade * fade * 0.55)
+		var tint := color
+		if rainbow:
+			tint = Color.from_hsv(fposmod(Time.get_ticks_msec() / 1400.0 - float(i) * 0.035, 1.0), 0.75, 1.0)
+		elif colors.size() >= 2:
+			tint = (colors[0] as Color).lerp(colors[1], fade)
+		var col := Color(tint.r, tint.g, tint.b, k * fade * fade * 0.55)
 		_mesh.surface_set_color(col)
 		_mesh.surface_add_vertex(p + side * width)
 		_mesh.surface_set_color(col)

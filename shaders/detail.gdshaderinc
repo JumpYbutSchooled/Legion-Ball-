@@ -45,10 +45,11 @@ float detail_bump_height(vec3 p) {
 }
 
 vec3 surface_bumped_normal(vec3 world_pos, vec3 world_normal, float view_dist, float amount) {
-	if (surface_detail <= 0.0 || view_dist > 70.0) {
+	// (Four noise lookups: the dearest thing the map shaders do, so only where it shows.)
+	if (surface_detail <= 0.0 || view_dist > 46.0) {
 		return world_normal;
 	}
-	float fade = (1.0 - smoothstep(28.0, 70.0, view_dist)) * surface_detail * amount;
+	float fade = (1.0 - smoothstep(20.0, 46.0, view_dist)) * surface_detail * amount;
 	float e = 0.12;
 	float h0 = detail_bump_height(world_pos);
 	vec3 g = vec3(

@@ -45,8 +45,8 @@ func _ready() -> void:
 	column.add_theme_constant_override("separation", 10)
 	window.add_child(column)
 	var current: String = loadout[slot] if slot < loadout.size() else ""
-	column.add_child(UIStyle.label("// SLOT %d  //  %s" % [slot + 1, WeaponInfo.by_id(current).get("name", "EMPTY")], 18, UIStyle.ACCENT, true))
-	column.add_child(UIStyle.label("HOVER FOR DETAILS  //  PRESS TO EQUIP  //  ESC TO CLOSE", 11, UIStyle.TEXT_DIM))
+	column.add_child(UIStyle.label("SLOT %d   ·   %s" % [slot + 1, WeaponInfo.by_id(current).get("name", "EMPTY")], 18, UIStyle.ACCENT, true))
+	column.add_child(UIStyle.label("HOVER FOR DETAILS   ·   PRESS TO EQUIP   ·   ESC TO CLOSE", 11, UIStyle.TEXT_DIM))
 
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -73,7 +73,7 @@ func _ready() -> void:
 			if not first or id == current:
 				first = tile
 	var close_button := Button.new()
-	close_button.text = "[ CLOSE ]"
+	close_button.text = "CLOSE"
 	close_button.size_flags_horizontal = Control.SIZE_SHRINK_END
 	close_button.pressed.connect(close)
 	column.add_child(close_button)
@@ -194,7 +194,7 @@ class WeaponTooltip:
 		panel.add_child(column)
 		column.add_child(_line(info.get("name", id), 18, color, true))
 		var group_name: String = WeaponInfo.GROUPS[info["group"]]["name"] if info.has("group") else "STAFF WEAPON"
-		column.add_child(_line("%s  //  %s" % [group_name, info.get("tag", "")], 11, UIStyle.TEXT_DIM))
+		column.add_child(_line("%s   ·   %s" % [group_name, info.get("tag", "")], 11, UIStyle.TEXT_DIM))
 		column.add_child(_line(info.get("summary", ""), 13, Color.WHITE))
 		if info.has("usage"):
 			column.add_child(_line("OPERATION", 11, color.lightened(0.3), true))

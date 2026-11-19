@@ -1,6 +1,6 @@
 extends CanvasLayer
 ## Mouse-wheel weapon browser. Scrolling slides a small panel in from the left, in the
-## same style as the rest of the UI (dark glass, thin cyan border, "// ARMAMENT" header,
+## same style as the rest of the UI (dark glass, thin cyan border, "ARMAMENT" header,
 ## bracketed names): a ring of weapon slots (the one you've scrolled to lit in its colour,
 ## a dot on the equipped one) round a spinning hologram of that weapon, with its name
 ## below. Right-click equips it; it hides after a few idle seconds. Ctrl + wheel is left
@@ -206,19 +206,19 @@ func _process(delta: float) -> void:
 func _refresh() -> void:
 	var info: Dictionary = weapon.call("slot_info", _candidate)
 	var color: Color = info["color"]
-	_name.text = "[ %s ]" % info["name"]
+	_name.text = "%s" % info["name"]
 	_name.add_theme_color_override("font_color", color)
 	_tag.text = info["tag"]
 	_slot_label.text = "%02d/%02d" % [_candidate + 1, _count()]
 	var equipped: int = weapon.get("current")
 	if _candidate == equipped:
-		_hint.text = "// EQUIPPED"
+		_hint.text = "EQUIPPED"
 		_hint.add_theme_color_override("font_color", UIStyle.ACCENT)
 	else:
 		if _pad_wheel:
-			_hint.text = "RIGHT STICK  //  RT EQUIP"
+			_hint.text = "RIGHT STICK   ·   RT EQUIP"
 		else:
-			_hint.text = "LB/RB  //  EQUIP" if InputSetup.using_pad else "RMB  //  EQUIP"
+			_hint.text = "LB/RB   ·   EQUIP" if InputSetup.using_pad else "RMB   ·   EQUIP"
 		_hint.add_theme_color_override("font_color", UIStyle.TEXT_DIM)
 	_holo_mat.set_shader_parameter("color", color)
 	_pad_mat.set_shader_parameter("color", color)
@@ -338,7 +338,7 @@ func _build_ui() -> void:
 
 	var header := HBoxContainer.new()
 	column.add_child(header)
-	var title := UIStyle.label("// ARMAMENT", 10, UIStyle.ACCENT, true)
+	var title := UIStyle.label("ARMAMENT", 10, UIStyle.ACCENT, true)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 	_slot_label = UIStyle.label("", 10, UIStyle.TEXT_DIM)

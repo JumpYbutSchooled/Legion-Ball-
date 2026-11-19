@@ -27,15 +27,16 @@ func _ready() -> void:
 
 	var dim := ColorRect.new()
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.0, 0.02, 0.04, 0.45)
+	dim.color = Color(0.0, 0.015, 0.035, 0.86)
 	_root.add_child(dim)
 	_dim = dim
-	var title := UIStyle.label("SIMULATION PAUSED", 48, Color.WHITE, true)
-	title.position = Vector2(62, 44)
+	var title := UIStyle.label("PAUSED", 56, Color.WHITE, true)
+	title.add_theme_font_override("font", UIStyle.heading(8))
+	title.position = Vector2(56, 26)
 	_root.add_child(title)
 	_title = title
-	var sub := UIStyle.label("ALL SYSTEMS HOLDING  //  ESC TO RESUME", 15, UIStyle.ACCENT)
-	sub.position = Vector2(68, 110)
+	var sub := UIStyle.caption("")
+	sub.position = Vector2(60, 96)
 	_root.add_child(sub)
 
 	var ui := MenuUI.new()
@@ -101,10 +102,10 @@ func pause() -> void:
 	_ui.scale = Vector2.ONE * 0.95
 	_fade = _root.create_tween().set_parallel().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 	_fade.tween_property(_root, "modulate:a", 1.0, 0.22).set_trans(Tween.TRANS_SINE)
-	_fade.tween_property(_title, "position:x", 62.0, 0.45)
+	_fade.tween_property(_title, "position:x", 56.0, 0.45)
 	_fade.tween_property(_ui, "scale", Vector2.ONE, 0.45)
 	var net := _net()
-	if net and net.get("online"):
+	if net and net.get("online") and not net.get("skirmish"):
 		net.set("input_blocked", true)
 	else:
 		get_tree().paused = true

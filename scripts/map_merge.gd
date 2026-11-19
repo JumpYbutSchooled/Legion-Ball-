@@ -5,8 +5,13 @@ extends RefCounted
 ## untouched (they stay on the StaticBody3Ds); only the visible boxes are merged.
 ## Materials that are separate objects but identical (the builders make many) share a
 ## mesh. The map shaders work in world space, so merged pieces look exactly the same.
-## Plain coloured materials are swapped for the surface shader (the same colour with soft
-## world-space detail on top, see shaders/detail.gdshaderinc) as they're merged.
+## Plain coloured materials are swapped for the surface shader (the same colour, finished
+## like something built: shaders/surface.gdshader) as they're merged.
+## Every box's face is baked into its vertices as it goes in (shaders/face.gdshaderinc reads
+## it back): UV = the point on its face in metres from the face's middle, UV2 = half the
+## face's size, CUSTOM0 = the face's tangent in world space, COLOR.r = a random number per
+## box. That's what lets the map shaders bevel and wear each box's own edges and fit panels
+## to each face.
 ## Anything that moves (rigid bodies, practice targets) is left alone.
 
 ## Chunk size in metres: small enough that looking one way skips most of the map, big
@@ -17,6 +22,53 @@ const SurfaceShader := preload("res://shaders/surface.gdshader")
 
 static func merge(map: Node3D) -> Dictionary:
 	return commit(map, prepare(map))
+
+
+## Turns a map's CSG boxes (the training arena is built from them in the editor) into the
+## solid boxes the map builder makes: a body, a box mesh and a box collider (with its spark
+## collider). Same shape, same place; they can then be merged and wear the map shaders like
+## every other map's, and the ball's anti-tunnelling check works on them. The arena does
+## this before anything else touches the map. Boxes that are part of a CSG operation (a
+## child of another CSG shape) are left alone.
+static func boxify(map: Node3D) -> void:
+	var phys := PhysicsMaterial.new()
+	phys.friction = 1.0
+	for csg in _csg_boxes(map):
+		var body := StaticBody3D.new()
+		body.name = csg.name
+		body.transform = csg.transform
+		body.physics_material_override = phys
+		var mesh := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = csg.size
+		mesh.mesh = box
+		mesh.material_override = csg.material
+		body.add_child(mesh)
+		if csg.use_collision:
+			var shape := CollisionShape3D.new()
+			var solid := BoxShape3D.new()
+			solid.size = csg.size
+			shape.shape = solid
+			var sparks := GPUParticlesCollisionBox3D.new()
+			sparks.size = csg.size
+			shape.add_child(sparks)
+			body.add_child(shape)
+		var parent := csg.get_parent()
+		var at := csg.get_index()
+		parent.remove_child(csg)
+		csg.queue_free()
+		parent.add_child(body)
+		parent.move_child(body, at)
+
+
+static func _csg_boxes(node: Node) -> Array[CSGBox3D]:
+	var out: Array[CSGBox3D] = []
+	for child in node.get_children():
+		if child is CSGBox3D and not node is CSGShape3D:
+			out.append(child)
+		else:
+			out.append_array(_csg_boxes(child))
+	return out
 
 
 ## The heavy part, done ahead of time (the arena does it while the map loads, under the
@@ -49,7 +101,7 @@ static func prepare(map: Node3D) -> Dictionary:
 			groups[key] = {"mat": _surface(mat, signatures[mat], surfaces), "shadow": inst.cast_shadow, "pieces": []}
 		var shape_key: Variant = "box%s" % (prim as BoxMesh).size if prim is BoxMesh else prim.get_instance_id()
 		if not shapes.has(shape_key):
-			shapes[shape_key] = prim.get_mesh_arrays()
+			shapes[shape_key] = _shape(prim)
 		groups[key]["pieces"].append([shape_key, to_local * inst.global_transform])
 		merged.append(inst)
 	# The vertex maths, one mesh per task, spread over every CPU core.
@@ -63,9 +115,14 @@ static func prepare(map: Node3D) -> Dictionary:
 		arrays[Mesh.ARRAY_VERTEX] = g["verts"]
 		arrays[Mesh.ARRAY_NORMAL] = g["normals"]
 		arrays[Mesh.ARRAY_TEX_UV] = g["uvs"]
+		arrays[Mesh.ARRAY_TEX_UV2] = g["uv2s"]
+		arrays[Mesh.ARRAY_COLOR] = g["colors"]
+		# (Three floats a vertex, straight from the vectors' own bytes: no loop.)
+		arrays[Mesh.ARRAY_CUSTOM0] = (g["tangents"] as PackedVector3Array).to_byte_array().to_float32_array()
 		arrays[Mesh.ARRAY_INDEX] = g["indices"]
 		var mesh := ArrayMesh.new()
-		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {},
+			Mesh.ARRAY_CUSTOM_RGB_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
 		var out := MeshInstance3D.new()
 		out.name = "Merged"
 		out.mesh = mesh
@@ -87,35 +144,86 @@ static func commit(map: Node3D, prepared: Dictionary) -> Dictionary:
 	return {"pieces": (prepared["originals"] as Array).size(), "meshes": (prepared["meshes"] as Array).size()}
 
 
+## A piece's own arrays, made once per shape: vertices, normals and indices, and (a box)
+## its faces: where each vertex is on its face, half that face's size, and the face's
+## tangent (see the top of this file).
+static func _shape(prim: PrimitiveMesh) -> Dictionary:
+	var arrays := prim.get_mesh_arrays()
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var out := {"v": verts, "n": normals, "i": arrays[Mesh.ARRAY_INDEX], "box": prim is BoxMesh,
+		"size": (prim as BoxMesh).size if prim is BoxMesh else Vector3.ZERO}
+	out.merge(_faces(verts, normals, out["size"]))
+	return out
+
+
+## The face data for a box of `size` (zeros for anything else: the shaders then leave it be).
+## A face's "up" is the box's own up on its four sides and its +Z on top and bottom; its
+## tangent is the other axis, turned so tangent x up points out of the face.
+static func _faces(verts: PackedVector3Array, normals: PackedVector3Array, size: Vector3) -> Dictionary:
+	var uv := PackedVector2Array()
+	var uv2 := PackedVector2Array()
+	var tan := PackedVector3Array()
+	uv.resize(verts.size())
+	uv2.resize(verts.size())
+	tan.resize(verts.size())
+	if size != Vector3.ZERO:
+		for k in verts.size():
+			var n := normals[k]
+			var up := Vector3.UP if absf(n.y) < 0.5 else Vector3.BACK
+			var t := up.cross(n).normalized()
+			uv[k] = Vector2(verts[k].dot(t), verts[k].dot(up))
+			uv2[k] = Vector2(size.dot(t.abs()), size.dot(up.abs())) * 0.5
+			tan[k] = t
+	return {"uv": uv, "uv2": uv2, "t": tan}
+
+
 ## One merged mesh's arrays from its pieces (a worker thread: plain maths on this group's
 ## own dictionary, the shared shapes only read).
 static func _build(g: Dictionary, shapes: Dictionary) -> void:
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
+	var tangents := PackedVector3Array()
 	var uvs := PackedVector2Array()
+	var uv2s := PackedVector2Array()
+	var colors := PackedColorArray()
 	var out_idx := PackedInt32Array()
+	var tint := PackedColorArray()
 	for piece in g["pieces"]:
-		var arrays: Array = shapes[piece[0]]
+		var shape: Dictionary = shapes[piece[0]]
 		var xf: Transform3D = piece[1]
-		var src: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var src: PackedVector3Array = shape["v"]
 		var base := verts.size()
 		verts.append_array(xf * src)
-		normals.append_array(Transform3D(xf.basis.orthonormalized(), Vector3.ZERO) * (arrays[Mesh.ARRAY_NORMAL] as PackedVector3Array))
-		var uv = arrays[Mesh.ARRAY_TEX_UV]
-		if uv is PackedVector2Array and (uv as PackedVector2Array).size() == src.size():
-			uvs.append_array(uv)
+		var turn := Transform3D(xf.basis.orthonormalized(), Vector3.ZERO)
+		normals.append_array(turn * (shape["n"] as PackedVector3Array))
+		tangents.append_array(turn * (shape["t"] as PackedVector3Array))
+		var scale := xf.basis.get_scale()
+		if shape["box"] and not scale.is_equal_approx(Vector3.ONE):
+			# A stretched box: its faces measured at the size it's drawn.
+			var stretched := _faces(Transform3D(Basis.from_scale(scale), Vector3.ZERO) * src, shape["n"], (shape["size"] as Vector3) * scale)
+			uvs.append_array(stretched["uv"])
+			uv2s.append_array(stretched["uv2"])
 		else:
-			uvs.resize(uvs.size() + src.size())
-		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+			uvs.append_array(shape["uv"])
+			uv2s.append_array(shape["uv2"])
+		# One random number for the whole box, from where it stands.
+		var o := xf.origin
+		tint.resize(src.size())
+		tint.fill(Color(fposmod(sin(o.x * 12.9898 + o.y * 78.233 + o.z * 37.719) * 43758.5453, 1.0), 0.0, 0.0))
+		colors.append_array(tint)
+		var idx: PackedInt32Array = shape["i"]
 		var start := out_idx.size()
 		out_idx.resize(start + idx.size())
 		for i in idx.size():
 			out_idx[start + i] = idx[i] + base
 	g["verts"] = verts
 	g["normals"] = normals
+	g["tangents"] = tangents
 	g["uvs"] = uvs
+	g["uv2s"] = uv2s
+	g["colors"] = colors
 	g["indices"] = out_idx
-
 static func _meshes(node: Node) -> Array[MeshInstance3D]:
 	var out: Array[MeshInstance3D] = []
 	for child in node.get_children():
@@ -148,16 +256,31 @@ static func _surface(mat: Material, signature: String, cache: Dictionary) -> Mat
 		out.set_shader_parameter("albedo", m.albedo_color)
 		out.set_shader_parameter("roughness", m.roughness)
 		out.set_shader_parameter("metallic", m.metallic)
+		out.set_shader_parameter("kind", surface_kind(m))
 		cache[signature] = out
 	return cache[signature]
+
+
+## What a plain material is made of, for the surface shader: 0 built (panels, worn edges),
+## 1 organic (leafy greens: grass, hedges, treetops), 2 metal plate. A map can say itself
+## with the material's "kind" meta.
+static func surface_kind(m: StandardMaterial3D) -> int:
+	if m.has_meta("kind"):
+		return int(m.get_meta("kind"))
+	if m.metallic >= 0.5:
+		return 2
+	var c := m.albedo_color
+	if c.g > c.r * 1.12 and c.g > c.b * 1.12 and c.s > 0.25:
+		return 1
+	return 0
 
 
 ## Two materials with the same signature render identically, so they can share a mesh.
 static func _signature(mat: Material) -> String:
 	if mat is StandardMaterial3D:
 		var m := mat as StandardMaterial3D
-		return "S%s|%s|%s|%.3f|%.3f|%.3f|%d|%d|%d|%s" % [m.albedo_color, m.emission_enabled, m.emission, m.emission_energy_multiplier,
-			m.roughness, m.metallic, m.transparency, m.shading_mode, m.cull_mode, m.albedo_texture]
+		return "S%s|%s|%s|%.3f|%.3f|%.3f|%d|%d|%d|%s|%s" % [m.albedo_color, m.emission_enabled, m.emission, m.emission_energy_multiplier,
+			m.roughness, m.metallic, m.transparency, m.shading_mode, m.cull_mode, m.albedo_texture, m.get_meta("kind", -1)]
 	if mat is ShaderMaterial:
 		var sm := mat as ShaderMaterial
 		var parts := [sm.shader.resource_path if sm.shader else "none"]

@@ -24,7 +24,7 @@ var _lethe := glow(Color(0.55, 0.8, 1.0), 1.4)
 var _eunoe := glow(Color(0.7, 1.0, 0.8), 1.4)
 var _gold := solid(Color(1.0, 0.8, 0.3), 0.25, 0.9)
 var _white := solid(Color(0.97, 0.96, 0.92), 0.4)
-var _sea := solid(Color(0.08, 0.22, 0.42), 0.15, 0.2)
+var _sea := water(Color(0.08, 0.22, 0.42), 2.0)
 
 
 ## Built at twice its written size in every direction.

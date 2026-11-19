@@ -22,6 +22,7 @@ extends Node3D
 
 const CheckerShader := preload("res://shaders/checker.gdshader")
 const PanelShader := preload("res://shaders/panel.gdshader")
+const WaterShader := preload("res://shaders/water.gdshader")
 
 var _spawns: Array[Vector3] = []
 var _turrets: Array[Vector3] = []
@@ -414,7 +415,18 @@ static func checker(a: Color, b: Color, cell_size := 4.0) -> ShaderMaterial:
 	mat.set_shader_parameter("color_a", a)
 	mat.set_shader_parameter("color_b", b)
 	mat.set_shader_parameter("cell_size", cell_size)
+	mat.set_shader_parameter("kind", floor_kind(a.lerp(b, 0.5)))
 	return mat
+
+
+## What a floor in this colour is made of (shaders/checker.gdshader `kind`): 1 grass for
+## leafy greens, 2 sand for pale warm yellows and tans, 0 paving for everything else.
+static func floor_kind(c: Color) -> int:
+	if c.g > c.r * 1.12 and c.g > c.b * 1.12 and c.s > 0.25:
+		return 1
+	if c.r > c.b * 1.3 and c.g > c.b * 1.12 and c.r >= c.g and c.s > 0.2 and c.s < 0.7 and c.v > 0.55:
+		return 2
+	return 0
 
 
 static func panel(base: Color, line: Color, cell := 4.0, line_glow := 0.0, windows := 0.0) -> ShaderMaterial:
@@ -425,4 +437,31 @@ static func panel(base: Color, line: Color, cell := 4.0, line_glow := 0.0, windo
 	mat.set_shader_parameter("cell", cell)
 	mat.set_shader_parameter("line_glow", line_glow)
 	mat.set_shader_parameter("windows", windows)
+	return mat
+
+
+## Water (shaders/water.gdshader): rippling, glinting, foam where it meets its banks, and a
+## faint glow of its own. `chop` 1 is a pond or a moat, 2 the open sea.
+static func water(color: Color, chop := 1.0, glow_amount := 0.12) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = WaterShader
+	mat.set_shader_parameter("color", color)
+	mat.set_shader_parameter("chop", chop)
+	mat.set_shader_parameter("glow", glow_amount)
+	return mat
+
+
+## Bare ground in a plain colour (sand, dirt, a beach): solid(), but drawn as loose earth
+## (drifts and ripples, no panels or seams) instead of as something built.
+static func earth(color: Color, roughness := 0.95) -> StandardMaterial3D:
+	var mat := solid(color, roughness)
+	mat.set_meta("kind", 3)
+	return mat
+
+
+## Stone or brick: panel(), but its walls are laid in courses of blocks twice as long as
+## `cell` is tall, every other course shifted half a block.
+static func masonry(base: Color, line: Color, cell := 3.0) -> ShaderMaterial:
+	var mat := panel(base, line, cell)
+	mat.set_shader_parameter("bond", 1.0)
 	return mat

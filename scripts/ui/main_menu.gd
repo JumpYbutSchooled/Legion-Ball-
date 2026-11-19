@@ -48,18 +48,24 @@ func _ready() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 	_bg_mat = mat
+	# Over the grid: a real map, live, with the camera circling it (not on LOW graphics).
+	var settings_node := get_tree().root.get_node_or_null("Settings")
+	var low: bool = settings_node != null and String(settings_node.call("get_value", "graphics_preset")) == "LOW"
+	if DisplayServer.get_name() != "headless" and not low:
+		var backdrop: Control = load("res://scripts/ui/menu_backdrop.gd").new()
+		backdrop.name = "Backdrop"
+		add_child(backdrop)
 
 	# Title, with red/cyan ghost copies that jitter now and then (chromatic glitch).
 	_ghost_a = _title_label(Color(1.0, 0.2, 0.35, 0.55))
 	_ghost_b = _title_label(Color(UIStyle.ACCENT, 0.55))
 	_title = _title_label(Color.WHITE)
-	var sub := UIStyle.label("COMBAT SIMULATION  //  CRYSTAL WEAPONS DIVISION", 15, UIStyle.ACCENT)
-	sub.position = Vector2(68, 128)
+	_ghost_a.visible = false
+	_ghost_b.visible = false
+	var sub := UIStyle.caption("")
+	sub.position = Vector2(60, 96)
 	add_child(sub)
-	var corner := UIStyle.label("SIM-LB  v%s\n60 HZ  //  JOLT" % _version(), 12, UIStyle.TEXT_DIM)
-	corner.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	corner.position = Vector2(-190, 36)
-	corner.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var corner := _pilot_card()
 	add_child(corner)
 
 	var ui := MenuUI.new()
@@ -71,8 +77,15 @@ func _ready() -> void:
 	if not _title_shown and DisplayServer.get_name() != "headless":
 		_title_shown = true
 		var start := TitleScreen.new()
+		# The start screen sits over the live backdrop: the menu itself waits behind it.
+		start.set("live", has_node("Backdrop"))
+		var front: Array = [_title, sub, corner, ui]
+		for c in front:
+			c.visible = false
 		add_child(start)
 		start.done.connect(func(choice: String) -> void:
+			for c in front:
+				c.visible = true
 			if choice == "tutorial":
 				MenuUI.start_tutorial(self)
 				return
@@ -118,7 +131,7 @@ func _whats_new() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
-	var title := "// UPDATED TO v%s" % version if seen != "" else "// WELCOME TO v%s" % version
+	var title := "UPDATED TO v%s" % version if seen != "" else "WELCOME TO v%s" % version
 	box.add_child(UIStyle.label(title, 24, UIStyle.ACCENT, true))
 	if seen != "":
 		box.add_child(UIStyle.label("WHAT'S NEW SINCE v%s" % seen, 13, UIStyle.TEXT_DIM))
@@ -142,13 +155,13 @@ func _whats_new() -> void:
 	box.add_child(buttons)
 	var close := func() -> void: dim.queue_free()
 	var all := Button.new()
-	all.text = "[ SEE ALL UPDATES ]"
+	all.text = "SEE ALL UPDATES"
 	all.pressed.connect(func() -> void:
 		close.call()
 		_ui.call("_show_page", "updates"))
 	buttons.add_child(all)
 	var ok := Button.new()
-	ok.text = "[ CLOSE ]"
+	ok.text = "CLOSE"
 	ok.pressed.connect(close)
 	buttons.add_child(ok)
 	ok.grab_focus.call_deferred()
@@ -178,7 +191,7 @@ func _welcome(settings: Node) -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
-	box.add_child(UIStyle.label("// WELCOME TO BALLISTIC", 26, UIStyle.ACCENT, true))
+	box.add_child(UIStyle.label("WELCOME TO BALLISTIC", 26, UIStyle.ACCENT, true))
 	var text := UIStyle.label("You're a crystal ball with a loadout of blades. Roll fast, dash, shoot, shield, and knock everyone else off the map.\n\nNew here? The tutorial takes about two minutes.", 15, UIStyle.TEXT)
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(text)
@@ -186,11 +199,11 @@ func _welcome(settings: Node) -> void:
 	buttons.add_theme_constant_override("separation", 14)
 	box.add_child(buttons)
 	var play := Button.new()
-	play.text = "[ PLAY THE TUTORIAL ]"
+	play.text = "PLAY THE TUTORIAL"
 	play.pressed.connect(func() -> void: MenuUI.start_tutorial(self))
 	buttons.add_child(play)
 	var skip := Button.new()
-	skip.text = "[ SKIP ]"
+	skip.text = "SKIP"
 	skip.pressed.connect(func() -> void:
 		settings.call("set_value", "tutorial_done", true)
 		dim.queue_free())
@@ -209,10 +222,37 @@ func _version() -> String:
 
 
 func _title_label(color: Color) -> Label:
-	var l := UIStyle.label("BALLISTIC", 72, color, true)
-	l.position = Vector2(62, 34)
+	var l := UIStyle.label("BALLISTIC", 56, color, true)
+	l.add_theme_font_override("font", UIStyle.heading(8))
+	l.position = Vector2(56, 26)
 	add_child(l)
 	return l
+
+
+## Top right: who's playing. Their name, level and rank, and how far to the next level.
+func _pilot_card() -> Control:
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	box.custom_minimum_size = Vector2(240, 0)
+	box.position = Vector2(-296, 30)
+	box.add_theme_constant_override("separation", 4)
+	var settings := get_tree().root.get_node_or_null("Settings")
+	var profile := get_tree().root.get_node_or_null("Profile")
+	var who := UIStyle.label(String(settings.call("get_value", "player_name")) if settings else "PILOT", 20, Color.WHITE, true)
+	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	box.add_child(who)
+	if profile:
+		var level: int = profile.call("level")
+		var rank: Array = profile.get_script().rank_of(level)
+		var line := UIStyle.caption("LEVEL %d   ·   %s" % [level, rank[0]], rank[1])
+		line.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		box.add_child(line)
+		var bar := ProgressBar.new()
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(0, 5)
+		bar.value = float(profile.call("level_progress")) * 100.0
+		box.add_child(bar)
+	return box
 
 
 func _process(delta: float) -> void:

@@ -267,7 +267,7 @@ func _join(ip: String) -> void:
 
 func _button(text: String, action: Callable) -> Button:
 	var b := Button.new()
-	b.text = "[ " + text + " ]"
+	b.text = text
 	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	b.pressed.connect(action)
 	return b

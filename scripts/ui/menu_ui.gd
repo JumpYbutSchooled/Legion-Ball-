@@ -32,6 +32,7 @@ const SceneLoader := preload("res://scripts/ui/scene_loader.gd")
 const Graphics := preload("res://scripts/graphics.gd")
 const GLOBAL_COLOR := Color(1.0, 0.72, 0.3)
 const CreditsScript := preload("res://scripts/credits.gd")
+const ProfileScript := preload("res://scripts/profile.gd")
 
 var pause_mode := false
 
@@ -72,47 +73,52 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	var row := HBoxContainer.new()
-	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	row.offset_left = 64
-	row.offset_right = -64
-	row.offset_top = 184
-	row.offset_bottom = -36
-	row.add_theme_constant_override("separation", 28)
-	add_child(row)
-
-	# The buttons on the left scroll when they don't all fit: staff in a match get extra ones
-	# (moderation, turrets, bots), and they used to push LEAVE MATCH off the bottom.
-	var nav_scroll := ScrollContainer.new()
-	nav_scroll.custom_minimum_size = Vector2(342, 0)
-	nav_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	nav_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	row.add_child(nav_scroll)
-	var nav := VBoxContainer.new()
-	nav.custom_minimum_size = Vector2(330, 0)
+	# The shell: tabs in a row across the top (under the title), the open page filling the
+	# screen below them. Things that aren't pages (resume, leave, quit, the staff switches)
+	# sit at the right end of the row as buttons.
+	var bar_scroll := ScrollContainer.new()
+	bar_scroll.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	bar_scroll.offset_left = 44
+	bar_scroll.offset_right = -44
+	bar_scroll.offset_top = 104
+	bar_scroll.offset_bottom = 152
+	bar_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	bar_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	add_child(bar_scroll)
+	var nav := HBoxContainer.new()
 	nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nav.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	nav.add_theme_constant_override("separation", 6 if pause_mode else 8)
-	nav_scroll.add_child(nav)
+	nav.add_theme_constant_override("separation", 2)
+	bar_scroll.add_child(nav)
+	var rule := ColorRect.new()
+	rule.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	rule.offset_left = 56
+	rule.offset_right = -56
+	rule.offset_top = 152
+	rule.offset_bottom = 153
+	rule.color = UIStyle.HAIRLINE
+	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(rule)
 	var net := get_tree().root.get_node_or_null("Net")
 	var online: bool = net != null and net.get("online")
 	if pause_mode:
-		_nav(nav, "resume", "RESUME SIMULATION", func() -> void: resume_pressed.emit())
+		_nav(nav, "armory", "ARMORY", func() -> void: _show_page("armory"))
 	else:
-		_nav(nav, "play", "PRACTICE (SOLO)", func() -> void: _show_page("practice"))
-		_nav(nav, "multiplayer", "MULTIPLAYER", func() -> void: _show_page("multiplayer"))
-		_nav(nav, "chat", "GLOBAL CHAT", func() -> void: _show_page("chat"))
+		_nav(nav, "play", "PLAY", func() -> void: _show_page("play"))
+		_nav(nav, "career", "CAREER", func() -> void: _show_page("career"))
+		_nav(nav, "armory", "ARMORY", func() -> void: _show_page("armory"))
+		_nav(nav, "chat", "SOCIAL", func() -> void: _show_page("chat"))
 		_chat = MenuChat.new()
 		_chat.name = "MenuChat"
 		add_child(_chat)
 		_chat.connect("message_received", _on_chat_message)
 		_chat.connect("history_loaded", _on_chat_history)
 		_chat.connect("status_changed", _on_chat_status)
-	_nav(nav, "armory", "ARMORY", func() -> void: _show_page("armory"))
-	_nav(nav, "controls", "CONTROLS", func() -> void: _show_page("controls"))
 	_nav(nav, "settings", "SETTINGS", func() -> void: _show_page("settings"))
-	_nav(nav, "updates", "UPDATES", func() -> void: _show_page("updates"))
-	_nav(nav, "credits", "CREDITS", func() -> void: _show_page("credits"))
+	_nav(nav, "controls", "CONTROLS", func() -> void: _show_page("controls"))
+	if not pause_mode:
+		_nav(nav, "updates", "UPDATES", func() -> void: _show_page("updates"))
+		_nav(nav, "credits", "CREDITS", func() -> void: _show_page("credits"))
 	if pause_mode:
 		# Shown once the server accepts your moderator code, which can be after this is built.
 		_nav(nav, "moderation", "MODERATION", func() -> void: _show_page("moderation"))
@@ -122,9 +128,12 @@ func _ready() -> void:
 			mod.connect("mod_changed", _update_mod_nav)
 		if net:
 			net.connect("roster_changed", _on_roster_changed)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.add_child(spacer)
 	if pause_mode:
 		# AI turrets on/off: anyone in practice; online, staff or a LAN game's host.
-		_nav(nav, "turrets", "TURRETS: OFF", func() -> void:
+		_action(nav, "turrets", "TURRETS: OFF", func() -> void:
 			var m := _mod()
 			if m:
 				m.call("toggle_turrets"))
@@ -134,31 +143,36 @@ func _ready() -> void:
 			mod.connect("mod_changed", func() -> void:
 				_nav_buttons["turrets"].visible = mod.call("can_toggle_turrets"))
 		# Bots on/off for the whole server: any player, online only (practice has none).
-		if online:
-			_nav(nav, "bots", "BOTS: ON", func() -> void:
+		if online and not net.get("skirmish"):
+			_action(nav, "bots", "BOTS: ON", func() -> void:
 				if net:
 					net.call("set_bots", not net.get("bots_enabled")))
-		var leave_text := "LEAVE MATCH" if online else "ABORT TO MAIN MENU"
-		_nav(nav, "menu", leave_text, func() -> void: main_menu_pressed.emit())
+		_action(nav, "menu", "LEAVE MATCH" if online and not net.get("skirmish") else "MAIN MENU", func() -> void: main_menu_pressed.emit())
+		_action(nav, "resume", "RESUME", func() -> void: resume_pressed.emit(), true)
 	else:
-		_nav(nav, "quit", "TERMINATE", func() -> void: quit_pressed.emit())
+		_action(nav, "quit", "QUIT", func() -> void: quit_pressed.emit())
 
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	nav.add_child(spacer)
 	var f := FileAccess.open("res://version.txt", FileAccess.READ)
 	var version := f.get_as_text().strip_edges() if f else "?"
-	var link := "ONLINE" if online else "LOCAL"
-	nav.add_child(UIStyle.label("SYS.LINK    %s\nBUILD       %s\nNODE        LB-01" % [link, version], 12, UIStyle.TEXT_DIM))
+	var ver := UIStyle.label("v%s%s" % [version, "   ·   ONLINE" if online else ""], 12, Color(UIStyle.TEXT_DIM, 0.6))
+	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	ver.offset_left = 58
+	ver.offset_top = -30
+	add_child(ver)
 
 	_page_holder = PanelContainer.new()
-	_page_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	UIStyle.glass(_page_holder)
-	row.add_child(_page_holder)
+	_page_holder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_page_holder.offset_left = 44
+	_page_holder.offset_right = -44
+	_page_holder.offset_top = 170
+	_page_holder.offset_bottom = -40
+	UIStyle.glass(_page_holder, Color(0.03, 0.045, 0.07, 0.62), UIStyle._DEFAULT, 28)
+	add_child(_page_holder)
 	_frame = TechFrame.new()
+	_frame.visible = false  # (The old tick-mark frame: kept only so pages stack under it.)
 	_page_holder.add_child(_frame)
 	# Back from a match (still connected): land on the lobby.
-	_show_page("multiplayer" if online and not pause_mode else "armory", true)
+	_show_page("multiplayer" if online and not pause_mode else ("armory" if pause_mode else "play"), true)
 	_intro.call_deferred()
 	# The Practice page's map pictures and the Armory's weapon pictures, read in the
 	# background before anyone opens those pages.
@@ -181,11 +195,11 @@ func _process(_delta: float) -> void:
 	if b and b.visible and is_visible_in_tree():
 		var mod := _mod()
 		var on: bool = mod != null and mod.call("turrets_enabled")
-		b.text = "[ TURRETS: %s ]" % ("ON" if on else "OFF")
+		b.text = "TURRETS: %s" % ("ON" if on else "OFF")
 	var bots: Button = _nav_buttons.get("bots")
 	if bots and is_visible_in_tree():
 		var net := get_tree().root.get_node_or_null("Net")
-		bots.text = "[ BOTS: %s ]" % ("ON" if net and net.get("bots_enabled") else "OFF")
+		bots.text = "BOTS: %s" % ("ON" if net and net.get("bots_enabled") else "OFF")
 
 
 ## With a controller, menus are driven by focus: put it on the first action.
@@ -216,9 +230,9 @@ func _intro() -> void:
 	var i := 0
 	for id in _nav_buttons:
 		var b: Button = _nav_buttons[id]
-		b.pivot_offset = Vector2(0.0, b.size.y / 2.0)
+		b.pivot_offset = b.size / 2.0
 		b.modulate.a = 0.0
-		b.scale = Vector2(0.6, 1.0)
+		b.scale = Vector2(0.92, 0.92)
 		var tw := b.create_tween().set_parallel().set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 		tw.tween_property(b, "modulate:a", 1.0, 0.35).set_delay(i * 0.05)
 		tw.tween_property(b, "scale", Vector2.ONE, 0.45).set_delay(i * 0.05)
@@ -233,25 +247,93 @@ func _intro() -> void:
 		_focus_first.call_deferred()
 
 
+## A caption over a group of nav buttons.
+func _section(parent: Control, text: String) -> void:
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 10)
+	parent.add_child(gap)
+	var l := UIStyle.caption(text, Color(UIStyle.TEXT_DIM, 0.75))
+	parent.add_child(l)
+	var line := ColorRect.new()
+	line.color = UIStyle.HAIRLINE
+	line.custom_minimum_size = Vector2(0, 1)
+	parent.add_child(line)
+	var after := Control.new()
+	after.custom_minimum_size = Vector2(0, 4)
+	parent.add_child(after)
+
+
+## A tab: just its name; the pointer (or focus) lights it and draws a faint line under it,
+## and the open page's tab keeps a bright accent line.
 func _nav(parent: Control, id: String, text: String, action: Callable) -> void:
 	var b := Button.new()
-	b.text = "[ " + text + " ]"
-	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	b.add_theme_font_size_override("font_size", 16 if pause_mode else 18)
+	b.text = text
+	b.add_theme_font_size_override("font_size", 16)
+	b.add_theme_font_override("font", UIStyle.heading(2))
 	b.pressed.connect(action)
 	parent.add_child(b)
-	# Slim buttons, so they all fit under the title (the pause menu has the most: staff get
-	# moderation, turrets and bots too).
-	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
-		var sb := b.get_theme_stylebox(state)
-		if sb:
-			sb = sb.duplicate()
-			sb.content_margin_top = 5 if pause_mode else 7
-			sb.content_margin_bottom = 5 if pause_mode else 7
-			b.add_theme_stylebox_override(state, sb)
+	b.add_theme_stylebox_override("normal", _nav_box(false))
+	b.add_theme_stylebox_override("hover", _tab_box(Color(1, 1, 1, 0.05), Color(1, 1, 1, 0.35)))
+	b.add_theme_stylebox_override("pressed", _tab_box(Color(UIStyle.ACCENT, 0.12), UIStyle.ACCENT))
+	b.add_theme_stylebox_override("hover_pressed", _tab_box(Color(UIStyle.ACCENT, 0.12), UIStyle.ACCENT))
+	b.add_theme_stylebox_override("focus", _tab_box(Color(0, 0, 0, 0), Color(1, 1, 1, 0.5)))
+	b.add_theme_color_override("font_color", Color(UIStyle.TEXT, 0.62))
+	b.add_theme_color_override("font_hover_color", Color.WHITE)
+	b.add_theme_color_override("font_pressed_color", Color.WHITE)
+	b.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
 	_nav_buttons[id] = b
 	_animate_button(b)
 
+
+## Not a page: a plain button at the right end of the tab row (`main`: filled, the one to press).
+func _action(parent: Control, id: String, text: String, action: Callable, main := false) -> void:
+	var b := Button.new()
+	b.text = text
+	b.set_meta("action", true)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.add_theme_font_size_override("font_size", 14)
+	if main:
+		b.add_theme_stylebox_override("normal", UIStyle.button_box(UIStyle.ACCENT, UIStyle.ACCENT))
+		b.add_theme_stylebox_override("hover", UIStyle.button_box(UIStyle.ACCENT.lerp(Color.WHITE, 0.3), Color.WHITE))
+		b.add_theme_color_override("font_color", UIStyle.TEXT_ON_ACCENT)
+		b.add_theme_color_override("font_hover_color", UIStyle.TEXT_ON_ACCENT)
+	b.pressed.connect(action)
+	parent.add_child(b)
+	_nav_buttons[id] = b
+
+
+## Which tab a page belongs to (the three ways to play all sit under PLAY).
+const TAB_OF := {"skirmish": "play", "multiplayer": "play", "practice": "play"}
+
+
+## Lights the tab of the page that's open.
+func _mark_nav(id: String) -> void:
+	var tab: String = TAB_OF.get(id, id) if _nav_buttons.has("play") else id
+	for key in _nav_buttons:
+		var nb: Button = _nav_buttons[key]
+		if nb.has_meta("action"):
+			continue
+		var on: bool = key == tab
+		nb.add_theme_stylebox_override("normal", _nav_box(on))
+		nb.add_theme_color_override("font_color", Color.WHITE if on else Color(UIStyle.TEXT, 0.62))
+
+
+func _nav_box(on: bool) -> StyleBoxFlat:
+	return _tab_box(Color(0, 0, 0, 0), UIStyle.ACCENT if on else Color(0, 0, 0, 0))
+
+
+func _tab_box(fill: Color, line: Color) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = fill
+	sb.border_color = line
+	sb.border_width_bottom = 3
+	sb.corner_radius_top_left = 4
+	sb.corner_radius_top_right = 4
+	sb.content_margin_left = 18
+	sb.content_margin_right = 18
+	sb.content_margin_top = 12
+	sb.content_margin_bottom = 12
+	return sb
 
 ## Hover (or controller focus): the button leans out with a tick sound and a quick
 ## brightness flicker; press: a squash, a white flash and a click.
@@ -260,9 +342,7 @@ static func _animate_button(b: Button) -> void:
 	var hover := func() -> void:
 		b.pivot_offset = Vector2(0.0, b.size.y / 2.0)
 		var tw := b.create_tween().set_parallel().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw.tween_property(b, "scale", Vector2(1.04, 1.04), 0.18)
-		b.modulate = Color(1.6, 1.6, 1.6)
-		tw.tween_property(b, "modulate", Color.WHITE, 0.25).set_trans(Tween.TRANS_EXPO)
+		tw.tween_property(b, "scale", Vector2(1.025, 1.025), 0.16)
 		ui_sound(b, "ui_hover", -14.0)
 	var unhover := func() -> void:
 		b.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT) \
@@ -275,9 +355,7 @@ static func _animate_button(b: Button) -> void:
 		b.pivot_offset = Vector2(0.0, b.size.y / 2.0)
 		var tw := b.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tw.tween_property(b, "scale", Vector2(0.96, 0.92), 0.06)
-		tw.tween_property(b, "scale", Vector2(1.04, 1.04), 0.2)
-		b.modulate = Color(2.2, 2.2, 2.2)
-		b.create_tween().tween_property(b, "modulate", Color.WHITE, 0.3).set_trans(Tween.TRANS_EXPO)
+		tw.tween_property(b, "scale", Vector2(1.025, 1.025), 0.2)
 		ui_sound(b, "ui_click", -8.0))
 
 
@@ -342,9 +420,7 @@ func _show_page(id: String, quiet := false) -> void:
 			_frame.call("glitch")
 			ui_sound(self, "ui_page", -10.0)
 			_pop_in(_scroll)
-		for key in _nav_buttons:
-			var nb: Button = _nav_buttons[key]
-			nb.add_theme_color_override("font_color", UIStyle.ACCENT if key == id else UIStyle.TEXT)
+		_mark_nav(id)
 		return
 	_chat_log = null
 	_chat_status = null
@@ -374,16 +450,20 @@ func _show_page(id: String, quiet := false) -> void:
 		_swap_in.call_deferred(scroll, old_scroll, keep)
 	else:
 		_animate_page(box)
-	for key in _nav_buttons:
-		var b: Button = _nav_buttons[key]
-		b.add_theme_color_override("font_color", UIStyle.ACCENT if key == id else UIStyle.TEXT)
+	_mark_nav(id)
 
 
 ## Builds page `id`'s contents into `box`.
 func _fill(id: String, box: VBoxContainer) -> void:
+	if id in ["skirmish", "multiplayer", "practice"] and not pause_mode:
+		var back := _small_button("‹  PLAY", func() -> void: _show_page("play"))
+		back.add_theme_color_override("font_color", UIStyle.TEXT_DIM)
+		box.add_child(back)
 	match id:
+		"play":
+			_build_play(box)
 		"multiplayer":
-			_header(box, "MULTIPLAYER", "FREE-FOR-ALL ARENA  //  2-%d PILOTS" % NetScript.MAX_PLAYERS)
+			_header(box, "MULTIPLAYER", "FREE-FOR-ALL ARENA   ·   2-%d PILOTS" % NetScript.MAX_PLAYERS)
 			box.add_child(LobbyPanel.new())
 		"armory":
 			_build_armory(box)
@@ -397,6 +477,10 @@ func _fill(id: String, box: VBoxContainer) -> void:
 			_build_chat(box)
 		"practice":
 			_build_practice(box)
+		"skirmish":
+			_build_skirmish(box)
+		"career":
+			_build_career(box)
 		"updates":
 			_build_updates(box)
 		"credits":
@@ -466,10 +550,12 @@ static func start_tutorial(from: Node) -> void:
 
 
 func _header(parent: Control, title: String, sub: String) -> void:
-	parent.add_child(UIStyle.label("// " + title, 26, UIStyle.ACCENT, true))
-	parent.add_child(_wrapped(UIStyle.label(sub, 13, UIStyle.TEXT_DIM)))
+	var head := UIStyle.label(title, 32, Color.WHITE, true)
+	head.add_theme_font_override("font", UIStyle.heading(3))
+	parent.add_child(head)
+	parent.add_child(_wrapped(UIStyle.label(sub.replace("   ·   ", "   ·   "), 13, UIStyle.TEXT_DIM)))
 	var line := ColorRect.new()
-	line.color = UIStyle.ACCENT_DIM
+	line.color = UIStyle.HAIRLINE
 	line.custom_minimum_size = Vector2(0, 1)
 	parent.add_child(line)
 
@@ -490,12 +576,12 @@ func _build_armory(box: VBoxContainer) -> void:
 		for id in WeaponInfo.pool():
 			if WeaponInfo.is_built(id):
 				_icons.call("request", id)
-	_header(box, "ARMORY", "PRESS A SLOT TO PICK ITS WEAPON, OR DRAG WEAPONS IN (KEYS 1-6)  //  STAFF WEAPONS STAY ON 7-9")
+	_header(box, "ARMORY", "PRESS A SLOT TO PICK ITS WEAPON, OR DRAG WEAPONS IN (KEYS 1-6)   ·   STAFF WEAPONS STAY ON 7-9")
 	var mine := WeaponInfo.local_loadout(get_tree())
 	if _armory_detail_id == "":
 		_armory_detail_id = mine[0]
 
-	box.add_child(UIStyle.label("LOADOUT", 13, UIStyle.TEXT_DIM))
+	box.add_child(UIStyle.caption("LOADOUT"))
 	# Two rows of three, stretched to the page's width.
 	var bar := GridContainer.new()
 	bar.columns = 3
@@ -524,7 +610,7 @@ func _build_armory(box: VBoxContainer) -> void:
 	sets.add_theme_font_override("bold_font", UIStyle.font(true))
 	sets.add_theme_font_size_override("normal_font_size", 13)
 	sets.add_theme_font_size_override("bold_font_size", 13)
-	sets.text = "COMBO GROUPS  //  " + "   ".join(PackedStringArray(parts)) + "\n[color=#%s]Equip %d from one group for its set bonus.[/color]" % [UIStyle.TEXT_DIM.to_html(false), WeaponInfo.SET_SIZE]
+	sets.text = "COMBO GROUPS   ·   " + "   ".join(PackedStringArray(parts)) + "\n[color=#%s]Equip %d from one group for its set bonus.[/color]" % [UIStyle.TEXT_DIM.to_html(false), WeaponInfo.SET_SIZE]
 	box.add_child(sets)
 	_held_label = UIStyle.label("", 13, UIStyle.ACCENT)
 	box.add_child(_held_label)
@@ -659,30 +745,30 @@ func _show_weapon_id(id: String) -> void:
 	# Every line wraps: the page can't scroll sideways, so one long unwrapped line pushed
 	# the whole panel off the right edge of the screen.
 	var group_name: String = WeaponInfo.GROUPS[info["group"]]["name"] if info.has("group") else "STAFF WEAPON"
-	detail.add_child(_wrapped(UIStyle.label("%s  //  %s" % [group_name, info["tag"]], 13, color)))
+	detail.add_child(_wrapped(UIStyle.label("%s   ·   %s" % [group_name, info["tag"]], 13, color)))
 	detail.add_child(_wrapped(UIStyle.label(info["name"], 30, Color.WHITE, true)))
 	if not built:
 		detail.add_child(UIStyle.label("NOT BUILT YET", 13, Color(1.0, 0.6, 0.3), true))
 	detail.add_child(_wrapped(UIStyle.label(info["summary"], 15, UIStyle.TEXT)))
 	if info.has("usage"):
-		detail.add_child(UIStyle.label("OPERATION", 13, UIStyle.TEXT_DIM))
+		detail.add_child(UIStyle.caption("OPERATION"))
 		for line in info["usage"]:
 			detail.add_child(_wrapped(UIStyle.label("  > " + line, 14, UIStyle.TEXT)))
-	detail.add_child(UIStyle.label("BLADES", 13, UIStyle.TEXT_DIM))
+	detail.add_child(UIStyle.caption("BLADES"))
 	detail.add_child(_wrapped(UIStyle.label("  " + info.get("layout", ""), 14, UIStyle.TEXT)))
-	detail.add_child(UIStyle.label("COMBO VECTOR", 13, UIStyle.TEXT_DIM))
+	detail.add_child(UIStyle.caption("COMBO VECTOR"))
 	detail.add_child(_wrapped(UIStyle.label("  + " + info["combo"], 14, color)))
 	var partners := WeaponInfo.partners(id)
 	if not partners.is_empty():
 		var names: Array[String] = []
 		for p in partners:
 			names.append(WeaponInfo.by_id(p)["name"])
-		detail.add_child(UIStyle.label("WORKS WITH", 13, UIStyle.TEXT_DIM))
+		detail.add_child(UIStyle.caption("WORKS WITH"))
 		detail.add_child(_wrapped(UIStyle.label("  " + ", ".join(PackedStringArray(names)), 14, UIStyle.TEXT)))
 
 ## Practice: admin powers on yourself, for everyone. They end when you leave practice.
 func _build_practice_admin(box: VBoxContainer, mod: Node) -> void:
-	_header(box, "PRACTICE ADMIN", "ADMIN POWERS ON YOURSELF  //  PRACTICE ONLY  //  RESET WHEN YOU LEAVE")
+	_header(box, "PRACTICE ADMIN", "ADMIN POWERS ON YOURSELF   ·   PRACTICE ONLY   ·   RESET WHEN YOU LEAVE")
 	var gold := Color(1.0, 0.78, 0.25)
 	var powers := _flow(box)
 	var god: bool = mod.get("offline_god")
@@ -756,7 +842,7 @@ func _build_player_stats(box: VBoxContainer, mod: Node, net: Node, gold: Color) 
 		var name_label := UIStyle.label(String(players[id]["name"]) + (" (YOU)" if me else ""), 15, UIStyle.TEXT)
 		name_label.custom_minimum_size = Vector2(160, 0)
 		row.add_child(name_label)
-		row.add_child(UIStyle.label("HP", 13, UIStyle.TEXT_DIM))
+		row.add_child(UIStyle.caption("HP"))
 		var hp := SpinBox.new()
 		hp.min_value = 1
 		hp.max_value = 100000
@@ -794,7 +880,7 @@ func _wrapped(label: Label) -> Label:
 func _build_updates(box: VBoxContainer) -> void:
 	var all := Changelog.entries()
 	var oldest: String = all.back()["version"] if not all.is_empty() else "?"
-	_header(box, "UPDATES", "EVERY PATCH SINCE v%s  //  NEWEST FIRST" % oldest)
+	_header(box, "UPDATES", "EVERY PATCH SINCE v%s   ·   NEWEST FIRST" % oldest)
 	if all.is_empty():
 		box.add_child(UIStyle.label("No update history in this build.", 15, UIStyle.TEXT_DIM))
 		return
@@ -855,7 +941,7 @@ func _build_credits(box: VBoxContainer) -> void:
 	line.color = Color(gold, 0.3)
 	line.custom_minimum_size = Vector2(0, 1)
 	box.add_child(line)
-	box.add_child(UIStyle.label("// OWNER: EDIT CREDITS", 16, gold, true))
+	box.add_child(UIStyle.label("OWNER: EDIT CREDITS", 16, gold, true))
 	box.add_child(_wrapped(UIStyle.label("One section a line:  TITLE: name, name, name. Saving updates everyone's credits (no game update needed).", 13, UIStyle.TEXT_DIM)))
 	var edit := TextEdit.new()
 	edit.text = _credits_draft if _credits_draft != "" else CreditsScript.to_text(sections)
@@ -929,14 +1015,25 @@ const MAP_BLURBS := {
 
 
 func _build_practice(box: VBoxContainer) -> void:
-	_header(box, "PRACTICE", "SOLO  //  PICK A MAP  //  NOTHING CAN HURT YOU HERE")
+	_header(box, "PRACTICE", "SOLO   ·   PICK A MAP   ·   NOTHING CAN HURT YOU HERE")
 	box.add_child(_small_button("TUTORIAL: LEARN THE BASICS", func() -> void: start_tutorial(self)))
+	# Time trial: the next map picked is a run through its checkpoints against the clock.
+	var trial := _small_button("", func() -> void: pass)
+	var trial_text := func() -> void:
+		trial.text = "TIME TRIAL: %s" % ("ON  -  PICK A MAP TO RACE IT" if _trial_on else "OFF")
+		trial.add_theme_color_override("font_color", UIStyle.ACCENT if _trial_on else UIStyle.TEXT)
+	trial_text.call()
+	trial.pressed.connect(func() -> void:
+		_trial_on = not _trial_on
+		trial_text.call())
+	box.add_child(trial)
+	box.add_child(_wrapped(UIStyle.label("Time trial: race through a ring of checkpoints on any map. Bronze, silver and gold times; your best is kept, and a new medal pays experience.", 12, UIStyle.TEXT_DIM)))
 	# AI turrets on the combat maps (also switchable from the pause menu).
 	var net := get_tree().root.get_node_or_null("Net")
 	if net:
 		var turrets := _small_button("", func() -> void: pass)
 		var label := func() -> void:
-			turrets.text = "[ AI TURRETS: %s ]" % ("ON" if net.get("turrets_on") else "OFF")
+			turrets.text = "AI TURRETS: %s" % ("ON" if net.get("turrets_on") else "OFF")
 		label.call()
 		turrets.pressed.connect(func() -> void:
 			net.set("turrets_on", not net.get("turrets_on"))
@@ -949,16 +1046,265 @@ func _build_practice(box: VBoxContainer) -> void:
 	grid.maps = MAP_BLURBS.keys()
 	grid.columns = 3
 	grid.tile_size = Vector2(200, 112)
-	grid.picked.connect(func(path: String) -> void: play_pressed.emit(path))
+	grid.picked.connect(func(path: String) -> void:
+		if _trial_on:
+			Engine.set_meta("time_trial", true)
+		play_pressed.emit(path))
 	grid.hovered.connect(func(path: String) -> void:
-		blurb.text = "%s  //  %s" % [MapGrid.map_name(path), MAP_BLURBS.get(path, "")])
+		blurb.text = "%s   ·   %s" % [MapGrid.map_name(path), MAP_BLURBS.get(path, "")])
 	box.add_child(grid)
+
+
+# --- PLAY -----------------------------------------------------------------------
+
+## The front page: three big cards (the ways to play), and today's challenges under them.
+func _build_play(box: VBoxContainer) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(row)
+	for spec in [
+		["skirmish", "SKIRMISH", "A full match against bots. Any mode, any map, no connection needed.", "res://scenes/arena_coliseum.tscn", "EARNS XP"],
+		["multiplayer", "MULTIPLAYER", "Four online servers, always running. Or host a game on your own network.", "res://scenes/arena_sprawl.tscn", "ONLINE"],
+		["practice", "PRACTICE", "Free roam any map, race time trials, or learn the basics in the tutorial.", "res://scenes/arena.tscn", "SOLO"],
+	]:
+		row.add_child(_play_card(spec[0], spec[1], spec[2], spec[3], spec[4]))
+	var p := get_tree().root.get_node_or_null("Profile")
+	if p:
+		p.call("roll_challenges")
+		box.add_child(UIStyle.caption("TODAY'S CHALLENGES"))
+		_challenge_rows(box, p)
+
+
+func _play_card(id: String, title: String, text: String, scene: String, tag: String) -> Button:
+	var b := Button.new()
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	b.custom_minimum_size = Vector2(0, 280)
+	b.clip_contents = true
+	b.focus_mode = Control.FOCUS_ALL
+	var rest := UIStyle.button_box(Color(0, 0, 0, 0.3), UIStyle.HAIRLINE)
+	var hot := UIStyle.button_box(Color(0, 0, 0, 0.3), UIStyle.ACCENT)
+	hot.set_border_width_all(2)
+	for sb in [rest, hot]:
+		sb.set_corner_radius_all(UIStyle.PANEL_RADIUS)
+	b.add_theme_stylebox_override("normal", rest)
+	b.add_theme_stylebox_override("hover", hot)
+	b.add_theme_stylebox_override("pressed", hot)
+	b.add_theme_stylebox_override("focus", hot)
+	var pic := TextureRect.new()
+	pic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var thumb := MapGrid.thumb_path(scene)
+	if ResourceLoader.exists(thumb):
+		pic.texture = MapGrid.thumbnail(thumb)
+	pic.modulate = Color(0.8, 0.82, 0.88)
+	b.add_child(pic)
+	# Dark at the bottom, where the words are.
+	var fade := TextureRect.new()
+	var grad := GradientTexture2D.new()
+	var g := Gradient.new()
+	g.set_color(0, Color(0.01, 0.02, 0.04, 0.0))
+	g.set_color(1, Color(0.01, 0.02, 0.04, 0.95))
+	grad.gradient = g
+	grad.fill_from = Vector2(0, 0.25)
+	grad.fill_to = Vector2(0, 1)
+	fade.texture = grad
+	fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	fade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(fade)
+	var words := VBoxContainer.new()
+	words.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	words.offset_left = 24
+	words.offset_right = -24
+	words.offset_top = -132
+	words.offset_bottom = -22
+	words.alignment = BoxContainer.ALIGNMENT_END
+	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(words)
+	var chip := UIStyle.caption(tag, UIStyle.ACCENT)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	words.add_child(chip)
+	var head := UIStyle.label(title, 34, Color.WHITE, true)
+	head.add_theme_font_override("font", UIStyle.heading(3))
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	words.add_child(head)
+	var line := UIStyle.label(text, 14, Color(UIStyle.TEXT, 0.8))
+	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	words.add_child(line)
+	b.pressed.connect(func() -> void: _show_page(id))
+	return b
+
+
+## One row per daily challenge: what it is, a bar of how far along, and what it pays.
+func _challenge_rows(box: VBoxContainer, p: Node) -> void:
+	for c in p.get("challenges"):
+		var done: bool = c["done"]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 16)
+		box.add_child(row)
+		var name := UIStyle.label(String(c["text"]), 16, UIStyle.ACCENT if done else UIStyle.TEXT, true)
+		name.custom_minimum_size = Vector2(320, 0)
+		row.add_child(name)
+		var bar := ProgressBar.new()
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(260, 6)
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bar.value = 100.0 * float(p.call("challenge_progress", c)) / maxf(float(c["target"]), 1.0)
+		row.add_child(bar)
+		var count := UIStyle.label("COMPLETE" if done else "%d / %d" % [p.call("challenge_progress", c), int(c["target"])], 14, UIStyle.ACCENT if done else UIStyle.TEXT_DIM)
+		count.custom_minimum_size = Vector2(96, 0)
+		row.add_child(count)
+		row.add_child(UIStyle.label("+%d XP" % int(c["xp"]), 14, UIStyle.TEXT_DIM))
+
+
+## Marks a choice button as the one picked: filled in the accent, dark text.
+func _chosen(b: Button) -> void:
+	b.add_theme_stylebox_override("normal", UIStyle.button_box(UIStyle.ACCENT, UIStyle.ACCENT))
+	b.add_theme_stylebox_override("hover", UIStyle.button_box(UIStyle.ACCENT.lerp(Color.WHITE, 0.25), Color.WHITE))
+	b.add_theme_color_override("font_color", UIStyle.TEXT_ON_ACCENT)
+	b.add_theme_color_override("font_hover_color", UIStyle.TEXT_ON_ACCENT)
+
+
+# --- SKIRMISH -------------------------------------------------------------------
+
+## Practice page: the next map picked is a time trial.
+var _trial_on := false
+## What the next skirmish will be (kept while the menu's open).
+var _sk_map := "res://scenes/arena_coliseum.tscn"
+var _sk_mode := "ffa"
+var _sk_bots := 5
+
+
+## A real match against bots on this computer: pick the mode, how many bots and a map.
+## Matches run back to back (with the vote between) until you leave from the pause menu.
+func _build_skirmish(box: VBoxContainer) -> void:
+	_header(box, "SKIRMISH", "A FULL MATCH AGAINST BOTS   ·   NO CONNECTION NEEDED   ·   EARNS EXPERIENCE AND MEDALS")
+	var net := get_tree().root.get_node_or_null("Net")
+	box.add_child(UIStyle.caption("MODE"))
+	var modes := _flow(box)
+	for m in NetScript.MODES:
+		var b := _small_button(NetScript.MODE_NAMES[m], func() -> void:
+			_sk_mode = m
+			_show_page("skirmish", true))
+		if m == _sk_mode:
+			_chosen(b)
+		modes.add_child(b)
+	box.add_child(UIStyle.label("BOTS  (difficulty: Settings > AI DIFFICULTY)", 13, UIStyle.TEXT_DIM))
+	var counts := _flow(box)
+	for n in range(1, NetScript.MAX_PLAYERS):
+		var b := _small_button(str(n), func() -> void:
+			_sk_bots = n
+			_show_page("skirmish", true))
+		if n == _sk_bots:
+			_chosen(b)
+		counts.add_child(b)
+	var go := _small_button("START: %s ON %s, %d BOTS" % [NetScript.MODE_NAMES[_sk_mode], NetScript.MAP_NAMES.get(_sk_map, "?"), _sk_bots], func() -> void:
+		if net:
+			net.call("start_skirmish", _sk_map, _sk_mode, _sk_bots))
+	# The one button that starts something: filled in the accent.
+	go.add_theme_font_size_override("font_size", 20)
+	go.add_theme_stylebox_override("normal", UIStyle.button_box(UIStyle.ACCENT, UIStyle.ACCENT))
+	go.add_theme_stylebox_override("hover", UIStyle.button_box(UIStyle.ACCENT.lerp(Color.WHITE, 0.3), Color.WHITE))
+	go.add_theme_color_override("font_color", UIStyle.TEXT_ON_ACCENT)
+	go.add_theme_color_override("font_hover_color", UIStyle.TEXT_ON_ACCENT)
+	box.add_child(go)
+	box.add_child(UIStyle.label("MAP  (press one to pick it)", 13, UIStyle.TEXT_DIM))
+	var grid := MapGrid.new()
+	grid.maps = NetScript.COMBAT_MAPS
+	grid.columns = 3
+	grid.tile_size = Vector2(200, 112)
+	grid.picked.connect(func(path: String) -> void:
+		_sk_map = path
+		_show_page("skirmish", true))
+	box.add_child(grid)
+	grid.call_deferred("select", _sk_map)
+
+
+# --- CAREER & LOCKER ------------------------------------------------------------
+
+## Level and rank, today's challenges, the Locker (ball skins and trails: press one you've
+## unlocked to wear it), lifetime stats and medals.
+func _build_career(box: VBoxContainer) -> void:
+	var p := get_tree().root.get_node_or_null("Profile")
+	_header(box, "CAREER & LOCKER", "EXPERIENCE FROM ONLINE MATCHES AND SKIRMISHES   ·   LEVELS UNLOCK LOOKS, NEVER POWER")
+	if not p:
+		return
+	p.call("roll_challenges")
+	var level: int = p.call("level")
+	var rank: Array = ProfileScript.rank_of(level)
+	box.add_child(UIStyle.label("LEVEL %d   ·   %s" % [level, rank[0]], 30, rank[1], true))
+	var bar := ProgressBar.new()
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 10)
+	bar.value = float(p.call("level_progress")) * 100.0
+	box.add_child(bar)
+	var into: int = int(p.get("xp")) - ProfileScript.level_start(level)
+	box.add_child(UIStyle.label("%d / %d XP TO LEVEL %d   (TOTAL %d)" % [into, ProfileScript.need(level), level + 1, int(p.get("xp"))] if level < ProfileScript.MAX_LEVEL else "TOP LEVEL  (TOTAL %d XP)" % int(p.get("xp")), 13, UIStyle.TEXT_DIM))
+	box.add_child(UIStyle.caption("TODAY'S CHALLENGES"))
+	_challenge_rows(box, p)
+	for kind in [["skin", "BALL SKINS", ProfileScript.SKINS], ["trail", "SPEED TRAILS", ProfileScript.TRAILS]]:
+		box.add_child(UIStyle.caption(kind[1]))
+		var flow := _flow(box)
+		var table: Dictionary = kind[2]
+		for id in table:
+			var item: Dictionary = table[id]
+			var open: bool = p.call("unlocked", table, id)
+			var worn: bool = String(p.get(kind[0])) == id
+			var tint: Color = item.get("seam", item.get("base", UIStyle.ACCENT)) if kind[0] == "skin" else ((item["colors"] as Array)[1] if (item["colors"] as Array).size() > 1 else UIStyle.ACCENT)
+			if bool(item.get("rainbow", false)):
+				tint = Color(1.0, 0.45, 0.8)
+			# A card: a stripe in its colour, its name, and EQUIPPED or what unlocks it.
+			var b := Button.new()
+			b.text = "%s\n%s" % [item["name"], "EQUIPPED" if worn else ("" if open else ProfileScript.unlock_text(item))]
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.custom_minimum_size = Vector2(196, 62)
+			b.add_theme_font_size_override("font_size", 14)
+			b.add_theme_stylebox_override("normal", UIStyle.button_box(Color(tint, 0.2) if worn else Color(1, 1, 1, 0.05 if open else 0.02), Color(tint, 1.0 if open else 0.25), 5))
+			b.add_theme_stylebox_override("hover", UIStyle.button_box(Color(tint, 0.24), tint, 5))
+			b.add_theme_stylebox_override("disabled", UIStyle.button_box(Color(1, 1, 1, 0.02), Color(tint, 0.22), 5))
+			b.add_theme_color_override("font_color", Color.WHITE if worn else UIStyle.TEXT)
+			b.add_theme_color_override("font_disabled_color", Color(UIStyle.TEXT_DIM, 0.6))
+			b.disabled = not open
+			b.pressed.connect(func() -> void:
+				p.call("wear", kind[0], id)
+				var net := get_tree().root.get_node_or_null("Net")
+				if net:
+					net.call("send_card")
+				_show_page("career", true))
+			flow.add_child(b)
+	box.add_child(UIStyle.caption("LIFETIME"))
+	var kills := int(p.call("stat", "kills"))
+	var deaths := int(p.call("stat", "deaths"))
+	var lines := [
+		"KILLS %d   DEATHS %d   K/D %.2f" % [kills, deaths, float(kills) / maxf(deaths, 1.0)],
+		"MATCHES %d   WINS %d   BEST STREAK %d" % [int(p.call("stat", "matches")), int(p.call("stat", "wins")), int(p.call("stat", "best_streak"))],
+		"MEDALS %d   PARRIES %d   LONGEST KILL %d m   TIME IN MATCHES %d min" % [int(p.call("stat", "medals")), int(p.call("stat", "parries")), int(p.call("stat", "longest_kill")), int(p.call("stat", "playtime") / 60.0)],
+	]
+	for line in lines:
+		box.add_child(UIStyle.label(line, 15, UIStyle.TEXT))
+	var trials: Dictionary = p.get("trials")
+	if not trials.is_empty():
+		box.add_child(UIStyle.caption("TIME TRIALS"))
+		for map in trials:
+			var t := float(trials[map]["time"])
+			box.add_child(UIStyle.label("%s   %d:%05.2f   %s" % [NetScript.MAP_NAMES.get(map, "?"), int(t / 60.0), fmod(t, 60.0), String(trials[map].get("medal", "")).to_upper()], 15, UIStyle.TEXT))
+	box.add_child(UIStyle.caption("MEDALS"))
+	var earned: Dictionary = p.get("medals")
+	for id in ProfileScript.MEDALS:
+		var m: Dictionary = ProfileScript.MEDALS[id]
+		var n := int(earned.get(id, 0))
+		box.add_child(_wrapped(UIStyle.label("%s x%d   +%d XP   %s" % [m["name"], n, int(m["xp"]), m["how"]], 14, m["color"] if n > 0 else UIStyle.TEXT_DIM)))
 
 
 # --- GLOBAL CHAT ----------------------------------------------------------------
 
 func _build_chat(box: VBoxContainer) -> void:
-	_header(box, "GLOBAL CHAT", "EVERY ONLINE SERVER  //  YOU POST AS YOUR PILOT NAME, TAGGED MENU")
+	_header(box, "GLOBAL CHAT", "EVERY ONLINE SERVER   ·   YOU POST AS YOUR PILOT NAME, TAGGED MENU")
 	_unread = 0
 	_update_chat_nav()
 	_chat_status = UIStyle.label("", 12, UIStyle.TEXT_DIM)
@@ -1018,18 +1364,18 @@ func _on_chat_history() -> void:
 func _on_chat_status(text: String) -> void:
 	if _chat_status and is_instance_valid(_chat_status):
 		var hints := {
-			"CONNECTING": "LINK  //  CONNECTING TO SERVER 1 (can take a minute if it's asleep)...",
-			"LINKED": "LINK  //  ONLINE",
-			"OUT OF DATE": "LINK  //  YOUR GAME IS OUT OF DATE: restart it to update",
+			"CONNECTING": "LINK   ·   CONNECTING TO SERVER 1 (can take a minute if it's asleep)...",
+			"LINKED": "LINK   ·   ONLINE",
+			"OUT OF DATE": "LINK   ·   YOUR GAME IS OUT OF DATE: restart it to update",
 		}
-		_chat_status.text = hints.get(text, "LINK  //  " + text)
+		_chat_status.text = hints.get(text, "LINK   ·   " + text)
 		_chat_status.add_theme_color_override("font_color", UIStyle.ACCENT if text == "LINKED" else UIStyle.TEXT_DIM)
 
 
 func _update_chat_nav() -> void:
 	var b: Button = _nav_buttons.get("chat")
 	if b:
-		b.text = "[ GLOBAL CHAT (%d) ]" % _unread if _unread > 0 else "[ GLOBAL CHAT ]"
+		b.text = "GLOBAL CHAT (%d)" % _unread if _unread > 0 else "GLOBAL CHAT"
 
 
 ## One chat line, formatted like the in-game chat box.
@@ -1076,7 +1422,7 @@ var _bind_buttons: Array = []
 
 
 func _build_controls(box: VBoxContainer) -> void:
-	_header(box, "CONTROLS", "CLICK A KEY TO CHANGE IT  //  ESC CANCELS, BACKSPACE CLEARS")
+	_header(box, "CONTROLS", "CLICK A KEY TO CHANGE IT   ·   ESC CANCELS, BACKSPACE CLEARS")
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 18)
@@ -1144,7 +1490,7 @@ func _refresh_bind_buttons() -> void:
 		var events := InputSetup.kbm_events(entry[0])
 		var listening: bool = _listening.get("action", "") == entry[0] and _listening.get("slot", -1) == entry[1]
 		var text := "PRESS A KEY..." if listening else (InputSetup.event_label(events[entry[1]]) if entry[1] < events.size() else "-")
-		b.text = "[ " + text + " ]"
+		b.text = text
 		b.add_theme_color_override("font_color", UIStyle.ACCENT if listening else UIStyle.TEXT)
 
 
@@ -1187,7 +1533,7 @@ func _update_mod_nav() -> void:
 	var practice: bool = pause_mode and not (net and net.get("online"))
 	var on: bool = mod != null and (int(mod.call("my_level")) >= 1 or practice)
 	_nav_buttons["moderation"].visible = on
-	_nav_buttons["moderation"].text = "[ PRACTICE ADMIN ]" if practice else "[ MODERATION ]"
+	_nav_buttons["moderation"].text = "PRACTICE ADMIN" if practice else "MODERATION"
 	if not on and _current_page == "moderation":
 		_show_page("armory")
 	elif on and _current_page == "moderation" and is_inside_tree():
@@ -1211,7 +1557,7 @@ func _build_moderation(box: VBoxContainer) -> void:
 	if mod and not (net and net.get("online")):
 		_build_practice_admin(box, mod)
 		return
-	_header(box, "MODERATION", "STAFF TOOLS  //  WHAT YOU SEE DEPENDS ON YOUR ROLE")
+	_header(box, "MODERATION", "STAFF TOOLS   ·   WHAT YOU SEE DEPENDS ON YOUR ROLE")
 	var level: int = mod.call("my_level") if mod else 0
 	if not mod or not net or level < 1:
 		box.add_child(UIStyle.label("Staff tools are not active.", 15, UIStyle.TEXT_DIM))
@@ -1357,7 +1703,7 @@ func _flow(box: Control) -> HFlowContainer:
 
 func _small_button(text: String, action: Callable) -> Button:
 	var b := Button.new()
-	b.text = "[ " + text + " ]"
+	b.text = text
 	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	b.pressed.connect(action)
 	_animate_button(b)
@@ -1371,13 +1717,13 @@ func _settings() -> Node:
 
 
 func _build_settings(box: VBoxContainer) -> void:
-	_header(box, "SETTINGS", "CALIBRATION  //  SAVED AUTOMATICALLY")
+	_header(box, "SETTINGS", "CALIBRATION   ·   SAVED AUTOMATICALLY")
 	var s := _settings()
 	if not s:
 		box.add_child(UIStyle.label("Settings service offline.", 15, UIStyle.TEXT_DIM))
 		return
 	# GRAPHICS: a preset, then each thing it sets.
-	box.add_child(UIStyle.label("GRAPHICS", 14, UIStyle.ACCENT, true))
+	box.add_child(UIStyle.caption("GRAPHICS"))
 	_choice_row(box, s, "WINDOW", "window_mode", ["WINDOWED", "BORDERLESS", "FULLSCREEN"])
 	_choice_row(box, s, "RESOLUTION", "resolution", ["1280x720", "1600x900", "1920x1080", "2560x1440", "3840x2160"])
 	_choice_row(box, s, "QUALITY", "graphics_preset", ["LOW", "MEDIUM", "HIGH", "ULTRA"])
@@ -1387,6 +1733,7 @@ func _build_settings(box: VBoxContainer) -> void:
 	_toggle(gfx, s, "AMBIENT OCCLUSION", "ssao")
 	_toggle(gfx, s, "REFLECTIONS", "ssr")
 	_toggle(gfx, s, "INDIRECT LIGHT", "ssil")
+	_toggle(gfx, s, "VOLUMETRIC LIGHT", "volumetric")
 	_slider(gfx, s, "RENDER SCALE", "render_scale", 0.5, 1.0, 0.05, "%.2fx")
 	_slider(gfx, s, "FRAME CAP (0 = NONE)", "max_fps", 0.0, 360.0, 30.0, "%d")
 	_slider(gfx, s, "UI SCALE", "ui_scale", 0.75, 1.5, 0.05, "%.2fx")
@@ -1399,7 +1746,7 @@ func _build_settings(box: VBoxContainer) -> void:
 	_toggle(gfx, s, "MAP BUILD-IN", "map_intro")
 	_toggle(gfx, s, "V-SYNC", "vsync")
 
-	box.add_child(UIStyle.label("AUDIO", 14, UIStyle.ACCENT, true))
+	box.add_child(UIStyle.caption("AUDIO"))
 	var audio := _settings_grid(box)
 	_slider(audio, s, "MASTER VOLUME", "master_volume", 0.0, 1.0, 0.05, "%.2f")
 	_slider(audio, s, "EFFECTS VOLUME", "sfx_volume", 0.0, 1.0, 0.05, "%.2f")
@@ -1407,7 +1754,7 @@ func _build_settings(box: VBoxContainer) -> void:
 	_slider(audio, s, "SPEEDOMETER SOUNDS", "speedometer_volume", 0.0, 1.0, 0.05, "%.2f")
 	_toggle(audio, s, "MENU SOUNDS", "ui_sounds")
 
-	box.add_child(UIStyle.label("GAMEPLAY & HUD", 14, UIStyle.ACCENT, true))
+	box.add_child(UIStyle.caption("GAMEPLAY & HUD"))
 	var play := _settings_grid(box)
 	_slider(play, s, "MOUSE SENSITIVITY", "mouse_sensitivity", 0.2, 3.0, 0.05, "%.2fx")
 	_toggle(play, s, "INVERT MOUSE Y", "invert_mouse_y")
@@ -1422,7 +1769,7 @@ func _build_settings(box: VBoxContainer) -> void:
 	_toggle(play, s, "MOTION INVERT Y", "motion_invert_y")
 	_slider(play, s, "AI DIFFICULTY", "ai_difficulty", 0.0, 1.0, 0.05, "%.2f")
 
-	box.add_child(UIStyle.label("INTERFACE", 14, UIStyle.ACCENT, true))	# Accent colour for the menus and HUD: one swatch per choice.
+	box.add_child(UIStyle.caption("INTERFACE"))	# Accent colour for the menus and HUD: one swatch per choice.
 	var color_row := HBoxContainer.new()
 	color_row.add_theme_constant_override("separation", 10)
 	box.add_child(color_row)
@@ -1457,7 +1804,7 @@ func _build_settings(box: VBoxContainer) -> void:
 	box.add_child(UIStyle.label("Checked by the server the next time you join an online server.", 12, UIStyle.TEXT_DIM))
 
 	var reset := Button.new()
-	reset.text = "[ RESTORE DEFAULTS ]"
+	reset.text = "RESTORE DEFAULTS"
 	reset.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	reset.pressed.connect(func() -> void:
 		s.call("reset_defaults")
@@ -1524,10 +1871,9 @@ func _choice_row(box: VBoxContainer, s: Node, title: String, key: String, choice
 	for choice in choices:
 		var b := Button.new()
 		b.text = choice
-		b.add_theme_font_size_override("font_size", 12)
+		b.add_theme_font_size_override("font_size", 14)
 		if choice == current:
-			b.add_theme_stylebox_override("normal", UIStyle.panel_box(UIStyle.ACCENT, Color(UIStyle.ACCENT, 0.2)))
-			b.add_theme_color_override("font_color", Color.WHITE)
+			_chosen(b)
 		b.pressed.connect(func() -> void:
 			s.call("set_value", key, choice)
 			ui_sound(self, "ui_click", -8.0)

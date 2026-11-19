@@ -105,7 +105,7 @@ func _make_materials() -> void:
 		[checker(Color(0.2, 0.2, 0.2), Color(0.17, 0.17, 0.17), 2.0), solid(Color(0.28, 0.27, 0.26), 0.6, 0.4),
 			solid(Color(0.24, 0.22, 0.2), 0.6, 0.4), solid(Color(0.15, 0.14, 0.13), 0.8),
 			glow(Color(1.0, 0.5, 0.2), 2.5), solid(Color(0.55, 0.3, 0.15), 0.4, 0.7)],
-		[checker(Color(0.35, 0.33, 0.32), Color(0.32, 0.3, 0.29), 3.0), panel(Color(0.45, 0.2, 0.15), Color(0.35, 0.16, 0.12), 1.0),
+		[checker(Color(0.35, 0.33, 0.32), Color(0.32, 0.3, 0.29), 3.0), masonry(Color(0.45, 0.2, 0.15), Color(0.35, 0.16, 0.12), 1.0),
 			solid(Color(0.42, 0.2, 0.15), 0.9), solid(Color(0.25, 0.25, 0.26), 0.8),
 			glow(Color(0.7, 0.85, 1.0), 3.0), solid(Color(0.4, 0.42, 0.45), 0.4, 0.6)],
 		[checker(Color(0.3, 0.36, 0.45), Color(0.28, 0.33, 0.42), 1.0), solid(Color(0.85, 0.85, 0.82), 0.8),

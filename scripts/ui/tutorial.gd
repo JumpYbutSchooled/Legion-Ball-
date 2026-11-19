@@ -52,7 +52,7 @@ func _ready() -> void:
 	_text = UIStyle.label("", 17, Color.WHITE)
 	_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_text)
-	col.add_child(UIStyle.label("TUTORIAL  //  ESC / START: pause menu (leave any time)", 11, UIStyle.TEXT_DIM))
+	col.add_child(UIStyle.label("TUTORIAL   ·   ESC / START: pause menu (leave any time)", 11, UIStyle.TEXT_DIM))
 	if ball:
 		_start = ball.global_position
 	_show()

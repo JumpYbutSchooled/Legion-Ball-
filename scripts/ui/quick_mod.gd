@@ -81,7 +81,7 @@ func _build() -> void:
 		return
 	var online: bool = net != null and net.get("online")
 	var gold := Color(1.0, 0.78, 0.25)
-	_list.add_child(UIStyle.label("// QUICK %s" % ("MODERATION" if online else "ADMIN"), 14, gold, true))
+	_list.add_child(UIStyle.label("QUICK %s" % ("MODERATION" if online else "ADMIN"), 14, gold, true))
 	var entries: Array = []
 	if not online:
 		var low: bool = mod.get("low_gravity")

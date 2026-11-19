@@ -1,6 +1,9 @@
 @tool
 extends MeshInstance3D
 ## Builds a Goldberg polyhedron: hexagons plus the 12 pentagons needed to close a sphere.
+## Every vertex also says where it is on its face (UV.x: 0 at the middle, 1 at the edge),
+## its face's own random number (UV.y) and whether the face is a pentagon (UV2.x), which is
+## what shaders/ball.gdshader lights the seams and patterns the faces from.
 ## Made as the dual of a subdivided icosahedron, so `frequency` n gives
 ## 12 pentagons and 10 * (n^2 - 1) hexagons. Faces are flat-shaded; set `border` above 0
 ## to outline each one.
@@ -96,6 +99,8 @@ func _rebuild() -> void:
 			corners.append(((verts[tri[0]] + verts[tri[1]] + verts[tri[2]]) / 3.0).normalized() * radius)
 		_sort_around(corners, n)
 		var fill := pentagon_color if corners.size() == 5 else hexagon_color
+		_face_id = fposmod(sin(float(v) * 12.9898) * 43758.5453, 1.0)
+		_face_pent = 1.0 if corners.size() == 5 else 0.0
 		_add_face(st, corners, n, fill)
 		_faces.append([corners, n])
 
@@ -119,26 +124,33 @@ func _add_face(st: SurfaceTool, corners: Array[Vector3], normal: Vector3, fill: 
 
 	st.set_normal(normal)
 	var count := corners.size()
+	var rim := 1.0 - border
 	for i in count:
 		var j := (i + 1) % count
 		# Colored inner polygon as a fan.
-		_add_tri(st, center, inner[i], inner[j], normal, fill)
+		_add_tri(st, [center, inner[i], inner[j]], [0.0, rim, rim], normal, fill)
 		# Border strip between the outer and inner outlines.
 		if border > 0.0:
-			_add_tri(st, corners[i], corners[j], inner[j], normal, border_color)
-			_add_tri(st, corners[i], inner[j], inner[i], normal, border_color)
+			_add_tri(st, [corners[i], corners[j], inner[j]], [1.0, 1.0, rim], normal, border_color)
+			_add_tri(st, [corners[i], inner[j], inner[i]], [1.0, rim, rim], normal, border_color)
 
 
-func _add_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, normal: Vector3, color: Color) -> void:
+## The face being built: its random number and whether it's a pentagon (see the top).
+var _face_id := 0.0
+var _face_pent := 0.0
+
+
+## One triangle: its corners, and how far out from the face's middle each is (0..1).
+func _add_tri(st: SurfaceTool, pts: Array, out: Array, normal: Vector3, color: Color) -> void:
 	# Godot treats clockwise triangles as front-facing; flip if this one isn't.
-	if (b - a).cross(c - a).dot(normal) > 0.0:
-		var tmp := b
-		b = c
-		c = tmp
-	st.set_color(color)
-	st.add_vertex(a)
-	st.add_vertex(b)
-	st.add_vertex(c)
+	var order := [0, 1, 2]
+	if ((pts[1] as Vector3) - pts[0]).cross((pts[2] as Vector3) - pts[0]).dot(normal) > 0.0:
+		order = [0, 2, 1]
+	for k in order:
+		st.set_color(color)
+		st.set_uv(Vector2(out[k], _face_id))
+		st.set_uv2(Vector2(_face_pent, 0.0))
+		st.add_vertex(pts[k])
 
 
 func _sort_around(points: Array[Vector3], axis: Vector3) -> void:

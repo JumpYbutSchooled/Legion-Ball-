@@ -50,7 +50,7 @@ func _ready() -> void:
 	_perf.offset_top = 4
 	_perf.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	add_child(_perf)
-	_fly_tag = UIStyle.label("// FLYING  -  SPACE UP, C DOWN, V TO LAND", 13, Color(1.0, 0.78, 0.25), true)
+	_fly_tag = UIStyle.label("FLYING  -  SPACE UP, C DOWN, V TO LAND", 13, Color(1.0, 0.78, 0.25), true)
 	_fly_tag.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	_fly_tag.offset_top = -150
 	_fly_tag.offset_left = -260

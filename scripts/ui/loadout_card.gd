@@ -25,7 +25,7 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(150 if slot < 0 else 90, 58 if slot < 0 else 52)
 	clip_text = true
 	alignment = HORIZONTAL_ALIGNMENT_LEFT
-	add_theme_font_size_override("font_size", 13)
+	add_theme_font_size_override("font_size", 15)
 	var label: String = info.get("name", "EMPTY")
 	if slot >= 0:
 		text = "%d  %s" % [slot + 1, label]

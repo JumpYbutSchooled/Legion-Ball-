@@ -10,6 +10,7 @@ const LockWarning := preload("res://scripts/ui/lock_warning.gd")
 const ChatBox := preload("res://scripts/ui/chat_box.gd")
 const CombatFeedback := preload("res://scripts/ui/combat_feedback.gd")
 const QuickMod := preload("res://scripts/ui/quick_mod.gd")
+const WeaponBar := preload("res://scripts/ui/weapon_bar.gd")
 
 
 func setup(ball: RigidBody3D) -> void:
@@ -27,6 +28,9 @@ func setup(ball: RigidBody3D) -> void:
 	var quick := QuickMod.new()
 	quick.ball = ball
 	add_child(quick)
+	var bar := WeaponBar.new()
+	bar.weapon = ball.get_node("Weapon")
+	add_child(bar)
 	var rig := $CameraRig
 	var camera := $CameraRig/Pitch/SpringArm3D/Camera3D
 	var weapon := ball.get_node("Weapon")

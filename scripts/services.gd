@@ -6,6 +6,7 @@ extends RefCounted
 
 const SERVICES := {
 	"Settings": "res://scripts/settings.gd",
+	"Profile": "res://scripts/profile.gd",
 	"Net": "res://scripts/net/net.gd",
 	"Sfx": "res://scripts/sfx.gd",
 	"Music": "res://scripts/music.gd",

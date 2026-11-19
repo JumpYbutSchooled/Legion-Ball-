@@ -9,10 +9,10 @@ extends RefCounted
 
 ## What each preset sets.
 const PRESETS := {
-	"LOW": {"shadows": false, "aa": "OFF", "ssao": false, "ssr": false, "ssil": false, "render_scale": 0.75},
-	"MEDIUM": {"shadows": true, "aa": "FXAA", "ssao": false, "ssr": false, "ssil": false, "render_scale": 1.0},
-	"HIGH": {"shadows": true, "aa": "MSAA 2X", "ssao": true, "ssr": true, "ssil": false, "render_scale": 1.0},
-	"ULTRA": {"shadows": true, "aa": "MSAA 4X", "ssao": true, "ssr": true, "ssil": true, "render_scale": 1.0},
+	"LOW": {"shadows": false, "aa": "OFF", "ssao": false, "ssr": false, "ssil": false, "volumetric": false, "render_scale": 0.75},
+	"MEDIUM": {"shadows": true, "aa": "FXAA", "ssao": false, "ssr": false, "ssil": false, "volumetric": true, "render_scale": 1.0},
+	"HIGH": {"shadows": true, "aa": "MSAA 2X", "ssao": true, "ssr": true, "ssil": false, "volumetric": true, "render_scale": 1.0},
+	"ULTRA": {"shadows": true, "aa": "MSAA 4X", "ssao": true, "ssr": true, "ssil": true, "volumetric": true, "render_scale": 1.0},
 }
 const AA_MODES := ["OFF", "FXAA", "MSAA 2X", "MSAA 4X", "TAA"]
 ## How far the sun's shadows reach (metres), per preset.
@@ -28,18 +28,71 @@ const SUN_WARM := Color(1.0, 0.9, 0.76)
 const SUN_WARMTH := 0.35
 const SUN_MAX_ELEVATION := 0.84  # radians, about 48 degrees
 const SATURATION := 1.2
+## Night maps (a weak "sun": moonlight): how much brighter the moon is made, the cool light
+## added everywhere so nothing is pitch black, and how much of the ambient light it replaces.
+const MOON_BOOST := 1.5
+const NIGHT_AMBIENT := Color(0.24, 0.32, 0.52)
+const NIGHT_AMBIENT_ENERGY := 2.6
+const NIGHT_BELOW := 0.75
+## ...and how far the exposure is opened up on the darkest of them (eyes used to the dark),
+## with a gentler tone curve: the day's punchy one crushes everything dim to pure black.
+const NIGHT_EXPOSURE := 2.3
+const NIGHT_CONTRAST := 1.08
+## Volumetric light (the air itself lit by the sun: a glow round it, shafts past things in
+## its way): how thick the air is by day and by night, and how far it's worked out.
+const AIR_DENSITY := 0.0024
+const AIR_DENSITY_NIGHT := 0.0011
+const AIR_LENGTH := 260.0
 ## Rocket League-style bloom: wide and soft, weighted to the big blur levels, bright
 ## things glowing generously, smeared across a little lens dirt.
 const GLOW_LEVELS := [0.0, 0.25, 0.6, 1.0, 0.9, 0.6, 0.35]
 const LENS_DIRT := 0.6
 const VignetteShader := preload("res://shaders/vignette.gdshader")
 const AmbientDust := preload("res://scripts/ambient_dust.gd")
+const SkyShader := preload("res://shaders/sky.gdshader")
+## Values every shader can read ("global uniform"). They're made here when the game starts,
+## not in the project settings: an installed game keeps the project settings it was first
+## built with, so one added there in a later update never exists for players (the surface
+## detail from 2.5 never showed for anyone because of exactly that).
+const GLOBALS := {"surface_detail": 1.0, "sky_clock": 0.0}
+## Skies that aren't just "day, a few clouds" (by scene file name): how overcast, how
+## bright the clouds are, stars, a moon, and space's nebulas (shaders/sky.gdshader).
+const SKY_STYLES := {
+	"arena_thunderdome": {"cloud_cover": 0.86, "cloud_light": 0.22, "cirrus": 0.0, "stars": 0.0, "cloud_speed": 0.02},
+	"arena_darkhaven": {"cloud_cover": 0.55, "cloud_light": 0.16, "cirrus": 0.2, "stars": 0.55, "moon": 1.0},
+	"arena_city": {"cloud_cover": 0.3, "cloud_light": 0.2, "cirrus": 0.3, "stars": 0.8, "moon": 1.0},
+	"arena_military_base": {"cloud_cover": 0.72, "cloud_light": 0.75, "cirrus": 0.2},
+	"arena_chess": {"cloud_cover": 0.0, "cirrus": 0.0, "stars": 0.9, "nebula": 0.5,
+		"nebula_a": Color(0.55, 0.25, 0.1), "nebula_b": Color(0.35, 0.12, 0.3)},
+	"arena_atlantis": {"cloud_cover": 0.0, "cirrus": 0.0},
+	"arena_toilet": {"cloud_cover": 0.0, "cirrus": 0.0},
+	"arena_castle": {"cloud_cover": 0.55},
+	"arena_seaside_village": {"cloud_cover": 0.5, "cirrus": 0.5},
+	"arena_eden": {"cloud_cover": 0.4, "cirrus": 0.6},
+	"arena_desert_camper": {"cloud_cover": 0.22, "cirrus": 0.5},
+}
+
+
+## Makes the shader globals (GLOBALS) that this game's own project settings don't have.
+## Safe to call any number of times; called as early as possible (settings.gd).
+static var _globals_made := false
+
+static func ensure_globals() -> void:
+	if _globals_made or DisplayServer.get_name() == "headless":
+		return
+	_globals_made = true
+	for g in GLOBALS:
+		# The engine makes the ones in the project settings itself when it starts (and a
+		# running game can't ask the renderer which exist), so: any that aren't listed there.
+		if not ProjectSettings.has_setting("shader_globals/" + g):
+			RenderingServer.global_shader_parameter_add(g, RenderingServer.GLOBAL_VAR_TYPE_FLOAT, GLOBALS[g])
 
 
 ## Everything, from the current settings.
 static func apply(tree: SceneTree) -> void:
 	if not tree or DisplayServer.get_name() == "headless":
 		return
+	ensure_globals()
 	var s := tree.root.get_node_or_null("Settings")
 	if not s:
 		return
@@ -48,10 +101,22 @@ static func apply(tree: SceneTree) -> void:
 	var aa: String = get.call("aa")
 	viewport.msaa_3d = {"MSAA 2X": Viewport.MSAA_2X, "MSAA 4X": Viewport.MSAA_4X}.get(aa, Viewport.MSAA_DISABLED)
 	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == "FXAA" else Viewport.SCREEN_SPACE_AA_DISABLED
-	viewport.use_taa = aa == "TAA"
 	var scale: float = get.call("render_scale")
-	viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2 if scale < 0.99 else Viewport.SCALING_3D_MODE_BILINEAR
+	# Below full size the picture is scaled back up with FSR 1: a sharp upscale that costs
+	# next to nothing. (It used to be FSR 2, which rebuilds the picture over several frames;
+	# on its own that costs about 3 ms at 3200 x 2000, more than the pixels it saved, so LOW
+	# was slower than MEDIUM. FSR 2 is still what you get with temporal anti-aliasing, which
+	# it replaces: the two can't run together.)
+	var temporal := aa == "TAA"
+	if scale < 0.99:
+		viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2 if temporal else Viewport.SCALING_3D_MODE_FSR
+	else:
+		viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	viewport.use_taa = temporal and scale >= 0.99
 	viewport.scaling_3d_scale = clampf(scale, 0.5, 1.0)
+	# The bloom's smoothest filter is ULTRA's: the plain one saves most of a millisecond
+	# and the seven blur levels hide the difference.
+	RenderingServer.environment_glow_set_use_bicubic_upscale(get.call("graphics_preset") == "ULTRA")
 	Engine.max_fps = int(get.call("max_fps"))
 	viewport.use_debanding = true
 	# Surface detail on the map materials (shaders/detail.gdshaderinc): off on LOW.
@@ -75,9 +140,15 @@ static func apply_scene(tree: SceneTree) -> void:
 	if env_node and env_node.environment:
 		var env := env_node.environment
 		_grade(env, sun, indoor or not sun or sun.light_energy < 0.05)
+		# (After the grade: that can lower the sun, and the moon is placed from it.)
+		_sky(env, sun, indoor, scene.scene_file_path.get_file().get_basename())
 		env.ssao_enabled = s.call("get_value", "ssao")
 		env.ssr_enabled = s.call("get_value", "ssr")
 		env.ssil_enabled = s.call("get_value", "ssil")
+		# Volumetric light: outdoors under a sky with air in it (not roofed maps, lit by
+		# lamps, and not space).
+		env.volumetric_fog_enabled = s.call("get_value", "volumetric") and not indoor and sun != null \
+			and sun.light_energy > 0.05 and not env.has_meta("airless")
 		if env.ssr_enabled:
 			env.ssr_max_steps = 48
 			env.ssr_fade_in = 0.2
@@ -94,6 +165,62 @@ static func apply_scene(tree: SceneTree) -> void:
 			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 			sun.shadow_blur = 1.5 if preset == "ULTRA" else 1.0
 			sun.shadow_opacity = 0.85
+
+
+## Swaps the map's plain gradient sky for the game's own (shaders/sky.gdshader), once per
+## environment, in that map's colours: clouds by day, stars and a moon on dark skies,
+## nebulas in space. Roofed maps keep a plain sky (you only glimpse it through gaps).
+static func _sky(env: Environment, sun: DirectionalLight3D, indoor: bool, scene_name: String) -> void:
+	if not env.sky or env.has_meta("sky_done"):
+		return
+	env.set_meta("sky_done", true)
+	var old := env.sky.sky_material as ProceduralSkyMaterial
+	if not old:
+		return
+	var mat := ShaderMaterial.new()
+	mat.shader = SkyShader
+	mat.set_shader_parameter("top_color", old.sky_top_color)
+	mat.set_shader_parameter("horizon_color", old.sky_horizon_color)
+	mat.set_shader_parameter("ground_bottom_color", old.ground_bottom_color)
+	mat.set_shader_parameter("ground_horizon_color", old.ground_horizon_color)
+	mat.set_shader_parameter("sky_curve", old.sky_curve)
+	mat.set_shader_parameter("ground_curve", old.ground_curve)
+	mat.set_shader_parameter("sun_angle_max", deg_to_rad(old.sun_angle_max))
+	mat.set_shader_parameter("sun_curve", old.sun_curve)
+	mat.set_shader_parameter("energy", old.sky_energy_multiplier * old.energy_multiplier)
+	# What kind of sky, from how dark it is: space (black all the way down), night, or day.
+	var top := old.sky_top_color.get_luminance()
+	var low := old.sky_horizon_color.get_luminance()
+	var style := {"cloud_cover": 0.42, "cloud_light": 1.0, "cirrus": 0.35, "stars": 0.0, "moon": 0.0, "nebula": 0.0}
+	if top < 0.012 and low < 0.06:
+		style = {"cloud_cover": 0.0, "cloud_light": 0.0, "cirrus": 0.0, "stars": 1.0, "moon": 0.0, "nebula": 0.85}
+		# (No air out here: no volumetric light.)
+		env.set_meta("airless", true)
+		env.volumetric_fog_enabled = false
+	elif top < 0.09:
+		style = {"cloud_cover": 0.35, "cloud_light": 0.2, "cirrus": 0.25, "stars": 0.8, "moon": 0.0, "nebula": 0.0}
+	elif top < 0.2:
+		# Dusk: the first stars are out.
+		style["stars"] = 0.35
+		style["cirrus"] = 0.55
+	if indoor:
+		style = {"cloud_cover": 0.0, "cloud_light": 0.0, "cirrus": 0.0, "stars": 0.0, "moon": 0.0, "nebula": 0.0}
+	style.merge(SKY_STYLES.get(scene_name, {}), true)
+	for key in style:
+		mat.set_shader_parameter(key, style[key])
+	# A moonlit map's "sun" is its moonlight: the moon sits where that light comes from (so
+	# the shadows point away from it), and there's no sun disc.
+	if float(style["moon"]) > 0.0:
+		mat.set_shader_parameter("sun_disc", 0.0)
+		if sun:
+			mat.set_shader_parameter("moon_dir", sun.global_basis.z.normalized())
+	env.sky.sky_material = mat
+
+
+## Keeps the sky's clock (the clouds' drift, the stars' twinkle) going: called every frame
+## by the Settings service.
+static func tick_clock() -> void:
+	RenderingServer.global_shader_parameter_set("sky_clock", Time.get_ticks_msec() / 1000.0)
 
 
 ## The game's look, laid over each map's own lighting (once per environment): a filmic
@@ -128,6 +255,26 @@ static func _grade(env: Environment, sun: DirectionalLight3D, indoor: bool) -> v
 	if not indoor:
 		# Weak suns (night maps) keep more of their sky light.
 		env.ambient_light_energy *= lerpf(0.85, AMBIENT_CUT, clampf((sun_energy - 0.5) / 0.7, 0.0, 1.0))
+	var night := not indoor and sun != null and sun_energy < NIGHT_BELOW
+	if night:
+		# Night: a brighter moon and a little cool light on everything, so the dark side of a
+		# street is dark blue, not a black screen.
+		var k := clampf(inverse_lerp(NIGHT_BELOW, 0.3, sun_energy), 0.0, 1.0)
+		sun.light_energy *= lerpf(1.0, MOON_BOOST, k)
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_BG
+		env.ambient_light_color = NIGHT_AMBIENT
+		env.ambient_light_sky_contribution = lerpf(1.0, 0.35, k)
+		env.ambient_light_energy *= lerpf(1.0, NIGHT_AMBIENT_ENERGY, k)
+		env.tonemap_exposure = lerpf(EXPOSURE, NIGHT_EXPOSURE, k)
+	# The air (volumetric light; switched on per the settings in apply_scene).
+	env.volumetric_fog_density = AIR_DENSITY_NIGHT if night else AIR_DENSITY
+	env.volumetric_fog_albedo = Color(1, 1, 1)
+	env.volumetric_fog_anisotropy = 0.75
+	env.volumetric_fog_length = AIR_LENGTH
+	env.volumetric_fog_detail_spread = 1.6
+	env.volumetric_fog_ambient_inject = 0.0
+	env.volumetric_fog_sky_affect = 0.0
+	env.volumetric_fog_gi_inject = 0.0
 	env.ssao_radius = 1.4
 	env.ssao_intensity = 2.4
 	env.ssao_power = 1.7
@@ -153,6 +300,10 @@ static func _grade(env: Environment, sun: DirectionalLight3D, indoor: bool) -> v
 	env.adjustment_contrast = CONTRAST
 	env.adjustment_saturation = saturation * SATURATION
 	env.tonemap_agx_contrast = 1.45
+	if night:
+		var dark := clampf(inverse_lerp(NIGHT_BELOW, 0.3, sun_energy), 0.0, 1.0)
+		env.tonemap_agx_contrast = lerpf(1.45, NIGHT_CONTRAST, dark)
+		env.adjustment_contrast = lerpf(CONTRAST, 1.0, dark)
 
 
 ## A lens-dirt picture for the bloom (made once): faint smudges, specks and a few soft

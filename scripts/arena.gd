@@ -44,6 +44,8 @@ const Graphics := preload("res://scripts/graphics.gd")
 const BotBrain := preload("res://scripts/bot_brain.gd")
 const SpeedTrail := preload("res://scripts/speed_trail.gd")
 const MapMerge := preload("res://scripts/map_merge.gd")
+const MatchTracker := preload("res://scripts/match_tracker.gd")
+const Profile := preload("res://scripts/profile.gd")
 
 ## Spawn points spread round the middle of the map, facing inward.
 const SPAWN_RADIUS := 55.0
@@ -156,6 +158,9 @@ func _ensure_then_spawn() -> void:
 func _start(net: Node) -> void:
 	_match_start = Time.get_ticks_msec()
 	_started_online = net.get("online")
+	# The training arena's editor-built boxes become ordinary map boxes (map_merge.gd).
+	if has_node("Map"):
+		MapMerge.boxify($Map)
 	# This map's sun and environment, in the player's graphics settings.
 	(func() -> void:
 		if is_inside_tree():
@@ -244,7 +249,9 @@ func _roster() -> Dictionary:
 		return net.get("players")
 	var mod := get_tree().root.get_node_or_null("Mod")
 	var speed: float = mod.get("practice_speed") if mod else 1.0
-	return {1: {"name": "YOU", "color": 0, "loadout": WeaponInfo.local_loadout(get_tree()), "speed": speed}}
+	var profile := Profile.of(get_tree())
+	return {1: {"name": "YOU", "color": 0, "loadout": WeaponInfo.local_loadout(get_tree()), "speed": speed,
+		"card": profile.call("public_card") if profile else {}}}
 
 
 func _sync_players() -> void:
@@ -264,9 +271,31 @@ func _sync_players() -> void:
 			_players[id].queue_free()
 			_players.erase(id)
 	refresh_god_shields()
-	# Stats the owner changed (speed) take effect straight away.
+	# Stats the owner changed (speed) take effect straight away, and so does a new look.
 	for id in _players:
 		_apply_set_perks(id)
+		_apply_card(id)
+
+
+## Dresses player `id`'s ball and trail in what their card says (profile.gd: the skin and
+## trail they picked in the Locker), on every computer. The light in the ball's seams is
+## the player's own colour unless the skin brings one; in a team game it's always the
+## team's, so you can tell sides apart whatever anyone wears.
+func _apply_card(id: int) -> void:
+	var ball: Node = _players.get(id)
+	if not ball:
+		return
+	var card := Profile.clean_card(_roster().get(id, {}).get("card", {}))
+	var net := _net()
+	var own: Color = net.call("player_color", id) if net and is_online() else Color(0.35, 0.9, 1.0)
+	var skin: Dictionary = Profile.SKINS[card["skin"]]
+	ball.call("set_skin", card["skin"], own if is_team_game() else skin.get("seam", own))
+	var trail: Node = ball.get_meta("trail") if ball.has_meta("trail") else null
+	if trail and is_instance_valid(trail):
+		var look: Dictionary = Profile.TRAILS[card["trail"]]
+		trail.set("color", own)
+		trail.set("colors", [] if is_team_game() else look["colors"])
+		trail.set("rainbow", look.get("rainbow", false) and not is_team_game())
 
 
 ## A player's loadout (weapon ids for keys 1-6) from the roster.
@@ -379,6 +408,7 @@ func _spawn(id: int, index: int) -> void:
 		var net := _net()
 		trail.color = net.call("player_color", id) if net and is_online() else Color(0.35, 0.9, 1.0)
 		add_child(trail)
+		ball.set_meta("trail", trail)
 		ball.tree_exiting.connect(trail.queue_free)
 	if bot and multiplayer.is_server():
 		var brain := BotBrain.new()
@@ -386,6 +416,7 @@ func _spawn(id: int, index: int) -> void:
 		brain.bot_id = id
 		ball.add_child(brain)
 	_players[id] = ball
+	_apply_card(id)
 	health[id] = max_health_of(id)
 	alive[id] = true
 	# Nobody can be hit while their map is still building in (map_intro.gd), and a
@@ -397,14 +428,27 @@ func _spawn(id: int, index: int) -> void:
 		view.call("setup", ball)
 		add_child(view)
 		# The tutorial (practice only): the menu flags it just before loading the map.
+		if not is_online() and Engine.has_meta("time_trial"):
+			Engine.remove_meta("time_trial")
+			var trial: Node3D = load("res://scripts/time_trial.gd").new()
+			trial.set("ball", ball)
+			trial.set("map_path", scene_file_path)
+			add_child(trial)
 		if not is_online() and Engine.has_meta("tutorial"):
 			Engine.remove_meta("tutorial")
 			var tutorial := TutorialScript.new()
 			tutorial.set("ball", ball)
 			view.add_child(tutorial)
 		if is_online():
+			# The player's career follows the match (medals, experience); the HUD shows it.
+			var tracker := MatchTracker.new()
+			tracker.name = "Tracker"
+			tracker.arena = self
+			tracker.ball = ball
+			view.add_child(tracker)
 			var hud := HudScript.new()
 			hud.arena = self
+			hud.tracker = tracker
 			view.add_child(hud)
 		# Practice extras follow the local player's resets.
 		if has_node("Targets"):

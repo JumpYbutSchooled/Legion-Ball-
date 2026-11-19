@@ -60,6 +60,8 @@ const DEFAULTS := {
 	## One-time upgrades to saved graphics settings (see _ready).
 	"gfx_upgrade": 0,
 	"ssil": false,
+	## Volumetric light (the sun's glow in the air; graphics.gd). Off on LOW.
+	"volumetric": true,
 	"render_scale": 1.0,
 	## Frame cap (0 = none).
 	"max_fps": 0,
@@ -92,6 +94,9 @@ var _values := {}
 
 
 func _ready() -> void:
+	# The shader globals, before anything that uses them is drawn.
+	Graphics.ensure_globals()
+	set_process(DisplayServer.get_name() != "headless")
 	var file := ConfigFile.new()
 	var loaded := file.load(PATH)
 	# A damaged settings file (a crash mid-save): fall back to the last good copy.
@@ -107,6 +112,12 @@ func _ready() -> void:
 			_values["ssr"] = true
 		_values["gfx_upgrade"] = 1
 		_save()
+	# 4.0: volumetric light came with every preset but LOW; settings saved before it follow
+	# their preset (so a LOW player isn't handed a new cost).
+	if int(get_value("gfx_upgrade")) < 2:
+		_values["volumetric"] = String(get_value("graphics_preset")) != "LOW"
+		_values["gfx_upgrade"] = 2
+		_save()
 	# Older settings: fullscreen on/off becomes the window mode.
 	if String(get_value("window_mode")) == "":
 		_values["window_mode"] = "BORDERLESS" if get_value("fullscreen") else "WINDOWED"
@@ -115,6 +126,10 @@ func _ready() -> void:
 	_apply_window()
 	UIStyle.set_accent(String(get_value("ui_color")))
 	(func() -> void: Graphics.apply(get_tree())).call_deferred()
+
+
+func _process(_delta: float) -> void:
+	Graphics.tick_clock()
 
 
 func get_value(key: String) -> Variant:

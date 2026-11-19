@@ -82,6 +82,14 @@ static func preload_disk(ids: Array) -> void:
 		_decoded = out)
 
 
+## Waits for the background decode to finish (when the game closes: a worker task nobody
+## ever waited for crashed the game on its way out).
+static func finish_decoding() -> void:
+	if _decode_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_decode_task)
+		_decode_task = -1
+
+
 func request(id: String) -> Texture2D:
 	if not _cache.has(id):
 		_from_disk(id)
